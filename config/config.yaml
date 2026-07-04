@@ -1,0 +1,44 @@
+ble:
+  device_name: KP4PRA
+  enabled: true
+  start_at_boot: true
+bluetooth:
+  auto_discoverable: false
+  auto_pairable: false
+  bluez_state_strategy: persistent_bind_mount
+debug:
+  verbose_stdout: true
+direwolf:
+  host: 127.0.0.1
+  port: 8001
+dns_sd:
+  instance_name: KP4PRA
+paths:
+  bluez_state: /rw/kp4pra-tnc/bluetooth
+  config: /rw/kp4pra-tnc/config.yaml
+  data: /rw/kp4pra-tnc/data
+  runtime: /run/kp4pra-tnc
+  state: /rw/kp4pra-tnc/state
+product_name: KP4PRA TNC
+rfcomm:
+  channel: 1
+  device_name: KP4PRA
+  enabled: true
+  start_at_boot: true
+station:
+  aliasssid: ''
+  calias: CDIGI
+  callsign: KP3M
+  clock: KP3M-5
+  lat: 18.142575
+  lon: -66.160243
+  mygrid: FK68wd
+  ptt: CM108
+  sound: CM108
+  ssid: ''
+web:
+  auth_enabled: false
+  host: 0.0.0.0
+  password: ""
+  port: 8088
+  username: admin

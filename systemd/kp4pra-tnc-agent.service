@@ -1,0 +1,14 @@
+[Unit]
+Description=KP4PRA TNC - Bluetooth NoInputNoOutput Pairing Agent (Just Works)
+After=bluetooth.service
+Requires=bluetooth.service
+PartOf=kp4pra-tnc.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bt-agent --capability=NoInputNoOutput
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target kp4pra-tnc.target

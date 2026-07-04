@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}Android APRSDroid Setup — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Android APRSDroid Provisioning</div>
+  <div class="page-subtitle">Step-by-step wizard to pair and trust an Android phone for RFCOMM KISS TNC access.</div>
+</div>
+
+{% if status.reboot_pending %}
+<div class="reboot-banner">⚠ Reboot pending — {{ status.reboot_info.reason | default("Provisioning complete") }}</div>
+{% endif %}
+
+<div class="maintenance-banner">
+  <h3>⚠ Read-Only System — Reboot Required</h3>
+  <p>
+    KP4PRA TNC normally runs in <strong>read-only mode</strong> to protect the SD card.
+    Pairing and trusting an Android phone writes permanent Bluetooth bond data to storage.
+    After the pairing is saved, <strong>the system will automatically reboot</strong>.
+    After reboot, the phone will remain paired and the RFCOMM bridge will start automatically.
+  </p>
+</div>
+
+<!-- Step-by-step guide -->
+<div class="card">
+  <div class="card-title"><span class="icon">📱</span> Provisioning Steps</div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">Enable Bluetooth on your Android phone</div>
+        <div class="step-desc">Open Android Settings → Connected devices → Bluetooth and turn it on.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">Enable Discoverable and Pairable on KP4PRA TNC</div>
+        <div class="step-desc">Click the buttons below. KP4PRA TNC will be visible for 180 seconds.</div>
+        <div style="margin-top:0.6rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="enableDiscoverable()">Enable Discoverable</button>
+          <button class="btn btn-primary btn-sm" onclick="enablePairable()">Enable Pairable</button>
+        </div>
+        <div id="disc-result" style="margin-top:0.5rem;font-size:0.82rem"></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">Scan for your Android phone</div>
+        <div class="step-desc">Use the scan below to find your phone. Results are not saved to disk.</div>
+        <div style="margin-top:0.6rem">
+          <button class="btn btn-secondary btn-sm" id="btn-scan" onclick="startScan()">🔍 Scan (10s)</button>
+        </div>
+        <div id="scan-status" style="margin-top:0.5rem;font-size:0.82rem;color:var(--kp4pra-muted-text)"></div>
+        <div id="scan-results" style="margin-top:0.5rem"></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <div class="step-title">Pair the Android phone</div>
+        <div class="step-desc">
+          Select your phone from the scan results above and click Pair, <strong>or</strong>
+          enter the MAC address manually below.
+          The system will remount storage, save the pairing, and reboot.
+        </div>
+        <div style="margin-top:0.75rem">
+          <label class="form-label">Android Phone MAC Address</label>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+            <input class="form-input" id="manual-mac" placeholder="AA:BB:CC:DD:EE:FF"
+                   style="max-width:220px;font-family:monospace">
+            <button class="btn btn-primary" onclick="confirmPair()">Pair &amp; Trust Device</button>
+          </div>
+          <div class="form-hint">Found after scanning above, or in Android Bluetooth settings.</div>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <div class="step-title">System reboots and loads saved configuration</div>
+        <div class="step-desc">
+          After reboot, confirm the phone appears in Paired Devices on the Dashboard.
+          The RFCOMM bridge restarts automatically.
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-content">
+        <div class="step-title">Configure APRSDroid</div>
+        <div class="step-desc">
+          Open APRSDroid → Menu → Preferences → Connection Preferences.<br>
+          Set <strong>Connection Type: Bluetooth TNC</strong>.<br>
+          Set <strong>Bluetooth device: KP4PRA TNC</strong>.<br>
+          Set <strong>TNC type: KISS</strong>.<br>
+          Tap Connect. APRSDroid will connect over Bluetooth RFCOMM/SPP.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Current Status -->
+<div class="card">
+  <div class="card-title"><span class="icon">🔗</span> RFCOMM Bridge Status</div>
+  {% set rfcomm = status.rfcomm_bridge %}
+  {% set rr = status.rfcomm_runtime %}
+  <div class="status-row">
+    <span class="status-label">Service</span>
+    <span class="status-value">
+      {% if rfcomm.running %}<span class="badge badge-success">Running</span>
+      {% else %}<span class="badge badge-disabled">Stopped</span>{% endif %}
+    </span>
+  </div>
+  <div class="status-row">
+    <span class="status-label">Client connected</span>
+    <span class="status-value">
+      {% if rr.connected %}<span class="badge badge-success">{{ rr.client_addr }}</span>
+      {% else %}<span class="badge badge-disabled">None</span>{% endif %}
+    </span>
+  </div>
+  <div class="status-row">
+    <span class="status-label">Dire Wolf TCP</span>
+    <span class="status-value">
+      {% if status.direwolf_tcp.reachable %}
+        <span class="badge badge-success">{{ status.direwolf_tcp.host }}:{{ status.direwolf_tcp.port }}</span>
+      {% else %}<span class="badge badge-error">Unreachable</span>{% endif %}
+    </span>
+  </div>
+  <div style="margin-top:0.75rem">
+    <button class="btn btn-secondary btn-sm"
+            onclick="restartService('kp4pra-tnc-rfcomm.service')">Restart RFCOMM Bridge</button>
+  </div>
+</div>
+
+<div id="api-result" style="display:none"></div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h2>Pair &amp; Trust Android Phone</h2>
+    <div class="maintenance-banner" style="margin:0 0 1rem">
+      <h3>⚠ System will reboot after pairing</h3>
+      <p>
+        The system will remount storage read/write, pair and trust the device,
+        verify the BlueZ state was written, sync storage, then reboot automatically.
+        <strong>KP4PRA TNC will be offline for ~30 seconds.</strong>
+      </p>
+    </div>
+    <p id="modal-desc" style="margin-bottom:1rem"></p>
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;margin-bottom:1rem;cursor:pointer">
+      <input type="checkbox" id="modal-check">
+      I understand the system will reboot after this change.
+    </label>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doPair()">Confirm — Pair &amp; Reboot</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let targetAddress = null;
+
+async function post(url, body) {
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  return r.json();
+}
+
+async function enableDiscoverable() {
+  const r = await post('/api/bt/discoverable', {on:true, timeout:180});
+  document.getElementById('disc-result').textContent =
+    r.success ? '✓ Discoverable enabled (180s)' : '✗ Failed: ' + (r.message||'');
+}
+
+async function enablePairable() {
+  const r = await post('/api/bt/pairable', {on:true, timeout:180});
+  document.getElementById('disc-result').textContent +=
+    (r.success ? ' · ✓ Pairable enabled (180s)' : ' · ✗ Pairable failed');
+}
+
+async function startScan() {
+  const btn = document.getElementById('btn-scan');
+  const statusEl = document.getElementById('scan-status');
+  const resultsEl = document.getElementById('scan-results');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="border-top-color:var(--kp4pra-primary);border-color:var(--kp4pra-border)"></span> Scanning…';
+  statusEl.textContent = 'Scanning for 10 seconds…';
+  resultsEl.innerHTML = '';
+  try {
+    const r = await post('/api/bt/scan', {});
+    if (r.devices && r.devices.length > 0) {
+      statusEl.textContent = `Found ${r.devices.length} device(s) — select your phone:`;
+      const ul = document.createElement('ul');
+      ul.className = 'device-list';
+      r.devices.forEach(d => {
+        const li = document.createElement('li');
+        li.className = 'device-item';
+        li.innerHTML = `
+          <div class="device-info">
+            <div class="device-name">${d.name || d.address}</div>
+            <div class="device-addr">${d.address}</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="selectDevice('${d.address}')">Select</button>`;
+        ul.appendChild(li);
+      });
+      resultsEl.appendChild(ul);
+    } else {
+      statusEl.textContent = 'No devices found. Ensure your phone has Bluetooth visible.';
+    }
+  } catch(e) {
+    statusEl.textContent = 'Scan error: ' + e;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Scan (10s)';
+  }
+}
+
+function selectDevice(addr) {
+  document.getElementById('manual-mac').value = addr;
+  document.getElementById('scan-status').textContent = `Selected: ${addr}`;
+}
+
+function confirmPair() {
+  const mac = document.getElementById('manual-mac').value.trim();
+  if (!mac.match(/^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/)) {
+    alert('Enter a valid MAC address (AA:BB:CC:DD:EE:FF)');
+    return;
+  }
+  targetAddress = mac;
+  document.getElementById('modal-desc').textContent = `Device MAC: ${mac}`;
+  document.getElementById('modal-check').checked = false;
+  document.getElementById('confirm-modal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('confirm-modal').classList.remove('open'); }
+
+async function doPair() {
+  if (!document.getElementById('modal-check').checked) { alert('Please check the box.'); return; }
+  closeModal();
+  showResult(null, 'Pairing in progress — this may take up to 30 seconds. Do not navigate away.');
+  try {
+    // First pair, then trust in sequence
+    const r1 = await post('/api/bt/pair', {address: targetAddress, confirmed: true});
+    if (!r1.success) { showResult(false, 'Pair failed: ' + r1.message); return; }
+    showResult(true, r1.message);
+  } catch(e) {
+    showResult(false, 'Error: ' + e);
+  }
+}
+
+async function restartService(svc) {
+  showResult(null, `Restarting ${svc}…`);
+  const r = await post('/api/service/restart', {service: svc});
+  showResult(r.success, r.message);
+}
+
+function showResult(success, msg) {
+  const el = document.getElementById('api-result');
+  el.style.display = 'block';
+  const cls = success === null ? 'alert-info' : (success ? 'alert-success' : 'alert-error');
+  const icon = success === null ? 'ℹ' : (success ? '✓' : '✗');
+  el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
+  el.scrollIntoView({behavior:'smooth'});
+}
+</script>
+{% endblock %}

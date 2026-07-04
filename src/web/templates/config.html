@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% block title %}Configuration — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Configuration</div>
+  <div class="page-subtitle">
+    Stored in {{ config.paths.config }}. Changes are written atomically. Some changes require a service restart or reboot.
+  </div>
+</div>
+
+{% if reboot_pending %}
+<div class="reboot-banner">⚠ Reboot pending</div>
+{% endif %}
+
+{% if not filesystem.rw_partition_writable %}
+<div class="alert alert-error">
+  <span class="alert-icon">✗</span>
+  <div><strong>Configuration path is not writable.</strong> Mount /rw/kp4pra-tnc as a writable partition to save settings.</div>
+</div>
+{% endif %}
+
+<!-- Station -->
+<div class="card">
+  <div class="card-title"><span class="icon">📻</span> Station Information</div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    These values will be used to configure direwolf.conf and other systems later in the project.
+  </p>
+  <div class="grid-3">
+    <div class="form-group">
+      <label class="form-label" for="st-callsign">Callsign</label>
+      <input class="form-input" id="st-callsign" maxlength="6"
+             value="{{ config.station.callsign if config.station is defined else '' }}" placeholder="KP3M">
+      <div class="form-hint">Ham operator callsign, 6 characters maximum.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-ssid">SSID</label>
+      <input class="form-input" id="st-ssid" type="number" min="1" max="15"
+             value="{{ config.station.ssid if config.station is defined else '' }}" placeholder="(optional)">
+      <div class="form-hint">Optional. If used, must be 1-15.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-mygrid">Grid Square</label>
+      <input class="form-input" id="st-mygrid" maxlength="6"
+             value="{{ config.station.mygrid if config.station is defined else '' }}" placeholder="FK68wd">
+      <div class="form-hint">Maidenhead grid where operations are done.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-lat">Latitude</label>
+      <input class="form-input" id="st-lat" type="number" step="any" min="-90" max="90"
+             value="{{ config.station.lat if config.station is defined else '' }}" placeholder="18.142575">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-lon">Longitude</label>
+      <input class="form-input" id="st-lon" type="number" step="any" min="-180" max="180"
+             value="{{ config.station.lon if config.station is defined else '' }}" placeholder="-66.160243">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-sound">Sound Card</label>
+      <select class="form-select" id="st-sound">
+        {% set current_sound = config.station.sound if config.station is defined else 'CM108' %}
+        <option value="CM108" {% if current_sound == 'CM108' %}selected{% endif %}>CM108</option>
+        <option value="Signalink" {% if current_sound == 'Signalink' %}selected{% endif %}>Signalink</option>
+        <option value="USB CP210x" {% if current_sound == 'USB CP210x' %}selected{% endif %}>USB CP210x</option>
+      </select>
+      <div class="form-hint">Sound card used in Dire Wolf.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-ptt">PTT</label>
+      <select class="form-select" id="st-ptt">
+        {% set current_ptt = config.station.ptt if config.station is defined and config.station.ptt is defined else 'CM108' %}
+        <option value="CM108" {% if current_ptt == 'CM108' %}selected{% endif %}>CM108 GPIO</option>
+        <option value="VOX" {% if current_ptt == 'VOX' %}selected{% endif %}>VOX (Signalink)</option>
+        <option value="RTS" {% if current_ptt == 'RTS' %}selected{% endif %}>Serial RTS</option>
+        <option value="DTR" {% if current_ptt == 'DTR' %}selected{% endif %}>Serial DTR</option>
+        <option value="GPIO" {% if current_ptt == 'GPIO' %}selected{% endif %}>GPIO Pin</option>
+        <option value="RIG" {% if current_ptt == 'RIG' %}selected{% endif %}>Hamlib RIG</option>
+        <option value="NONE" {% if current_ptt == 'NONE' %}selected{% endif %}>None</option>
+      </select>
+      <div class="form-hint">Push-to-talk method used in Dire Wolf.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-clock">Clock Source Station</label>
+      <input class="form-input" id="st-clock"
+             value="{{ config.station.clock if config.station is defined else '' }}" placeholder="KP3M-5">
+      <div class="form-hint">Station the clock is adjusted from via RF APRS.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-calias">CDIGIPEAT Alias</label>
+      <input class="form-input" id="st-calias" maxlength="6"
+             value="{{ config.station.calias if config.station is defined else '' }}" placeholder="CDIGI">
+      <div class="form-hint">Alias used for AX.25.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-aliasssid">Alias SSID</label>
+      <input class="form-input" id="st-aliasssid" type="number" min="1" max="15"
+             value="{{ config.station.aliasssid if config.station is defined else '' }}" placeholder="(optional)">
+      <div class="form-hint">Optional. If used, must be 1-15.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Dire Wolf -->
+<div class="card">
+  <div class="card-title"><span class="icon">🐺</span> Dire Wolf KISS TCP</div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="dw-host">Dire Wolf Host</label>
+      <input class="form-input" id="dw-host" value="{{ config.direwolf.host }}" placeholder="127.0.0.1">
+      <div class="form-hint">Default: 127.0.0.1 (local)</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="dw-port">Dire Wolf KISS TCP Port</label>
+      <input class="form-input" id="dw-port" type="number" value="{{ config.direwolf.port }}" placeholder="8001">
+      <div class="form-hint">Default: 8001</div>
+    </div>
+  </div>
+</div>
+
+<!-- BLE -->
+<div class="card">
+  <div class="card-title"><span class="icon">📡</span> BLE KISS Bridge</div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="ble-name">BLE Device Name</label>
+      <input class="form-input" id="ble-name" value="{{ config.ble.device_name }}" placeholder="KP4PRA TNC">
+      <div class="form-hint">Name shown in aprs.fi device list. Requires reboot after change.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">BLE at Boot</label>
+      <select class="form-select" id="ble-boot">
+        <option value="true" {% if config.ble.start_at_boot %}selected{% endif %}>Enabled</option>
+        <option value="false" {% if not config.ble.start_at_boot %}selected{% endif %}>Disabled</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- RFCOMM -->
+<div class="card">
+  <div class="card-title"><span class="icon">📱</span> RFCOMM / SPP Bridge</div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="rfcomm-name">RFCOMM Device Name</label>
+      <input class="form-input" id="rfcomm-name" value="{{ config.rfcomm.device_name }}" placeholder="KP4PRA TNC">
+      <div class="form-hint">Name shown in APRSDroid TNC selection. Requires reboot after change.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rfcomm-channel">RFCOMM Channel</label>
+      <input class="form-input" id="rfcomm-channel" type="number" min="1" max="30"
+             value="{{ config.rfcomm.channel | default(1) }}" placeholder="1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">RFCOMM at Boot</label>
+      <select class="form-select" id="rfcomm-boot">
+        <option value="true" {% if config.rfcomm.start_at_boot %}selected{% endif %}>Enabled</option>
+        <option value="false" {% if not config.rfcomm.start_at_boot %}selected{% endif %}>Disabled</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- DNS-SD -->
+<div class="card">
+  <div class="card-title"><span class="icon">🌐</span> DNS-SD / mDNS</div>
+  <div class="form-group">
+    <label class="form-label" for="dns-name">DNS-SD Instance Name</label>
+    <input class="form-input" id="dns-name" value="{{ config.dns_sd.instance_name }}"
+           placeholder="KP4PRA TNC on orangepi" style="max-width:400px">
+    <div class="form-hint">Informational only - the DNS-SD advertisement is published by Dire Wolf itself (see DNSSDNAME in direwolf.conf).</div>
+  </div>
+</div>
+
+<!-- Bluetooth Strategy -->
+<div class="card">
+  <div class="card-title"><span class="icon">🔵</span> Bluetooth Persistence Strategy</div>
+  <div class="form-group">
+    <label class="form-label" for="bt-strategy">BlueZ State Strategy</label>
+    <select class="form-select" id="bt-strategy" style="max-width:380px">
+      <option value="persistent_bind_mount"
+        {% if config.bluetooth.bluez_state_strategy == "persistent_bind_mount" %}selected{% endif %}>
+        Persistent writable bind mount (Recommended)
+      </option>
+      <option value="read_only_preprovisioned"
+        {% if config.bluetooth.bluez_state_strategy == "read_only_preprovisioned" %}selected{% endif %}>
+        Pre-provisioned read-only (no web pairing)
+      </option>
+      <option value="volatile"
+        {% if config.bluetooth.bluez_state_strategy == "volatile" %}selected{% endif %}>
+        Volatile (re-pair after reboot)
+      </option>
+    </select>
+    <div class="form-hint">Determines how Bluetooth pairing data is persisted. See documentation for details.</div>
+  </div>
+  <div class="toggle-row">
+    <span class="toggle-label">Auto-enable Discoverable at boot</span>
+    <label class="toggle">
+      <input type="checkbox" id="auto-disc"
+             {% if config.bluetooth.auto_discoverable %}checked{% endif %}>
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+  <div class="toggle-row">
+    <span class="toggle-label">Auto-enable Pairable at boot</span>
+    <label class="toggle">
+      <input type="checkbox" id="auto-pair"
+             {% if config.bluetooth.auto_pairable %}checked{% endif %}>
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+</div>
+
+<!-- Web Interface -->
+<div class="card">
+  <div class="card-title"><span class="icon">🌍</span> Web Interface</div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="web-port">Web Port</label>
+      <input class="form-input" id="web-port" type="number" min="1024" max="65535"
+             value="{{ config.web.port }}" placeholder="8088">
+      <div class="form-hint">Default: 8088. Requires service restart.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="web-host">Bind Address</label>
+      <input class="form-input" id="web-host" value="{{ config.web.host }}" placeholder="0.0.0.0">
+      <div class="form-hint">0.0.0.0 = all interfaces. 127.0.0.1 = local only.</div>
+    </div>
+  </div>
+  <div class="toggle-row">
+    <span class="toggle-label">Require Username / Password</span>
+    <label class="toggle">
+      <input type="checkbox" id="auth-enabled"
+             {% if config.web.auth_enabled %}checked{% endif %}
+             onchange="toggleAuthFields(this.checked)">
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+  <div id="auth-fields" style="{% if not config.web.auth_enabled %}display:none{% endif %};margin-top:0.75rem">
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label" for="web-user">Username</label>
+        <input class="form-input" id="web-user" value="{{ config.web.username | default('admin') }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="web-pass">Password</label>
+        <input class="form-input" id="web-pass" type="password" placeholder="(leave blank to keep current)">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Debug -->
+<div class="card">
+  <div class="card-title"><span class="icon">🔧</span> Debug</div>
+  <div class="toggle-row">
+    <span class="toggle-label">Verbose stdout/stderr (current boot only, not persisted)</span>
+    <label class="toggle">
+      <input type="checkbox" id="debug-verbose"
+             {% if config.debug.verbose_stdout %}checked{% endif %}>
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+  <div class="form-hint" style="margin-top:0.5rem">
+    No log files are ever written to disk. This only affects console output to systemd journal (volatile).
+  </div>
+</div>
+
+<!-- Save -->
+<div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-top:0.5rem">
+  <button class="btn btn-primary" onclick="saveConfig()">💾 Save Configuration</button>
+  <span style="font-size:0.82rem;color:var(--kp4pra-muted-text)">
+    Saved to {{ config.paths.config }}. Some changes require a service restart or reboot.
+  </span>
+</div>
+
+<div id="save-result" style="display:none;margin-top:1rem"></div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="save-modal">
+  <div class="modal">
+    <h2>Save Configuration</h2>
+    <p>Save the updated configuration to <code>{{ config.paths.config }}</code>?</p>
+    <div class="alert alert-info" style="margin-bottom:1rem">
+      <span class="alert-icon">ℹ</span>
+      <div>Some settings require restarting bridge services or rebooting to take effect.</div>
+    </div>
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;margin-bottom:1rem;cursor:pointer">
+      <input type="checkbox" id="save-confirm-check">
+      I confirm I want to save these settings.
+    </label>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeSaveModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doSave()">Save</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleAuthFields(on) {
+  document.getElementById('auth-fields').style.display = on ? '' : 'none';
+}
+
+function collectConfig() {
+  const cfg = {
+    station: {
+      callsign: document.getElementById('st-callsign').value.trim().toUpperCase(),
+      ssid: document.getElementById('st-ssid').value.trim(),
+      mygrid: document.getElementById('st-mygrid').value.trim(),
+      lat: parseFloat(document.getElementById('st-lat').value) || 0,
+      lon: parseFloat(document.getElementById('st-lon').value) || 0,
+      sound: document.getElementById('st-sound').value.trim(),
+      ptt: document.getElementById('st-ptt').value.trim(),
+      clock: document.getElementById('st-clock').value.trim().toUpperCase(),
+      calias: document.getElementById('st-calias').value.trim().toUpperCase(),
+      aliasssid: document.getElementById('st-aliasssid').value.trim(),
+    },
+    direwolf: {
+      host: document.getElementById('dw-host').value.trim(),
+      port: parseInt(document.getElementById('dw-port').value),
+    },
+    ble: {
+      device_name: document.getElementById('ble-name').value.trim(),
+      start_at_boot: document.getElementById('ble-boot').value === 'true',
+    },
+    rfcomm: {
+      device_name: document.getElementById('rfcomm-name').value.trim(),
+      channel: parseInt(document.getElementById('rfcomm-channel').value),
+      start_at_boot: document.getElementById('rfcomm-boot').value === 'true',
+    },
+    dns_sd: {
+      instance_name: document.getElementById('dns-name').value.trim(),
+    },
+    bluetooth: {
+      bluez_state_strategy: document.getElementById('bt-strategy').value,
+      auto_discoverable: document.getElementById('auto-disc').checked,
+      auto_pairable: document.getElementById('auto-pair').checked,
+    },
+    web: {
+      port: parseInt(document.getElementById('web-port').value),
+      host: document.getElementById('web-host').value.trim(),
+      auth_enabled: document.getElementById('auth-enabled').checked,
+      username: document.getElementById('web-user').value.trim(),
+    },
+    debug: {
+      verbose_stdout: document.getElementById('debug-verbose').checked,
+    },
+  };
+  const pass = document.getElementById('web-pass').value;
+  if (pass) cfg.web.password = pass;
+  return cfg;
+}
+
+function saveConfig() {
+  document.getElementById('save-confirm-check').checked = false;
+  document.getElementById('save-modal').classList.add('open');
+}
+
+function closeSaveModal() {
+  document.getElementById('save-modal').classList.remove('open');
+}
+
+async function doSave() {
+  if (!document.getElementById('save-confirm-check').checked) {
+    alert('Please confirm.');
+    return;
+  }
+  closeSaveModal();
+  const cfg = collectConfig();
+  showSaveResult(null, 'Saving…');
+  try {
+    const r = await fetch('/api/config/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({config: cfg, confirmed: true})
+    });
+    const data = await r.json();
+    showSaveResult(data.success, data.message);
+  } catch(e) {
+    showSaveResult(false, 'Error: ' + e);
+  }
+}
+
+function showSaveResult(success, msg) {
+  const el = document.getElementById('save-result');
+  el.style.display = 'block';
+  const cls = success === null ? 'alert-info' : (success ? 'alert-success' : 'alert-error');
+  const icon = success === null ? 'ℹ' : (success ? '✓' : '✗');
+  el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
+  el.scrollIntoView({behavior:'smooth'});
+}
+</script>
+{% endblock %}

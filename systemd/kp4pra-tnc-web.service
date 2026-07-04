@@ -1,0 +1,53 @@
+[Unit]
+Description=KP4PRA TNC Web Management Interface
+Documentation=https://github.com/kp4pra/kp4pra-tnc
+After=network.target bluetooth.target
+PartOf=kp4pra-tnc.target
+
+[Service]
+Type=simple
+User=kp4pra-tnc
+Group=kp4pra-tnc
+
+# Application
+WorkingDirectory=/opt/kp4pra-tnc/src/web
+ExecStart=/opt/kp4pra-tnc/venv/bin/python /opt/kp4pra-tnc/src/web/web_app.py
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Environment
+Environment=KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml
+Environment=PYTHONPATH=/opt/kp4pra-tnc/src
+
+# Runtime directory (tmpfs)
+
+# Writable paths needed
+# /rw/kp4pra-tnc: config writes
+# /run/kp4pra-tnc: runtime status blobs
+ReadWritePaths=/run/kp4pra-tnc /rw/kp4pra-tnc
+ReadOnlyPaths=/opt/kp4pra-tnc
+
+# Security hardening
+# Note: ProtectSystem=strict conflicts with remount operations during provisioning.
+# Use ReadOnlyPaths instead.
+NoNewPrivileges=false
+# NoNewPrivileges=false is required so web service can sudo for provisioning commands.
+# Sudoers are narrowly scoped to only allowlisted commands.
+
+PrivateTmp=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+# Bluetooth group for bluetoothctl calls
+SupplementaryGroups=bluetooth
+
+# Logging: stdout/stderr only, no file logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kp4pra-tnc-web
+
+[Install]
+WantedBy=multi-user.target kp4pra-tnc.target

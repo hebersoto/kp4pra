@@ -1,0 +1,20 @@
+[Unit]
+Description=KP4PRA TNC — Bind Mount Persistent BlueZ State
+Documentation=https://github.com/kp4pra/kp4pra-tnc
+# Mount the writable BlueZ state directory over /var/lib/bluetooth
+# This keeps root filesystem read-only while allowing persistent Bluetooth pairing.
+# /rw/kp4pra-tnc/bluetooth must exist and contain a valid BlueZ state tree.
+Before=bluetooth.service kp4pra-tnc-rfcomm.service kp4pra-tnc-ble.service
+After=local-fs.target
+
+[Mount]
+# Source: writable persistent partition for BlueZ state
+What=/rw/kp4pra-tnc/bluetooth
+# Target: BlueZ's expected state location
+Where=/var/lib/bluetooth
+Type=none
+Options=bind,rw
+TimeoutSec=10
+
+[Install]
+WantedBy=multi-user.target bluetooth.service

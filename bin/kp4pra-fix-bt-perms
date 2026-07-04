@@ -1,0 +1,4 @@
+#!/bin/bash
+# KP4PRA TNC - restore bluetooth-group read access to BlueZ state
+chgrp -R bluetooth /var/lib/bluetooth
+chmod -R g+rX /var/lib/bluetooth

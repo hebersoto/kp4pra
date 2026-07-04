@@ -1,0 +1,55 @@
+[Unit]
+Description=KP4PRA TNC RFCOMM KISS Bridge (Android APRSDroid)
+Documentation=https://github.com/kp4pra/kp4pra-tnc
+After=bluetooth.target network.target
+Requires=bluetooth.target
+PartOf=kp4pra-tnc.target
+
+[Service]
+Type=simple
+User=kp4pra-tnc
+Group=kp4pra-tnc
+
+# Application
+WorkingDirectory=/opt/kp4pra-tnc
+ExecStart=/opt/kp4pra-tnc/venv/bin/python /opt/kp4pra-tnc/src/rfcomm/rfcomm_bridge.py
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Environment
+Environment=KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml
+Environment=PYTHONPATH=/opt/kp4pra-tnc/src
+
+# Runtime directory (tmpfs - disappears after reboot)
+
+# Read-only filesystem hardening
+# Root is read-only in normal operation; only specified paths are writable.
+ReadWritePaths=/run/kp4pra-tnc /rw/kp4pra-tnc
+ReadOnlyPaths=/opt/kp4pra-tnc
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+
+# Bluetooth requires access to /var/lib/bluetooth (bind-mounted from /rw/kp4pra-tnc/bluetooth)
+# and D-Bus socket
+SupplementaryGroups=bluetooth
+
+# Logging: stdout/stderr only, no file logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kp4pra-tnc-rfcomm
+
+# No file-based log configuration
+# journald must be volatile-only; logs disappear after reboot
+
+[Install]
+WantedBy=multi-user.target kp4pra-tnc.target

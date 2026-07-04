@@ -1,0 +1,3 @@
+#!/bin/bash
+mount -o remount,ro /var/lib/bluetooth 2>/dev/null || true
+mount -o remount,ro / 2>/dev/null || true

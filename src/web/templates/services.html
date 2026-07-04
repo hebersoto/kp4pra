@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Services — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Service Control</div>
+  <div class="page-subtitle">Start, stop, and restart KP4PRA TNC bridge services. Live status only — no log files are written.</div>
+</div>
+
+{% if status.reboot_pending %}
+<div class="reboot-banner">⚠ Reboot pending</div>
+{% endif %}
+
+<div class="grid-2">
+
+  <!-- RFCOMM Service -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📱</span> RFCOMM Bridge</div>
+    <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
+      kp4pra-tnc-rfcomm.service — Android APRSDroid
+    </div>
+    {% set rfcomm = status.rfcomm_bridge %}
+    <div class="status-row">
+      <span class="status-label">State</span>
+      <span class="status-value">
+        {% if rfcomm.running %}<span class="badge badge-success">Running</span>
+        {% elif rfcomm.active_state == "activating" %}<span class="badge badge-warning">Starting</span>
+        {% elif rfcomm.active_state == "failed" %}<span class="badge badge-error">Failed</span>
+        {% else %}<span class="badge badge-disabled">{{ rfcomm.active_state | default("Stopped") }}</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Sub-state</span>
+      <span class="status-value">{{ rfcomm.sub_state | default("—") }}</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Client connected</span>
+      <span class="status-value">
+        {% if status.rfcomm_runtime.connected %}
+          <span class="badge badge-success">{{ status.rfcomm_runtime.client_addr }}</span>
+        {% else %}<span class="badge badge-disabled">None</span>{% endif %}
+      </span>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:1rem">
+      <button class="btn btn-primary btn-sm" onclick="svcAction('restart','kp4pra-tnc-rfcomm.service')">Restart</button>
+      <button class="btn btn-secondary btn-sm" onclick="svcAction('stop','kp4pra-tnc-rfcomm.service')">Stop</button>
+    </div>
+  </div>
+
+  <!-- BLE Service -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📡</span> BLE KISS Bridge</div>
+    <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
+      kp4pra-tnc-ble.service — iPhone aprs.fi
+    </div>
+    {% set ble = status.ble_bridge %}
+    <div class="status-row">
+      <span class="status-label">State</span>
+      <span class="status-value">
+        {% if ble.running %}<span class="badge badge-success">Running</span>
+        {% elif ble.active_state == "activating" %}<span class="badge badge-warning">Starting</span>
+        {% elif ble.active_state == "failed" %}<span class="badge badge-error">Failed</span>
+        {% else %}<span class="badge badge-disabled">{{ ble.active_state | default("Stopped") }}</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">BLE client</span>
+      <span class="status-value">
+        {% if status.ble_runtime.client_connected %}<span class="badge badge-success">Connected</span>
+        {% elif ble.running %}<span class="badge badge-info">Advertising</span>
+        {% else %}<span class="badge badge-disabled">Not advertising</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Device name</span>
+      <span class="status-value">{{ status.ble_runtime.device_name | default(status.config.ble_name) }}</span>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:1rem">
+      <button class="btn btn-primary btn-sm" onclick="svcAction('restart','kp4pra-tnc-ble.service')">Restart</button>
+      <button class="btn btn-secondary btn-sm" onclick="svcAction('stop','kp4pra-tnc-ble.service')">Stop</button>
+    </div>
+  </div>
+
+  <!-- Bluetooth daemon -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🔵</span> Bluetooth Service</div>
+    <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
+      bluetooth.service — BlueZ
+    </div>
+    {% set bt_svc = get_service_status("bluetooth.service") if get_service_status is defined else status.rfcomm_bridge %}
+    <div class="status-row">
+      <span class="status-label">Adapter available</span>
+      <span class="status-value">
+        {% if status.adapter.available %}<span class="badge badge-success">Yes</span>
+        {% else %}<span class="badge badge-error">No</span>{% endif %}
+      </span>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:1rem">
+      <button class="btn btn-secondary btn-sm" onclick="svcAction('restart','bluetooth.service')">Restart Bluetooth</button>
+    </div>
+  </div>
+
+  <!-- Dire Wolf -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🐺</span> Dire Wolf</div>
+    <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
+      direwolf.service — APRS/KISS TNC
+    </div>
+    {% set dw = status.direwolf_tcp %}
+    <div class="status-row">
+      <span class="status-label">KISS TCP Port</span>
+      <span class="status-value">
+        {% if dw.reachable %}<span class="badge badge-success">{{ dw.host }}:{{ dw.port }}</span>
+        {% else %}<span class="badge badge-error">Unreachable — {{ dw.error | default("") }}</span>{% endif %}
+      </span>
+    </div>
+    <p style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-top:0.5rem">
+      Dire Wolf is managed separately. Restarting it here requires direwolf.service to be enabled.
+    </p>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+      <button class="btn btn-secondary btn-sm" onclick="checkDW()">Check TCP Port</button>
+    </div>
+    <div id="dw-result" style="margin-top:0.5rem;font-size:0.82rem"></div>
+  </div>
+
+</div>
+
+<!-- Volatile log output -->
+<div class="card">
+  <div class="card-title"><span class="icon">📋</span> Current-Boot Service Output
+    <span class="badge badge-warning" style="margin-left:auto;font-size:0.7rem">Volatile — not saved</span>
+  </div>
+  <div class="alert alert-info" style="margin-bottom:1rem">
+    <span class="alert-icon">ℹ</span>
+    <div>This shows current-boot systemd journal output only. KP4PRA TNC does not write log files to disk. If journald is not available, no output is shown. This is informational only and not required for operation.</div>
+  </div>
+  <div style="margin-bottom:0.5rem;font-size:0.85rem;font-weight:600">RFCOMM Bridge (last 30 lines):</div>
+  <div class="log-block">{{ rfcomm_log or "(no journal output available)" }}</div>
+  <div style="margin:0.85rem 0 0.5rem;font-size:0.85rem;font-weight:600">BLE KISS Bridge (last 30 lines):</div>
+  <div class="log-block">{{ ble_log or "(no journal output available)" }}</div>
+</div>
+
+<div id="api-result" style="display:none"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function post(url, body) {
+  const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return r.json();
+}
+
+async function svcAction(action, svc) {
+  showResult(null, `${action} ${svc}…`);
+  const r = await post(`/api/service/${action}`, {service: svc});
+  showResult(r.success, r.message);
+  setTimeout(() => location.reload(), 2000);
+}
+
+async function checkDW() {
+  const r = await fetch('/api/status');
+  const data = await r.json();
+  const dw = data.direwolf_tcp;
+  document.getElementById('dw-result').textContent =
+    dw.reachable ? `✓ Reachable at ${dw.host}:${dw.port}` : `✗ Not reachable: ${dw.error || ''}`;
+}
+
+function showResult(success, msg) {
+  const el = document.getElementById('api-result');
+  el.style.display = 'block';
+  const cls = success === null ? 'alert-info' : (success ? 'alert-success' : 'alert-error');
+  const icon = success === null ? 'ℹ' : (success ? '✓' : '✗');
+  el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
+  el.scrollIntoView({behavior:'smooth'});
+}
+</script>
+{% endblock %}

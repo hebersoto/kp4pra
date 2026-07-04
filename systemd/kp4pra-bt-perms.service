@@ -1,0 +1,10 @@
+[Unit]
+Description=KP4PRA TNC - Fix BlueZ state permissions at boot
+After=var-lib-bluetooth.mount bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kp4pra-fix-bt-perms
+
+[Install]
+WantedBy=multi-user.target

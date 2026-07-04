@@ -1,0 +1,19 @@
+Defaults:kp4pra-tnc !requiretty
+Defaults:kp4pra-tnc !env_reset
+
+# Service management
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl restart kp4pra-tnc-rfcomm.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl restart kp4pra-tnc-ble.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl restart kp4pra-tnc-web.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl restart bluetooth.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl stop kp4pra-tnc-rfcomm.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl stop kp4pra-tnc-ble.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl start kp4pra-tnc-rfcomm.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl start kp4pra-tnc-ble.service
+
+# Filesystem remount via helper script (avoids sudoers option parsing issues)
+kp4pra-tnc ALL=(ALL) NOPASSWD: /usr/local/bin/kp4pra-remount-rw
+kp4pra-tnc ALL=(ALL) NOPASSWD: /usr/local/bin/kp4pra-remount-ro
+
+# Reboot
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl reboot

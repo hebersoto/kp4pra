@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}iPhone aprs.fi BLE Setup — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">iPhone aprs.fi — BLE KISS Setup</div>
+  <div class="page-subtitle">iPhone does not require Linux pairing. BLE KISS connects automatically from within the aprs.fi app.</div>
+</div>
+
+{% if status.reboot_pending %}
+<div class="reboot-banner">⚠ Reboot pending — {{ status.reboot_info.reason | default("Provisioning complete") }}</div>
+{% endif %}
+
+<div class="alert alert-success">
+  <span class="alert-icon">✓</span>
+  <div>
+    <strong>No Linux pairing required for iPhone.</strong>
+    iPhone connects to the BLE KISS service directly from inside aprs.fi.
+    No PIN, no pairing in iOS Settings, no Linux configuration.
+    No reboot is required for normal BLE connect/disconnect events.
+  </div>
+</div>
+
+<div class="grid-2">
+
+  <!-- BLE Status -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📡</span> BLE KISS Bridge Status</div>
+    {% set ble = status.ble_bridge %}
+    {% set br = status.ble_runtime %}
+    <div class="status-row">
+      <span class="status-label">Service</span>
+      <span class="status-value">
+        {% if ble.running %}<span class="badge badge-success">Running</span>
+        {% else %}<span class="badge badge-disabled">Stopped</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Advertising as</span>
+      <span class="status-value"><strong>{{ br.device_name | default(status.config.ble_name) }}</strong></span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">BLE Client</span>
+      <span class="status-value">
+        {% if br.client_connected %}<span class="badge badge-success">Connected</span>
+        {% elif ble.running %}<span class="badge badge-info">Advertising</span>
+        {% else %}<span class="badge badge-disabled">Not advertising</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Dire Wolf TCP</span>
+      <span class="status-value">
+        {% if status.direwolf_tcp.reachable %}
+          <span class="badge badge-success">{{ status.direwolf_tcp.host }}:{{ status.direwolf_tcp.port }}</span>
+        {% else %}<span class="badge badge-error">Unreachable</span>{% endif %}
+      </span>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm"
+              onclick="restartBLE()">Restart BLE Bridge</button>
+      <button class="btn btn-secondary btn-sm"
+              onclick="refreshStatus()">Refresh Status</button>
+    </div>
+  </div>
+
+  <!-- BLE UUIDs -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🔑</span> BLE Service UUIDs</div>
+    <div class="form-group">
+      <label class="form-label">KISS over BLE Service UUID</label>
+      <div class="uuid-box">00000001-ba2a-46c9-ae49-01b0961f68bb</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">TX Characteristic (App → TNC)</label>
+      <div class="uuid-box">00000002-ba2a-46c9-ae49-01b0961f68bb</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">RX Characteristic (TNC → App, Notify)</label>
+      <div class="uuid-box">00000003-ba2a-46c9-ae49-01b0961f68bb</div>
+    </div>
+    <p style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-top:0.5rem">
+      These UUIDs are compatible with the KISS over BLE specification used by aprs.fi and similar apps.
+    </p>
+  </div>
+
+</div>
+
+<!-- iPhone Setup Steps -->
+<div class="card">
+  <div class="card-title"><span class="icon">📱</span> iPhone aprs.fi Setup Steps</div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">Start the BLE KISS bridge</div>
+        <div class="step-desc">
+          The kp4pra-tnc-ble service should already be running and advertising.
+          Check the status card above. If stopped, click "Restart BLE Bridge".
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">Confirm Bluetooth is enabled on iPhone</div>
+        <div class="step-desc">
+          Open iOS Settings → Bluetooth. Bluetooth must be On.
+          <strong>Do NOT pair KP4PRA TNC from the iOS Settings Bluetooth list.</strong>
+          aprs.fi connects from within the app, not from iOS Settings.
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">Open aprs.fi on iPhone</div>
+        <div class="step-desc">
+          Tap the <strong>TNC</strong> button or go to Settings → TNC Connection.
+          Select <strong>Bluetooth Low Energy KISS</strong> as the connection type.
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <div class="step-title">Select KP4PRA TNC from the device list</div>
+        <div class="step-desc">
+          aprs.fi will scan for BLE KISS devices and show
+          <strong>KP4PRA TNC</strong> in the list.
+          Tap it to connect.
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <div class="step-title">Verify KISS data is flowing</div>
+        <div class="step-desc">
+          The BLE Client status above should show "Connected".
+          APRS packets received by Dire Wolf will appear in aprs.fi.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Notes -->
+<div class="card">
+  <div class="card-title"><span class="icon">ℹ</span> Important Notes</div>
+  <ul style="font-size:0.875rem;padding-left:1.25rem;line-height:2">
+    <li>Only one BLE client can connect at a time.</li>
+    <li>If the iPhone disconnects, the bridge waits for a new connection automatically.</li>
+    <li>If Dire Wolf restarts, the BLE bridge reconnects automatically.</li>
+    <li>BLE connect/disconnect events do <strong>not</strong> write to disk.</li>
+    <li>BLE connect/disconnect does <strong>not</strong> require a reboot.</li>
+    <li>To change the BLE device name permanently, use the <a href="/config" style="color:var(--kp4pra-primary)">Configuration page</a>. This requires a reboot.</li>
+    <li>Raw KISS binary data passes through unchanged — no APRS decoding, no traffic saved.</li>
+  </ul>
+</div>
+
+<div id="api-result" style="display:none"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function post(url, body) {
+  const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return r.json();
+}
+
+async function restartBLE() {
+  showResult(null, 'Restarting BLE bridge…');
+  const r = await post('/api/service/restart', {service:'kp4pra-tnc-ble.service'});
+  showResult(r.success, r.message);
+}
+
+function refreshStatus() { location.reload(); }
+
+function showResult(success, msg) {
+  const el = document.getElementById('api-result');
+  el.style.display = 'block';
+  const cls = success === null ? 'alert-info' : (success ? 'alert-success' : 'alert-error');
+  const icon = success === null ? 'ℹ' : (success ? '✓' : '✗');
+  el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
+  el.scrollIntoView({behavior:'smooth'});
+}
+</script>
+{% endblock %}

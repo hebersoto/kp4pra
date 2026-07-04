@@ -1,0 +1,52 @@
+[Unit]
+Description=KP4PRA TNC BLE KISS Bridge (iPhone aprs.fi)
+Documentation=https://github.com/kp4pra/kp4pra-tnc
+After=bluetooth.target network.target
+Requires=bluetooth.target
+PartOf=kp4pra-tnc.target
+
+[Service]
+Type=simple
+User=kp4pra-tnc
+Group=kp4pra-tnc
+
+# Application
+WorkingDirectory=/opt/kp4pra-tnc
+ExecStart=/opt/kp4pra-tnc/venv/bin/python /opt/kp4pra-tnc/src/ble/ble_bridge.py
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Environment
+Environment=KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml
+Environment=PYTHONPATH=/opt/kp4pra-tnc/src
+
+# Runtime directory (tmpfs)
+
+# Read-only filesystem hardening
+ReadWritePaths=/run/kp4pra-tnc /rw/kp4pra-tnc
+ReadOnlyPaths=/opt/kp4pra-tnc
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+
+# BLE GATT requires D-Bus and bluetooth group
+SupplementaryGroups=bluetooth
+# D-Bus access required for BlueZ GATT/advertisement
+# dbus-next communicates over D-Bus system bus
+
+# Logging: stdout/stderr only, no file logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kp4pra-tnc-ble
+
+[Install]
+WantedBy=multi-user.target kp4pra-tnc.target

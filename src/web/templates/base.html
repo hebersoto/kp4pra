@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}KP4PRA TNC{% endblock %}</title>
+  <style>
+    /* ═══════════════════════════════════════════════════════════════════════
+       KP4PRA TNC - Theme Color Palette
+       Inspired by a clean green-and-white healthcare style.
+       Change all colors from one place by editing these CSS variables.
+       ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --kp4pra-primary:       #5BA908;
+      --kp4pra-primary-alt:   #78BE20;
+      --kp4pra-primary-dark:  #3d7205;
+      --kp4pra-bg:            #FFFFFF;
+      --kp4pra-surface:       #F6F8F5;
+      --kp4pra-surface-2:     #EDF2E8;
+      --kp4pra-text:          #1F2933;
+      --kp4pra-muted-text:    #5B6770;
+      --kp4pra-border:        #DDE5D8;
+      --kp4pra-success:       #5BA908;
+      --kp4pra-success-bg:    #EDF6E0;
+      --kp4pra-warning:       #F2B705;
+      --kp4pra-warning-bg:    #FFF8E1;
+      --kp4pra-error:         #B00020;
+      --kp4pra-error-bg:      #FDECEA;
+      --kp4pra-disabled:      #8A8F94;
+      --kp4pra-disabled-bg:   #F0F0F0;
+      --kp4pra-shadow:        0 2px 8px rgba(0,0,0,0.08);
+      --kp4pra-radius:        10px;
+      --kp4pra-radius-sm:     6px;
+      --kp4pra-nav-height:    60px;
+    }
+
+    /* ── Reset & Base ────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      background: var(--kp4pra-bg);
+      color: var(--kp4pra-text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Navigation ──────────────────────────────────────────────────────── */
+    .nav {
+      background: var(--kp4pra-primary);
+      height: var(--kp4pra-nav-height);
+      display: flex;
+      align-items: center;
+      padding: 0 1.5rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-brand {
+      color: #fff;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .nav-brand .nav-icon {
+      width: 28px; height: 28px;
+      background: rgba(255,255,255,0.25);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      margin-left: auto;
+      list-style: none;
+    }
+    .nav-links a {
+      color: rgba(255,255,255,0.88);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      padding: 0.4rem 0.75rem;
+      border-radius: var(--kp4pra-radius-sm);
+      transition: background 0.15s;
+    }
+    .nav-links a:hover, .nav-links a.active {
+      background: rgba(255,255,255,0.18);
+      color: #fff;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+    .page-header { margin-bottom: 1.5rem; }
+    .page-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--kp4pra-text);
+    }
+    .page-subtitle {
+      color: var(--kp4pra-muted-text);
+      font-size: 0.9rem;
+      margin-top: 0.25rem;
+    }
+
+    /* ── Cards ────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--kp4pra-bg);
+      border: 1px solid var(--kp4pra-border);
+      border-radius: var(--kp4pra-radius);
+      box-shadow: var(--kp4pra-shadow);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--kp4pra-text);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--kp4pra-surface-2);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card-title .icon {
+      width: 22px; height: 22px;
+      background: var(--kp4pra-surface-2);
+      border-radius: 5px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.8rem;
+      color: var(--kp4pra-primary-dark);
+    }
+
+    /* ── Grid ────────────────────────────────────────────────────────────── */
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+
+    /* ── Status Badges ────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.65rem;
+      border-radius: 100px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .badge::before { content: "●"; font-size: 0.6rem; }
+    .badge-success { background: var(--kp4pra-success-bg); color: var(--kp4pra-primary-dark); }
+    .badge-warning { background: var(--kp4pra-warning-bg); color: #7a5800; }
+    .badge-error   { background: var(--kp4pra-error-bg);   color: var(--kp4pra-error); }
+    .badge-disabled{ background: var(--kp4pra-disabled-bg); color: var(--kp4pra-disabled); }
+    .badge-info    { background: var(--kp4pra-surface-2); color: var(--kp4pra-primary-dark); }
+
+    /* ── Status rows ────────────────────────────────────────────────────────── */
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--kp4pra-surface);
+      font-size: 0.9rem;
+      gap: 0.5rem;
+    }
+    .status-row:last-child { border-bottom: none; }
+    .status-label { color: var(--kp4pra-muted-text); flex-shrink: 0; }
+    .status-value { font-weight: 500; text-align: right; word-break: break-all; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: var(--kp4pra-radius-sm);
+      border: none;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: filter 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--kp4pra-primary); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-secondary { background: var(--kp4pra-surface-2); color: var(--kp4pra-primary-dark); }
+    .btn-secondary:hover { filter: brightness(0.95); }
+    .btn-danger { background: var(--kp4pra-error); color: #fff; }
+    .btn-danger:hover { filter: brightness(1.1); }
+    .btn-warning { background: var(--kp4pra-warning); color: #1F2933; }
+    .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Alerts/Banners ──────────────────────────────────────────────────── */
+    .alert {
+      padding: 0.85rem 1.1rem;
+      border-radius: var(--kp4pra-radius-sm);
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-start;
+    }
+    .alert-icon { flex-shrink: 0; font-size: 1rem; margin-top: 0.05rem; }
+    .alert-warning { background: var(--kp4pra-warning-bg); border-left: 4px solid var(--kp4pra-warning); color: #5a3e00; }
+    .alert-error   { background: var(--kp4pra-error-bg);   border-left: 4px solid var(--kp4pra-error);   color: var(--kp4pra-error); }
+    .alert-success { background: var(--kp4pra-success-bg); border-left: 4px solid var(--kp4pra-primary); color: var(--kp4pra-primary-dark); }
+    .alert-info    { background: var(--kp4pra-surface-2);  border-left: 4px solid var(--kp4pra-primary);  color: var(--kp4pra-primary-dark); }
+
+    /* ── Forms ───────────────────────────────────────────────────────────── */
+    .form-group { margin-bottom: 1rem; }
+    .form-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--kp4pra-muted-text);
+      margin-bottom: 0.35rem;
+    }
+    .form-input, .form-select {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1.5px solid var(--kp4pra-border);
+      border-radius: var(--kp4pra-radius-sm);
+      font-size: 0.9rem;
+      background: var(--kp4pra-bg);
+      color: var(--kp4pra-text);
+      transition: border-color 0.15s;
+    }
+    .form-input:focus, .form-select:focus {
+      outline: none;
+      border-color: var(--kp4pra-primary);
+      box-shadow: 0 0 0 3px rgba(91,169,8,0.15);
+    }
+    .form-hint { font-size: 0.78rem; color: var(--kp4pra-muted-text); margin-top: 0.25rem; }
+
+    /* ── Toggle Switch ───────────────────────────────────────────────────── */
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--kp4pra-surface);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-size: 0.9rem; }
+    .toggle {
+      position: relative;
+      width: 44px; height: 24px;
+      cursor: pointer;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--kp4pra-border);
+      border-radius: 12px;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle input:checked + .toggle-slider { background: var(--kp4pra-primary); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+    /* ── Device List Table ───────────────────────────────────────────────── */
+    .device-list { list-style: none; }
+    .device-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.65rem 0;
+      border-bottom: 1px solid var(--kp4pra-surface);
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .device-item:last-child { border-bottom: none; }
+    .device-info { min-width: 0; }
+    .device-name { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .device-addr { font-size: 0.78rem; color: var(--kp4pra-muted-text); font-family: monospace; }
+    .device-actions { display: flex; gap: 0.4rem; flex-shrink: 0; flex-wrap: wrap; }
+
+    /* ── Maintenance Warning ─────────────────────────────────────────────── */
+    .maintenance-banner {
+      background: linear-gradient(135deg, #fff8e1 0%, #ffe082 100%);
+      border: 2px solid var(--kp4pra-warning);
+      border-radius: var(--kp4pra-radius);
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .maintenance-banner h3 {
+      color: #7a5800;
+      font-size: 0.95rem;
+      margin-bottom: 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .maintenance-banner p {
+      color: #5a3e00;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
+    /* ── Reboot Pending Banner ───────────────────────────────────────────── */
+    .reboot-banner {
+      background: var(--kp4pra-error-bg);
+      border: 2px solid var(--kp4pra-error);
+      border-radius: var(--kp4pra-radius);
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1.25rem;
+      color: var(--kp4pra-error);
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* ── Modal Overlay ───────────────────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--kp4pra-bg);
+      border-radius: var(--kp4pra-radius);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      padding: 1.75rem;
+      max-width: 480px;
+      width: 100%;
+    }
+    .modal h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      color: var(--kp4pra-text);
+    }
+    .modal p { font-size: 0.9rem; color: var(--kp4pra-muted-text); margin-bottom: 1rem; }
+    .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; flex-wrap: wrap; }
+
+    /* ── Spinner ─────────────────────────────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Log/Code block ─────────────────────────────────────────────────── */
+    .log-block {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border-radius: var(--kp4pra-radius-sm);
+      padding: 0.85rem;
+      font-family: monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── Step Wizard ─────────────────────────────────────────────────────── */
+    .steps { display: flex; flex-direction: column; gap: 0; counter-reset: step; }
+    .step {
+      display: flex;
+      gap: 1rem;
+      padding: 0.85rem 0;
+      border-bottom: 1px solid var(--kp4pra-surface);
+    }
+    .step:last-child { border-bottom: none; }
+    .step-num {
+      flex-shrink: 0;
+      width: 28px; height: 28px;
+      background: var(--kp4pra-surface-2);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--kp4pra-primary-dark);
+      counter-increment: step;
+    }
+    .step-content { flex: 1; }
+    .step-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.2rem; }
+    .step-desc { font-size: 0.85rem; color: var(--kp4pra-muted-text); }
+
+    /* ── UUID display ────────────────────────────────────────────────────── */
+    .uuid-box {
+      background: var(--kp4pra-surface);
+      border: 1px solid var(--kp4pra-border);
+      border-radius: var(--kp4pra-radius-sm);
+      padding: 0.5rem 0.75rem;
+      font-family: monospace;
+      font-size: 0.82rem;
+      color: var(--kp4pra-primary-dark);
+      word-break: break-all;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .nav-links { gap: 0; }
+      .nav-links a { padding: 0.4rem 0.5rem; font-size: 0.78rem; }
+      .page { padding: 1rem 0.75rem 2rem; }
+      .card { padding: 1rem; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-brand" href="/">
+    <span class="nav-icon">📡</span>
+    KP4PRA TNC
+  </a>
+  <ul class="nav-links">
+    <li><a href="/" {% if request.url.path == "/" %}class="active"{% endif %}>Dashboard</a></li>
+    <li><a href="/bluetooth" {% if request.url.path == "/bluetooth" %}class="active"{% endif %}>Bluetooth</a></li>
+    <li><a href="/provision/android" {% if "android" in request.url.path %}class="active"{% endif %}>Android</a></li>
+    <li><a href="/provision/iphone" {% if "iphone" in request.url.path %}class="active"{% endif %}>iPhone</a></li>
+    <li><a href="/services" {% if request.url.path == "/services" %}class="active"{% endif %}>Services</a></li>
+    <li><a href="/config" {% if request.url.path == "/config" %}class="active"{% endif %}>Config</a></li>
+  </ul>
+</nav>
+
+<div class="page">
+  {% block content %}{% endblock %}
+</div>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

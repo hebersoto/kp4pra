@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}Bluetooth — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Bluetooth Management</div>
+  <div class="page-subtitle">Runtime actions take effect immediately. Permanent actions (pair/trust/remove) require a reboot.</div>
+</div>
+
+{% if status.reboot_pending %}
+<div class="reboot-banner">⚠ Reboot pending — {{ status.reboot_info.reason | default("Provisioning complete") }}</div>
+{% endif %}
+
+<div class="maintenance-banner">
+  <h3>⚠ About Permanent Bluetooth Actions</h3>
+  <p>
+    KP4PRA TNC normally runs in <strong>read-only mode</strong> to protect the SD card.
+    Adding or removing Bluetooth devices requires a temporary maintenance mode.
+    After the change is saved, <strong>the system will reboot</strong> so the new
+    Bluetooth configuration is loaded permanently.
+  </p>
+</div>
+
+<div class="grid-2">
+
+  <!-- Adapter Controls -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🔵</span> Adapter Controls <span class="badge badge-info" style="margin-left:auto;font-size:0.72rem">Runtime</span></div>
+    {% set bt = status.adapter %}
+    <div class="toggle-row">
+      <span class="toggle-label">Bluetooth Power</span>
+      <label class="toggle">
+        <input type="checkbox" id="toggle-power" {% if bt.powered %}checked{% endif %}
+               onchange="setBtPower(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Discoverable (180s timeout)</span>
+      <label class="toggle">
+        <input type="checkbox" id="toggle-discoverable" {% if bt.discoverable %}checked{% endif %}
+               onchange="setDiscoverable(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Pairable (180s timeout)</span>
+      <label class="toggle">
+        <input type="checkbox" id="toggle-pairable" {% if bt.pairable %}checked{% endif %}
+               onchange="setPairable(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div style="margin-top:1rem">
+      <p style="font-size:0.8rem;color:var(--kp4pra-muted-text)">
+        Adapter: {{ bt.address | default("N/A") }} — {{ bt.alias | default(bt.name) | default("Unknown") }}
+      </p>
+    </div>
+  </div>
+
+  <!-- Scan -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🔍</span> Scan for Devices <span class="badge badge-info" style="margin-left:auto;font-size:0.72rem">Runtime · Not saved</span></div>
+    <p style="font-size:0.85rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+      Scan results are displayed only and are never saved to disk.
+    </p>
+    <button class="btn btn-primary" id="btn-scan" onclick="startScan()">🔍 Start Scan (10s)</button>
+    <div id="scan-status" style="margin-top:0.75rem;font-size:0.85rem;color:var(--kp4pra-muted-text)"></div>
+    <div id="scan-results" style="margin-top:0.75rem"></div>
+  </div>
+
+</div>
+
+<!-- Paired Devices -->
+<div class="card">
+  <div class="card-title"><span class="icon">🤝</span> Paired Devices</div>
+  {% if not status.filesystem.bluez_state_writable %}
+  <div class="alert alert-warning">
+    <span class="alert-icon">⚠</span>
+    <div>BlueZ state (/var/lib/bluetooth) is not currently writable. Permanent pairing changes require the writable bind-mount to be active and a reboot.</div>
+  </div>
+  {% endif %}
+  <ul class="device-list" id="paired-list">
+  {% if status.paired_devices %}
+    {% for dev in status.paired_devices %}
+      {% set trusted = status.trusted_devices | selectattr("address", "equalto", dev.address) | list %}
+      {% set connected = status.connected_devices | selectattr("address", "equalto", dev.address) | list %}
+    <li class="device-item">
+      <div class="device-info">
+        <div class="device-name">{{ dev.name }}</div>
+        <div class="device-addr">{{ dev.address }}</div>
+      </div>
+      <div style="display:flex;gap:0.35rem;align-items:center;flex-wrap:wrap">
+        {% if connected %}<span class="badge badge-success">Connected</span>{% endif %}
+        <span class="badge badge-info">Paired</span>
+        {% if trusted %}<span class="badge badge-success">Trusted</span>{% endif %}
+        {% if not trusted %}
+        <button class="btn btn-secondary btn-sm"
+                onclick="confirmPermanentAction('trust','{{ dev.address }}','{{ dev.name }}')">
+          Trust
+        </button>
+        {% else %}
+        <button class="btn btn-secondary btn-sm"
+                onclick="confirmPermanentAction('untrust','{{ dev.address }}','{{ dev.name }}')">
+          Untrust
+        </button>
+        {% endif %}
+        <button class="btn btn-danger btn-sm"
+                onclick="confirmPermanentAction('remove','{{ dev.address }}','{{ dev.name }}')">
+          Remove
+        </button>
+      </div>
+    </li>
+    {% endfor %}
+  {% else %}
+    <li style="padding:0.75rem 0;color:var(--kp4pra-muted-text);font-size:0.9rem">
+      No paired devices. Use the <a href="/provision/android" style="color:var(--kp4pra-primary)">Android provisioning wizard</a> to pair a phone.
+    </li>
+  {% endif %}
+  </ul>
+</div>
+
+<!-- API Result -->
+<div id="api-result" style="display:none"></div>
+
+<!-- Confirmation Modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h2 id="modal-title">Confirm Permanent Action</h2>
+    <div class="maintenance-banner" style="margin:0 0 1rem">
+      <h3>⚠ This action requires a reboot</h3>
+      <p>
+        The system will temporarily remount the required filesystem area read/write,
+        save the Bluetooth change permanently, sync storage, then
+        <strong>reboot KP4PRA TNC automatically</strong>.
+      </p>
+    </div>
+    <p id="modal-desc"></p>
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;margin-bottom:1rem;cursor:pointer">
+      <input type="checkbox" id="modal-confirm-check">
+      I understand the system will reboot after this change.
+    </label>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm-btn" onclick="doConfirmedAction()">Confirm &amp; Reboot</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pendingAction = null;
+let pendingAddress = null;
+
+async function post(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+async function setBtPower(on) {
+  const r = await post('/api/bt/power', {on});
+  showResult(r.success, r.message || (on ? 'Power on' : 'Power off'));
+}
+
+async function setDiscoverable(on) {
+  const r = await post('/api/bt/discoverable', {on, timeout:180});
+  showResult(r.success, on ? 'Discoverable enabled (180s)' : 'Discoverable disabled');
+}
+
+async function setPairable(on) {
+  const r = await post('/api/bt/pairable', {on, timeout:180});
+  showResult(r.success, on ? 'Pairable enabled (180s)' : 'Pairable disabled');
+}
+
+async function startScan() {
+  const btn = document.getElementById('btn-scan');
+  const statusEl = document.getElementById('scan-status');
+  const resultsEl = document.getElementById('scan-results');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Scanning…';
+  statusEl.textContent = 'Scanning for 10 seconds — results are not saved to disk.';
+  resultsEl.innerHTML = '';
+  try {
+    const r = await post('/api/bt/scan', {});
+    if (r.success && r.devices.length > 0) {
+      statusEl.textContent = `Found ${r.devices.length} device(s):`;
+      const ul = document.createElement('ul');
+      ul.className = 'device-list';
+      r.devices.forEach(d => {
+        const li = document.createElement('li');
+        li.className = 'device-item';
+        li.innerHTML = `
+          <div class="device-info">
+            <div class="device-name">${d.name || d.address}</div>
+            <div class="device-addr">${d.address}</div>
+          </div>
+          <div class="device-actions">
+            <button class="btn btn-primary btn-sm"
+              onclick="confirmPermanentAction('pair','${d.address}','${(d.name||d.address).replace(/'/g,"\\'")}')">
+              Pair
+            </button>
+          </div>`;
+        ul.appendChild(li);
+      });
+      resultsEl.appendChild(ul);
+    } else {
+      statusEl.textContent = r.devices.length === 0 ? 'No devices found.' : 'Scan failed.';
+    }
+  } catch(e) {
+    statusEl.textContent = 'Scan error: ' + e;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Start Scan (10s)';
+  }
+}
+
+function confirmPermanentAction(action, address, name) {
+  pendingAction = action;
+  pendingAddress = address;
+  const titles = {pair:'Pair Device', trust:'Trust Device', untrust:'Untrust Device', remove:'Remove Device'};
+  document.getElementById('modal-title').textContent = titles[action] || action;
+  document.getElementById('modal-desc').textContent =
+    `Device: ${name} (${address})`;
+  document.getElementById('modal-confirm-check').checked = false;
+  document.getElementById('confirm-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('confirm-modal').classList.remove('open');
+  pendingAction = null; pendingAddress = null;
+}
+
+async function doConfirmedAction() {
+  if (!document.getElementById('modal-confirm-check').checked) {
+    alert('Please check the confirmation box.');
+    return;
+  }
+  closeModal();
+  const btn = document.getElementById('modal-confirm-btn');
+  showResult(null, 'Working — please wait, this may take 30 seconds…');
+
+  const urls = {pair:'/api/bt/pair', trust:'/api/bt/trust',
+                untrust:'/api/bt/untrust', remove:'/api/bt/remove'};
+  try {
+    const r = await post(urls[pendingAction], {address: pendingAddress, confirmed: true});
+    if (r.success) {
+      showResult(true, r.message + (r.reboot_scheduled ? ' Rebooting now…' : ''));
+    } else {
+      showResult(false, r.message);
+    }
+  } catch(e) {
+    showResult(false, 'Request failed: ' + e);
+  }
+}
+
+function showResult(success, msg) {
+  const el = document.getElementById('api-result');
+  el.style.display = 'block';
+  const cls = success === null ? 'alert-info' : (success ? 'alert-success' : 'alert-error');
+  const icon = success === null ? 'ℹ' : (success ? '✓' : '✗');
+  el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
+  el.scrollIntoView({behavior:'smooth'});
+}
+</script>
+{% endblock %}

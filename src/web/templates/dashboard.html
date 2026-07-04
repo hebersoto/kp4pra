@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Dashboard</div>
+  <div class="page-subtitle">KP4PRA TNC — Live system status. All data is read from current system state.</div>
+</div>
+
+{% if status.reboot_pending %}
+<div class="reboot-banner">
+  ⚠ Reboot pending — {{ status.reboot_info.reason | default("Provisioning change requires reboot") }}
+</div>
+{% endif %}
+
+{% if not status.filesystem.root_readonly %}
+<div class="alert alert-warning">
+  <span class="alert-icon">⚠</span>
+  <div><strong>Root filesystem is read/write.</strong> Normal operation should use a read-only root. Check your mount configuration.</div>
+</div>
+{% endif %}
+
+{% if not status.filesystem.rw_partition_available %}
+<div class="alert alert-error">
+  <span class="alert-icon">✗</span>
+  <div><strong>/rw/kp4pra-tnc is not available.</strong> Configuration and Bluetooth provisioning are disabled until the writable partition is mounted.</div>
+</div>
+{% endif %}
+
+<!-- Status Grid -->
+<div class="grid-2">
+
+  <!-- Bluetooth Adapter -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🔵</span> Bluetooth Adapter</div>
+    {% set bt = status.adapter %}
+    {% if bt.available %}
+      <div class="status-row">
+        <span class="status-label">Address</span>
+        <span class="status-value" style="font-family:monospace">{{ bt.address | default("—") }}</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Name / Alias</span>
+        <span class="status-value">{{ bt.alias | default(bt.name) | default("—") }}</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Power</span>
+        <span class="status-value">
+          {% if bt.powered %}<span class="badge badge-success">On</span>
+          {% else %}<span class="badge badge-disabled">Off</span>{% endif %}
+        </span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Discoverable</span>
+        <span class="status-value">
+          {% if bt.discoverable %}<span class="badge badge-success">Yes</span>
+          {% else %}<span class="badge badge-disabled">No</span>{% endif %}
+        </span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Pairable</span>
+        <span class="status-value">
+          {% if bt.pairable %}<span class="badge badge-success">Yes</span>
+          {% else %}<span class="badge badge-disabled">No</span>{% endif %}
+        </span>
+      </div>
+    {% else %}
+      <div class="alert alert-error" style="margin:0"><span class="alert-icon">✗</span> No Bluetooth adapter found</div>
+    {% endif %}
+  </div>
+
+  <!-- Bridge Services -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🔗</span> Bridge Services</div>
+    {% set rfcomm = status.rfcomm_bridge %}
+    <div class="status-row">
+      <span class="status-label">RFCOMM Bridge</span>
+      <span class="status-value">
+        {% if rfcomm.running %}<span class="badge badge-success">Running</span>
+        {% elif rfcomm.active_state == "activating" %}<span class="badge badge-warning">Starting</span>
+        {% else %}<span class="badge badge-disabled">Stopped</span>{% endif %}
+      </span>
+    </div>
+    {% set rr = status.rfcomm_runtime %}
+    {% if rr.connected %}
+    <div class="status-row">
+      <span class="status-label">RFCOMM Client</span>
+      <span class="status-value" style="font-family:monospace;font-size:0.8rem">{{ rr.client_addr }}</span>
+    </div>
+    {% endif %}
+
+    {% set ble = status.ble_bridge %}
+    <div class="status-row">
+      <span class="status-label">BLE KISS Bridge</span>
+      <span class="status-value">
+        {% if ble.running %}<span class="badge badge-success">Running</span>
+        {% elif ble.active_state == "activating" %}<span class="badge badge-warning">Starting</span>
+        {% else %}<span class="badge badge-disabled">Stopped</span>{% endif %}
+      </span>
+    </div>
+    {% set br = status.ble_runtime %}
+    {% if br.running %}
+    <div class="status-row">
+      <span class="status-label">BLE Client</span>
+      <span class="status-value">
+        {% if br.client_connected %}<span class="badge badge-success">Connected</span>
+        {% else %}<span class="badge badge-info">Advertising</span>{% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+    {% set dw = status.direwolf_tcp %}
+    <div class="status-row">
+      <span class="status-label">Dire Wolf TCP</span>
+      <span class="status-value">
+        {% if dw.reachable %}<span class="badge badge-success">{{ dw.host }}:{{ dw.port }}</span>
+        {% else %}<span class="badge badge-error">Unreachable</span>{% endif %}
+      </span>
+    </div>
+  </div>
+
+  <!-- Connected Devices -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📱</span> Connected Devices</div>
+    {% if status.connected_devices %}
+      <ul class="device-list">
+      {% for dev in status.connected_devices %}
+        <li class="device-item">
+          <div class="device-info">
+            <div class="device-name">{{ dev.name }}</div>
+            <div class="device-addr">{{ dev.address }}</div>
+          </div>
+          <span class="badge badge-success">Connected</span>
+        </li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p style="color:var(--kp4pra-muted-text);font-size:0.9rem">No devices currently connected.</p>
+    {% endif %}
+  </div>
+
+  <!-- Paired & Trusted Devices -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🤝</span> Paired / Trusted Devices</div>
+    {% if status.paired_devices %}
+      <ul class="device-list">
+      {% for dev in status.paired_devices %}
+        {% set trusted = status.trusted_devices | selectattr("address", "equalto", dev.address) | list %}
+        <li class="device-item">
+          <div class="device-info">
+            <div class="device-name">{{ dev.name }}</div>
+            <div class="device-addr">{{ dev.address }}</div>
+          </div>
+          <div style="display:flex;gap:0.3rem;flex-wrap:wrap">
+            <span class="badge badge-info">Paired</span>
+            {% if trusted %}<span class="badge badge-success">Trusted</span>{% endif %}
+          </div>
+        </li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p style="color:var(--kp4pra-muted-text);font-size:0.9rem">No paired devices. <a href="/provision/android" style="color:var(--kp4pra-primary)">Pair an Android phone →</a></p>
+    {% endif %}
+  </div>
+
+  <!-- DNS-SD -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📡</span> DNS-SD / mDNS</div>
+    {% set dns = status.dns_sd %}
+    <div class="status-row">
+      <span class="status-label">Avahi available</span>
+      <span class="status-value">
+        {% if dns.available %}<span class="badge badge-success">Yes</span>
+        {% else %}<span class="badge badge-disabled">No</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">_kiss-tnc._tcp</span>
+      <span class="status-value">
+        {% if dns.found_kiss_tnc %}<span class="badge badge-success">Advertising</span>
+        {% else %}<span class="badge badge-disabled">Not found</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Instance name</span>
+      <span class="status-value">{{ status.config.dns_sd_name }}</span>
+    </div>
+  </div>
+
+  <!-- Filesystem Status -->
+  <div class="card">
+    <div class="card-title"><span class="icon">💾</span> Filesystem</div>
+    {% set fs = status.filesystem %}
+    <div class="status-row">
+      <span class="status-label">Root filesystem</span>
+      <span class="status-value">
+        {% if fs.root_readonly %}<span class="badge badge-success">Read-only ✓</span>
+        {% else %}<span class="badge badge-warning">Read/write</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">/rw/kp4pra-tnc</span>
+      <span class="status-value">
+        {% if fs.rw_partition_writable %}<span class="badge badge-success">Writable</span>
+        {% elif fs.rw_partition_available %}<span class="badge badge-warning">Read-only</span>
+        {% else %}<span class="badge badge-error">Missing</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">/var/lib/bluetooth</span>
+      <span class="status-value">
+        {% if fs.bluez_state_writable %}<span class="badge badge-success">Writable</span>
+        {% elif fs.bluez_state_exists %}<span class="badge badge-warning">Read-only</span>
+        {% else %}<span class="badge badge-error">Missing</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">/run/kp4pra-tnc</span>
+      <span class="status-value">
+        {% if fs.runtime_writable %}<span class="badge badge-success">Writable</span>
+        {% else %}<span class="badge badge-error">Not writable</span>{% endif %}
+      </span>
+    </div>
+  </div>
+
+</div><!-- /grid -->
+
+<div style="text-align:center;margin-top:1.5rem">
+  <button class="btn btn-secondary" onclick="location.reload()">↻ Refresh Status</button>
+  &nbsp;
+  <a href="/bluetooth" class="btn btn-primary">Manage Bluetooth →</a>
+</div>
+{% endblock %}

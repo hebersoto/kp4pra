@@ -1,0 +1,8 @@
+[Unit]
+Description=KP4PRA TNC — Bluetooth KISS TNC Services
+Documentation=https://github.com/kp4pra/kp4pra-tnc
+After=bluetooth.target network.target
+Wants=kp4pra-tnc-rfcomm.service kp4pra-tnc-ble.service kp4pra-tnc-web.service
+
+[Install]
+WantedBy=multi-user.target
