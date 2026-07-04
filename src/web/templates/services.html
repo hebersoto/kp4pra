@@ -118,11 +118,33 @@
       Dire Wolf is managed separately. Restarting it here requires direwolf.service to be enabled.
     </p>
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+      <button class="btn btn-primary btn-sm" onclick="restartDirewolf()">Restart Dire Wolf</button>
+      <button class="btn btn-danger btn-sm" onclick="stopDirewolf()">Stop Dire Wolf</button>
       <button class="btn btn-secondary btn-sm" onclick="checkDW()">Check TCP Port</button>
     </div>
     <div id="dw-result" style="margin-top:0.5rem;font-size:0.82rem"></div>
   </div>
 
+</div>
+
+<!-- Dire Wolf traffic -->
+<div class="card">
+  <div class="card-title"><span class="icon">📡</span> Dire Wolf Traffic
+    <span class="badge badge-warning" style="margin-left:auto;font-size:0.7rem">Volatile — not saved</span>
+  </div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:0.6rem">
+    Received and transmitted packets as reported by Dire Wolf (current boot only,
+    from the volatile journal - nothing is written to disk).
+  </p>
+  <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-bottom:0.6rem">
+    <button class="btn btn-secondary btn-sm" onclick="loadDwTraffic()">↻ Refresh</button>
+    <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.82rem;cursor:pointer">
+      <input type="checkbox" id="dw-traffic-auto" onchange="toggleDwAuto(this.checked)">
+      Auto-refresh (5s)
+    </label>
+    <span id="dw-traffic-ts" style="font-size:0.75rem;color:var(--kp4pra-muted-text)"></span>
+  </div>
+  <div class="log-block" id="dw-traffic" style="max-height:340px">(click Refresh to load)</div>
 </div>
 
 <!-- Volatile log output -->
@@ -150,11 +172,50 @@ async function post(url, body) {
   return r.json();
 }
 
+let dwAutoTimer = null;
+
+async function loadDwTraffic() {
+  try {
+    const r = await fetch('/api/service/direwolf/log?lines=80');
+    const data = await r.json();
+    const el = document.getElementById('dw-traffic');
+    el.textContent = data.log || '(no journal output - is Dire Wolf running under systemd?)';
+    el.scrollTop = el.scrollHeight;  // follow the tail
+    document.getElementById('dw-traffic-ts').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('dw-traffic').textContent = 'Load failed: ' + e;
+  }
+}
+
+function toggleDwAuto(on) {
+  if (on) {
+    loadDwTraffic();
+    dwAutoTimer = setInterval(loadDwTraffic, 5000);
+  } else if (dwAutoTimer) {
+    clearInterval(dwAutoTimer);
+    dwAutoTimer = null;
+  }
+}
+
 async function svcAction(action, svc) {
   showResult(null, `${action} ${svc}…`);
   const r = await post(`/api/service/${action}`, {service: svc});
   showResult(r.success, r.message);
   setTimeout(() => location.reload(), 2000);
+}
+
+async function stopDirewolf() {
+  if (!confirm('Stop Dire Wolf?\n\nAll RF operation stops. Bluetooth bridges will ' +
+               'keep retrying the KISS TCP connection and phone apps will show no ' +
+               'traffic until Dire Wolf is started again (use Restart Dire Wolf).')) return;
+  await svcAction('stop', 'direwolf.service');
+}
+
+async function restartDirewolf() {
+  if (!confirm('Restart Dire Wolf?\n\nRF operation pauses for a few seconds. ' +
+               'Bluetooth bridges reconnect to Dire Wolf automatically.')) return;
+  await svcAction('restart', 'direwolf.service');
 }
 
 async function checkDW() {

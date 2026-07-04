@@ -449,10 +449,10 @@ async def api_service_status(service_name: str, _auth=Depends(check_auth)):
 
 
 @app.get("/api/service/{service_name}/log")
-async def api_service_log(service_name: str, _auth=Depends(check_auth)):
+async def api_service_log(service_name: str, lines: int = 30, _auth=Depends(check_auth)):
     if not service_name.endswith(".service"):
         service_name += ".service"
-    log = get_volatile_service_log(service_name)
+    log = get_volatile_service_log(service_name, lines=lines)
     return JSONResponse({"log": log, "volatile_only": True})
 
 
@@ -492,6 +492,58 @@ async def api_config_save(request: Request, _auth=Depends(check_auth)):
         "success": True,
         "message": f"Configuration saved. Some changes require a service restart or reboot.",
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API: Dire Wolf configuration (Station Information -> direwolf.conf)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from common.direwolf_conf import (
+    detect_sound_cards, detect_cm108_adevice,
+    generate_direwolf_conf, write_direwolf_conf, restart_direwolf,
+    DIREWOLF_CONF_PATH,
+)
+
+
+@app.get("/api/soundcards")
+async def api_soundcards(_auth=Depends(check_auth)):
+    return JSONResponse({
+        "cards": detect_sound_cards(),
+        "cm108_adevice": detect_cm108_adevice(),
+    })
+
+
+@app.post("/api/direwolf/preview")
+async def api_direwolf_preview(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    station = body.get("station") or load_config().get("station", {})
+    text = generate_direwolf_conf(station)
+    import os as _os
+    target = _os.path.realpath(DIREWOLF_CONF_PATH)
+    writable = _os.access(_os.path.dirname(target), _os.W_OK) or \
+               (_os.path.exists(target) and _os.access(target, _os.W_OK))
+    return JSONResponse({"success": True, "conf": text,
+                         "path": DIREWOLF_CONF_PATH, "writable": writable})
+
+
+@app.post("/api/direwolf/apply")
+async def api_direwolf_apply(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    if not body.get("confirmed", False):
+        return JSONResponse({"success": False, "message": "Confirmation required"}, status_code=400)
+    station = body.get("station") or load_config().get("station", {})
+    try:
+        text = generate_direwolf_conf(station)
+        ok, msg = write_direwolf_conf(text)
+        if not ok:
+            return JSONResponse({"success": False, "message": msg})
+        r_ok, r_msg = (True, "Restart skipped") if not body.get("restart", True) \
+                      else restart_direwolf()
+        return JSONResponse({"success": True,
+                             "message": f"{msg}. {r_msg}.",
+                             "restarted": r_ok, "conf": text})
+    except Exception as e:
+        return JSONResponse({"success": False, "message": f"Apply error: {e}"}, status_code=200)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

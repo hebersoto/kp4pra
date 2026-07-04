@@ -1,0 +1,24 @@
+#!/bin/bash
+# KP4PRA TNC - fix ADEVICE in direwolf.conf from cm108 /dev/hidraw0 mapping.
+# Runs at boot before direwolf.service so USB card renumbering self-heals.
+target_adevice=$(cm108 2>/dev/null | awk '
+/\/dev\/hidraw0/ {
+    for (i = 1; i <= NF; i++) {
+        if ($i ~ /^plughw:/) { print $i; exit }
+    }
+}')
+[ -z "$target_adevice" ] && { echo "No CM108 hidraw0/ADEVICE mapping found."; exit 0; }
+conf_file=$(realpath /home/kp4pra/direwolf.conf 2>/dev/null)
+[ -f "$conf_file" ] || { echo "Config file not found: $conf_file"; exit 0; }
+current_adevice=$(awk 'BEGIN{IGNORECASE=1} /^[[:space:]]*ADEVICE[[:space:]]+/ && $0 !~ /^#/ { print $2 }' "$conf_file")
+echo "Current ADEVICE: ${current_adevice:-[not found]}  Target: $target_adevice"
+if [ "$current_adevice" != "$target_adevice" ]; then
+    if grep -qi '^\s*ADEVICE' "$conf_file"; then
+        sed -i "s|^\s*ADEVICE\s\+.*|ADEVICE  $target_adevice|" "$conf_file"
+    else
+        sed -i "1i ADEVICE  $target_adevice" "$conf_file"
+    fi
+    echo "ADEVICE updated."
+else
+    echo "No change needed."
+fi

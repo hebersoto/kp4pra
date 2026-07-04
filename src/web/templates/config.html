@@ -57,13 +57,15 @@
     </div>
     <div class="form-group">
       <label class="form-label" for="st-sound">Sound Card</label>
-      <select class="form-select" id="st-sound">
-        {% set current_sound = config.station.sound if config.station is defined else 'CM108' %}
-        <option value="CM108" {% if current_sound == 'CM108' %}selected{% endif %}>CM108</option>
-        <option value="Signalink" {% if current_sound == 'Signalink' %}selected{% endif %}>Signalink</option>
-        <option value="USB CP210x" {% if current_sound == 'USB CP210x' %}selected{% endif %}>USB CP210x</option>
-      </select>
-      <div class="form-hint">Sound card used in Dire Wolf.</div>
+      <div style="display:flex;gap:0.4rem">
+        <select class="form-select" id="st-sound" style="flex:1">
+          {% set current_sound = config.station.sound if config.station is defined else 'CM108' %}
+          <option value="{{ current_sound }}" selected>{{ current_sound }}</option>
+        </select>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="detectSoundCards()"
+                id="btn-detect-sound" style="white-space:nowrap">🔍 Detect</button>
+      </div>
+      <div class="form-hint" id="sound-hint">Sound card used in Dire Wolf. Click Detect to list devices found on the system.</div>
     </div>
     <div class="form-group">
       <label class="form-label" for="st-ptt">PTT</label>
@@ -78,6 +80,13 @@
         <option value="NONE" {% if current_ptt == 'NONE' %}selected{% endif %}>None</option>
       </select>
       <div class="form-hint">Push-to-talk method used in Dire Wolf.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="st-ptt-param">PTT Parameter</label>
+      <input class="form-input" id="st-ptt-param"
+             value="{{ config.station.ptt_param if config.station is defined and config.station.ptt_param is defined else '' }}"
+             placeholder="(GPIO pin or serial device)">
+      <div class="form-hint">GPIO: pin number (default 25). Serial RTS/DTR: device path (default /dev/ttyUSB0). Otherwise leave blank.</div>
     </div>
     <div class="form-group">
       <label class="form-label" for="st-clock">Clock Source Station</label>
@@ -97,6 +106,18 @@
              value="{{ config.station.aliasssid if config.station is defined else '' }}" placeholder="(optional)">
       <div class="form-hint">Optional. If used, must be 1-15.</div>
     </div>
+  </div>
+  <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.75rem;align-items:center">
+    <button class="btn btn-secondary" onclick="previewDirewolf()">Preview direwolf.conf</button>
+    <button class="btn btn-primary" onclick="confirmApplyDirewolf()">Apply to Dire Wolf</button>
+    <span style="font-size:0.78rem;color:var(--kp4pra-muted-text)">
+      Apply saves the Station settings, regenerates direwolf.conf, and restarts Dire Wolf.
+      Bluetooth clients reconnect automatically.
+    </span>
+  </div>
+  <div id="dw-preview" style="display:none;margin-top:0.75rem">
+    <div class="log-block" id="dw-preview-text" style="max-height:320px"></div>
+    <div id="dw-preview-warn" style="margin-top:0.4rem"></div>
   </div>
 </div>
 
@@ -298,6 +319,105 @@
 
 {% block scripts %}
 <script>
+// ── Dire Wolf integration ────────────────────────────────────────────
+let detectedCards = [];
+
+function applyPttSuggestion() {
+  const sel = document.getElementById('st-sound');
+  const cd = detectedCards.find(x => x.label === sel.value);
+  if (!cd || !cd.ptt_suggest) return;
+  document.getElementById('st-ptt').value = cd.ptt_suggest;
+  document.getElementById('st-ptt-param').value = cd.ptt_param_suggest || '';
+  document.getElementById('sound-hint').textContent =
+    `PTT auto-set to ${cd.ptt_suggest}` +
+    (cd.ptt_param_suggest ? ` on ${cd.ptt_param_suggest}` : '') +
+    ` for ${cd.label}. Adjust manually if needed, then Preview and Apply.`;
+}
+
+async function detectSoundCards() {
+  const btn = document.getElementById('btn-detect-sound');
+  const hint = document.getElementById('sound-hint');
+  const sel = document.getElementById('st-sound');
+  const saved = sel.value;
+  btn.disabled = true;
+  btn.textContent = 'Detecting…';
+  try {
+    const r = await fetch('/api/soundcards');
+    const data = await r.json();
+    if (!data.cards || data.cards.length === 0) {
+      hint.textContent = 'No sound cards detected (is alsa-utils installed?). Keeping configured value.';
+      return;
+    }
+    sel.innerHTML = '';
+    let savedFound = false;
+    data.cards.forEach(cd => {
+      const o = document.createElement('option');
+      o.value = cd.label;
+      o.textContent = `${cd.label} (${cd.plughw})`;
+      sel.appendChild(o);
+      if (cd.label === saved) savedFound = true;
+    });
+    if (saved && !savedFound) {
+      const o = document.createElement('option');
+      o.value = saved;
+      o.textContent = `${saved} (configured - not detected)`;
+      sel.appendChild(o);
+    }
+    detectedCards = data.cards;
+    sel.onchange = applyPttSuggestion;
+    sel.value = saved && ([...sel.options].some(o => o.value === saved)) ? saved : data.cards[0].label;
+    hint.textContent = `Detected ${data.cards.length} device(s).` +
+      (data.cm108_adevice ? ` CM108 PTT mapped to ${data.cm108_adevice}.` : '');
+  } catch(e) {
+    hint.textContent = 'Detection failed: ' + e;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 Detect';
+  }
+}
+
+async function previewDirewolf() {
+  const cfg = collectConfig();
+  const r = await fetch('/api/direwolf/preview', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({station: cfg.station})
+  });
+  const data = await r.json();
+  document.getElementById('dw-preview').style.display = '';
+  document.getElementById('dw-preview-text').textContent = data.conf || '(error)';
+  const warn = document.getElementById('dw-preview-warn');
+  warn.innerHTML = data.writable ? '' :
+    '<div class="alert alert-warning"><span class="alert-icon">⚠</span><div>' +
+    data.path + ' is not writable (read-only filesystem). See the production ' +
+    'note: symlink it to /rw/kp4pra-tnc/direwolf.conf.</div></div>';
+}
+
+async function confirmApplyDirewolf() {
+  const cfg = collectConfig();
+  if (!confirm('Save Station settings, regenerate direwolf.conf, and restart Dire Wolf?\n\n' +
+               'RF operation pauses for a few seconds; Bluetooth clients reconnect automatically.')) return;
+  showSaveResult(null, 'Applying to Dire Wolf…');
+  try {
+    // Persist station settings to config.yaml first
+    await fetch('/api/config/save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({config: {station: cfg.station}, confirmed: true})
+    });
+    const r = await fetch('/api/direwolf/apply', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({station: cfg.station, confirmed: true, restart: true})
+    });
+    const data = await r.json();
+    showSaveResult(data.success, data.message);
+    if (data.conf) {
+      document.getElementById('dw-preview').style.display = '';
+      document.getElementById('dw-preview-text').textContent = data.conf;
+    }
+  } catch(e) {
+    showSaveResult(false, 'Apply failed: ' + e);
+  }
+}
+
 function toggleAuthFields(on) {
   document.getElementById('auth-fields').style.display = on ? '' : 'none';
 }
@@ -312,6 +432,7 @@ function collectConfig() {
       lon: parseFloat(document.getElementById('st-lon').value) || 0,
       sound: document.getElementById('st-sound').value.trim(),
       ptt: document.getElementById('st-ptt').value.trim(),
+      ptt_param: document.getElementById('st-ptt-param').value.trim(),
       clock: document.getElementById('st-clock').value.trim().toUpperCase(),
       calias: document.getElementById('st-calias').value.trim().toUpperCase(),
       aliasssid: document.getElementById('st-aliasssid').value.trim(),

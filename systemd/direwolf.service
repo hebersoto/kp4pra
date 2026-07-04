@@ -1,0 +1,16 @@
+[Unit]
+Description=Dire Wolf APRS/KISS TNC
+After=sound.target network.target kp4pra-adevice.service
+Wants=kp4pra-adevice.service
+
+[Service]
+Type=simple
+User=kp4pra
+ExecStart=/usr/local/bin/direwolf -a 100 -c /home/kp4pra/direwolf.conf -T "%%H:%%M:%%S"
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

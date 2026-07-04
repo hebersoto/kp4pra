@@ -1,0 +1,3 @@
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl restart direwolf.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl stop direwolf.service
+kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl start direwolf.service

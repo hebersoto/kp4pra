@@ -7,7 +7,7 @@ bluetooth:
   auto_pairable: false
   bluez_state_strategy: persistent_bind_mount
 debug:
-  verbose_stdout: true
+  verbose_stdout: false
 direwolf:
   host: 127.0.0.1
   port: 8001
@@ -34,7 +34,8 @@ station:
   lon: -66.160243
   mygrid: FK68wd
   ptt: CM108
-  sound: CM108
+  ptt_param: ''
+  sound: CM108 USB dongle
   ssid: ''
 web:
   auth_enabled: false

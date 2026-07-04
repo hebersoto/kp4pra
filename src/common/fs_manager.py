@@ -137,6 +137,7 @@ def restart_service(service_name: str) -> Tuple[bool, str]:
         "kp4pra-tnc-ble.service",
         "kp4pra-tnc-web.service",
         "bluetooth.service",
+        "direwolf.service",
     }
     if service_name not in ALLOWED:
         return False, f"Service {service_name!r} not in allowlist"
@@ -157,6 +158,7 @@ def stop_service(service_name: str) -> Tuple[bool, str]:
     ALLOWED = {
         "kp4pra-tnc-rfcomm.service",
         "kp4pra-tnc-ble.service",
+        "direwolf.service",
     }
     if service_name not in ALLOWED:
         return False, f"Service {service_name!r} not in allowlist"
@@ -217,7 +219,9 @@ def get_volatile_service_log(service_name: str, lines: int = 30) -> Optional[str
         "kp4pra-tnc-rfcomm.service",
         "kp4pra-tnc-ble.service",
         "kp4pra-tnc-web.service",
+        "direwolf.service",
     }
+    lines = max(1, min(int(lines), 200))  # sane bounds
     if service_name not in ALLOWED:
         return None
     try:

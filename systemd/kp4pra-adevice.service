@@ -1,0 +1,11 @@
+[Unit]
+Description=KP4PRA TNC - Fix direwolf.conf ADEVICE from CM108 detection
+Before=direwolf.service
+After=sound.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kp4pra-adevice-fix
+
+[Install]
+WantedBy=multi-user.target
