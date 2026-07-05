@@ -64,7 +64,7 @@ control sudoers, port 80→8088 redirect.
 - Services page → Dire Wolf Traffic → Refresh: RF decodes appear.
 
 ## 8. Production hardening (when ready for the field)
-Read-only root + persistence strategy: see README.md and CHANGES.md.
+Read-only root, pre-flight checklist, and golden SD image creation: see **DEPLOYMENT.md**.
 Summary: fstab root `ro`, `/rw` partition `rw,noatime`; BlueZ state and
 config live on /rw; runtime state on /run (tmpfs); no persistent logs.
 
