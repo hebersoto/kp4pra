@@ -1,0 +1,7 @@
+# Never commit credentials or live secrets
+.git-credentials
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*credentials*
