@@ -495,7 +495,7 @@ async def api_config_save(request: Request, _auth=Depends(check_auth)):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# API: Dire Wolf configuration (Station Information -> direwolf.conf)
+# API: Direwolf configuration (Station Information -> direwolf.conf)
 # ─────────────────────────────────────────────────────────────────────────────
 
 from common.direwolf_conf import (

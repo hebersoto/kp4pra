@@ -6,7 +6,7 @@ Service UUID:  00000001-ba2a-46c9-ae49-01b0961f68bb
 TX char (app->TNC): 00000002-ba2a-46c9-ae49-01b0961f68bb
 RX char (TNC->app): 00000003-ba2a-46c9-ae49-01b0961f68bb
 
-Bridges raw KISS bytes between iPhone aprs.fi and Dire Wolf TCP 127.0.0.1:8001.
+Bridges raw KISS bytes between iPhone aprs.fi and Direwolf TCP 127.0.0.1:8001.
 No pairing required from iOS side.
 No persistent writes on connect/disconnect.
 No KISS traffic saved to disk.
@@ -53,7 +53,7 @@ LE_ADV_IFACE = "org.bluez.LEAdvertisement1"
 
 class BLEKISSBridge:
     """
-    BLE GATT peripheral that bridges KISS over BLE to Dire Wolf KISS TCP.
+    BLE GATT peripheral that bridges KISS over BLE to Direwolf KISS TCP.
     Uses dbus-next to talk to BlueZ.
     """
 
@@ -67,9 +67,9 @@ class BLEKISSBridge:
         self._ble_client_connected = False
         self._dw_sock: Optional[socket.socket] = None
         self._bus: Optional[MessageBus] = None
-        # Asyncio queue for data coming from Dire Wolf -> BLE client
+        # Asyncio queue for data coming from Direwolf -> BLE client
         self._dw_to_ble_queue: asyncio.Queue = asyncio.Queue(maxsize=256)
-        # Asyncio queue for data from BLE client -> Dire Wolf
+        # Asyncio queue for data from BLE client -> Direwolf
         self._ble_to_dw_queue: asyncio.Queue = asyncio.Queue(maxsize=256)
         # BlueZ notify callback will be set by GATT service object
         self._notify_callback = None
@@ -117,14 +117,14 @@ class BLEKISSBridge:
         )
 
     async def _direwolf_loop(self):
-        """Connect to Dire Wolf and shuttle bytes to/from BLE queue."""
+        """Connect to Direwolf and shuttle bytes to/from BLE queue."""
         while self._running:
             try:
                 self._dw_sock = socket.create_connection(
                     (self.dw_host, self.dw_port), timeout=5.0
                 )
                 self._dw_sock.settimeout(None)  # clear connect timeout for recv/send
-                self._log(f"Connected to Dire Wolf {self.dw_host}:{self.dw_port}")
+                self._log(f"Connected to Direwolf {self.dw_host}:{self.dw_port}")
                 self._status()
 
                 loop = asyncio.get_event_loop()
@@ -143,7 +143,7 @@ class BLEKISSBridge:
                         except asyncio.QueueFull:
                             self._log("BLE TX queue full, dropping chunk")
             except Exception as e:
-                self._log(f"Dire Wolf connection lost: {e}")
+                self._log(f"Direwolf connection lost: {e}")
             finally:
                 if self._dw_sock:
                     try:
@@ -153,11 +153,11 @@ class BLEKISSBridge:
                     self._dw_sock = None
                 self._status()
             if self._running:
-                self._log(f"Reconnecting to Dire Wolf in {RECONNECT_DELAY}s...")
+                self._log(f"Reconnecting to Direwolf in {RECONNECT_DELAY}s...")
                 await asyncio.sleep(RECONNECT_DELAY)
 
     async def _ble_to_dw_loop(self):
-        """Forward bytes from BLE queue to Dire Wolf socket."""
+        """Forward bytes from BLE queue to Direwolf socket."""
         while self._running:
             try:
                 data = await asyncio.wait_for(self._ble_to_dw_queue.get(), timeout=1.0)
@@ -168,7 +168,7 @@ class BLEKISSBridge:
                     loop = asyncio.get_event_loop()
                     await loop.run_in_executor(None, self._dw_sock.sendall, data)
                 except Exception as e:
-                    self._log(f"Send to Dire Wolf failed: {e}")
+                    self._log(f"Send to Direwolf failed: {e}")
 
     async def _register_gatt_app(self):
         """
@@ -234,7 +234,7 @@ async def run_ble_bridge(config: dict):
     """
     Full BLE KISS bridge using BlueZ D-Bus GATT API.
     Registers GATT service, characteristics, and BLE advertisement.
-    Bridges KISS frames between BLE client and Dire Wolf TCP.
+    Bridges KISS frames between BLE client and Direwolf TCP.
     """
     from dbus_next.aio import MessageBus
     from dbus_next import BusType, Variant
@@ -474,14 +474,14 @@ async def run_ble_bridge(config: dict):
         "dw_port": dw_port,
     })
 
-    # ── Dire Wolf connection loop ─────────────────────────────────────────────
+    # ── Direwolf connection loop ─────────────────────────────────────────────
     async def direwolf_loop():
         while True:
             dw_sock = None
             try:
                 dw_sock = socket.create_connection((dw_host, dw_port), timeout=5.0)
                 dw_sock.settimeout(None)  # clear connect timeout for recv/send
-                log(f"Connected to Dire Wolf {dw_host}:{dw_port}")
+                log(f"Connected to Direwolf {dw_host}:{dw_port}")
                 loop = asyncio.get_event_loop()
 
                 async def recv_from_dw():
@@ -507,14 +507,14 @@ async def run_ble_bridge(config: dict):
 
                 await asyncio.gather(recv_from_dw(), send_to_dw())
             except Exception as e:
-                log(f"Dire Wolf error: {e}")
+                log(f"Direwolf error: {e}")
             finally:
                 if dw_sock:
                     try:
                         dw_sock.close()
                     except Exception:
                         pass
-            log(f"Reconnecting to Dire Wolf in {RECONNECT_DELAY}s...")
+            log(f"Reconnecting to Direwolf in {RECONNECT_DELAY}s...")
             await asyncio.sleep(RECONNECT_DELAY)
 
     # ── Notify loop: send queued BLE data to connected client ─────────────────

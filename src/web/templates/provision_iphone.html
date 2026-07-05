@@ -48,7 +48,7 @@
       </span>
     </div>
     <div class="status-row">
-      <span class="status-label">Dire Wolf TCP</span>
+      <span class="status-label">Direwolf TCP</span>
       <span class="status-value">
         {% if status.direwolf_tcp.reachable %}
           <span class="badge badge-success">{{ status.direwolf_tcp.host }}:{{ status.direwolf_tcp.port }}</span>
@@ -137,7 +137,7 @@
         <div class="step-title">Verify KISS data is flowing</div>
         <div class="step-desc">
           The BLE Client status above should show "Connected".
-          APRS packets received by Dire Wolf will appear in aprs.fi.
+          APRS packets received by Direwolf will appear in aprs.fi.
         </div>
       </div>
     </div>
@@ -150,7 +150,7 @@
   <ul style="font-size:0.875rem;padding-left:1.25rem;line-height:2">
     <li>Only one BLE client can connect at a time.</li>
     <li>If the iPhone disconnects, the bridge waits for a new connection automatically.</li>
-    <li>If Dire Wolf restarts, the BLE bridge reconnects automatically.</li>
+    <li>If Direwolf restarts, the BLE bridge reconnects automatically.</li>
     <li>BLE connect/disconnect events do <strong>not</strong> write to disk.</li>
     <li>BLE connect/disconnect does <strong>not</strong> require a reboot.</li>
     <li>To change the BLE device name permanently, use the <a href="/config" style="color:var(--kp4pra-primary)">Configuration page</a>. This requires a reboot.</li>

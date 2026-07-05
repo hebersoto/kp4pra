@@ -12,7 +12,7 @@ from typing import Optional
 
 # Real storage location (writable partition). The web service writes here
 # directly. /home/kp4pra/direwolf.conf is a symlink to this file, used only
-# by Dire Wolf's -c flag; the service user cannot traverse /home/kp4pra.
+# by Direwolf's -c flag; the service user cannot traverse /home/kp4pra.
 DIREWOLF_CONF_PATH = "/rw/kp4pra-tnc/direwolf.conf"
 
 # label shown in UI -> keyword patterns matched against `aplay -l` card names
@@ -141,7 +141,7 @@ def generate_direwolf_conf(station: dict, adevice: str = None) -> str:
         ptt_lines.append(f"PTT {dev} {ptt}")
     elif ptt == "RIG":
         ptt_lines.append("# PTT RIG requested but Hamlib is not compiled into this")
-        ptt_lines.append("# Dire Wolf build. Recompile with hamlib to enable, then")
+        ptt_lines.append("# Direwolf build. Recompile with hamlib to enable, then")
         ptt_lines.append("# replace this comment with: PTT RIG <model> <port>")
     elif ptt == "NONE":
         ptt_lines.append("# No PTT configured")
@@ -168,7 +168,7 @@ def write_direwolf_conf(text: str, path: str = DIREWOLF_CONF_PATH):
     d = os.path.dirname(target)
     if not os.access(d, os.W_OK) and not (os.path.exists(target) and os.access(target, os.W_OK)):
         return False, (f"{target} is not writable. In production, symlink "
-                       f"{path} -> /rw/kp4pra-tnc/direwolf.conf so Dire Wolf "
+                       f"{path} -> /rw/kp4pra-tnc/direwolf.conf so Direwolf "
                        "settings can be applied without remounting root.")
     tmp = target + ".tmp"
     try:
@@ -187,12 +187,12 @@ def write_direwolf_conf(text: str, path: str = DIREWOLF_CONF_PATH):
 
 
 def restart_direwolf():
-    """Restart Dire Wolf (allowlisted in sudoers). Returns (ok, message)."""
+    """Restart Direwolf (allowlisted in sudoers). Returns (ok, message)."""
     try:
         r = subprocess.run(["sudo", "/bin/systemctl", "restart", "direwolf.service"],
                            capture_output=True, timeout=20)
         if r.returncode == 0:
-            return True, "Dire Wolf restarted"
-        return False, f"Dire Wolf restart failed: {r.stderr.decode(errors='replace').strip()}"
+            return True, "Direwolf restarted"
+        return False, f"Direwolf restart failed: {r.stderr.decode(errors='replace').strip()}"
     except Exception as e:
         return False, str(e)

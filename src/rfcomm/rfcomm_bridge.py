@@ -104,8 +104,8 @@ class RFCOMMBridge:
 
     def _handle_client(self, client_sock):
         """
-        Bridge raw KISS bytes between RFCOMM client and Dire Wolf TCP.
-        The Dire Wolf connection auto-reconnects without dropping the
+        Bridge raw KISS bytes between RFCOMM client and Direwolf TCP.
+        The Direwolf connection auto-reconnects without dropping the
         RFCOMM client. Only an RFCOMM-side disconnect ends the session.
         """
         stop_event = threading.Event()
@@ -116,15 +116,15 @@ class RFCOMMBridge:
         client_sock.settimeout(None)
 
         def connect_dw():
-            """(Re)connect to Dire Wolf. Returns socket or None if stopping."""
+            """(Re)connect to Direwolf. Returns socket or None if stopping."""
             while not stop_event.is_set():
                 try:
                     s = socket.create_connection((self.dw_host, self.dw_port), timeout=5.0)
                     s.settimeout(None)  # CRITICAL: clear connect timeout for recv/send
-                    print(f"[KP4PRA TNC] Connected to Dire Wolf {self.dw_host}:{self.dw_port}", flush=True)
+                    print(f"[KP4PRA TNC] Connected to Direwolf {self.dw_host}:{self.dw_port}", flush=True)
                     return s
                 except Exception as e:
-                    self._log(f"Dire Wolf connect failed: {e}, retrying")
+                    self._log(f"Direwolf connect failed: {e}, retrying")
                     stop_event.wait(RECONNECT_DELAY)
             return None
 
@@ -134,7 +134,7 @@ class RFCOMMBridge:
             return
 
         def r2d():
-            """RFCOMM -> Dire Wolf. RFCOMM disconnect ends the session."""
+            """RFCOMM -> Direwolf. RFCOMM disconnect ends the session."""
             try:
                 while not stop_event.is_set():
                     data = client_sock.recv(READ_CHUNK)
@@ -158,7 +158,7 @@ class RFCOMMBridge:
                 stop_event.set()
 
         def d2r():
-            """Dire Wolf -> RFCOMM. DW disconnect triggers reconnect, not teardown."""
+            """Direwolf -> RFCOMM. DW disconnect triggers reconnect, not teardown."""
             while not stop_event.is_set():
                 with dw_lock:
                     s = dw_sock_holder[0]
@@ -170,8 +170,8 @@ class RFCOMMBridge:
                 except Exception as e:
                     data = b""
                 if not data:
-                    # Dire Wolf closed or errored - reconnect, keep RFCOMM alive
-                    print("[KP4PRA TNC] Dire Wolf connection lost, reconnecting...", flush=True)
+                    # Direwolf closed or errored - reconnect, keep RFCOMM alive
+                    print("[KP4PRA TNC] Direwolf connection lost, reconnecting...", flush=True)
                     try:
                         s.close()
                     except Exception:

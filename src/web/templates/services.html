@@ -100,9 +100,9 @@
     </div>
   </div>
 
-  <!-- Dire Wolf -->
+  <!-- Direwolf -->
   <div class="card">
-    <div class="card-title"><span class="icon">🐺</span> Dire Wolf</div>
+    <div class="card-title"><span class="icon">🐺</span> Direwolf</div>
     <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
       direwolf.service — APRS/KISS TNC
     </div>
@@ -115,11 +115,11 @@
       </span>
     </div>
     <p style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-top:0.5rem">
-      Dire Wolf is managed separately. Restarting it here requires direwolf.service to be enabled.
+      Direwolf is managed separately. Restarting it here requires direwolf.service to be enabled.
     </p>
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
-      <button class="btn btn-primary btn-sm" onclick="restartDirewolf()">Restart Dire Wolf</button>
-      <button class="btn btn-danger btn-sm" onclick="stopDirewolf()">Stop Dire Wolf</button>
+      <button class="btn btn-primary btn-sm" onclick="restartDirewolf()">Restart Direwolf</button>
+      <button class="btn btn-danger btn-sm" onclick="stopDirewolf()">Stop Direwolf</button>
       <button class="btn btn-secondary btn-sm" onclick="checkDW()">Check TCP Port</button>
     </div>
     <div id="dw-result" style="margin-top:0.5rem;font-size:0.82rem"></div>
@@ -127,13 +127,13 @@
 
 </div>
 
-<!-- Dire Wolf traffic -->
+<!-- Direwolf traffic -->
 <div class="card">
-  <div class="card-title"><span class="icon">📡</span> Dire Wolf Traffic
+  <div class="card-title"><span class="icon">📡</span> Direwolf Traffic
     <span class="badge badge-warning" style="margin-left:auto;font-size:0.7rem">Volatile — not saved</span>
   </div>
   <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:0.6rem">
-    Received and transmitted packets as reported by Dire Wolf (current boot only,
+    Received and transmitted packets as reported by Direwolf (current boot only,
     from the volatile journal - nothing is written to disk).
   </p>
   <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-bottom:0.6rem">
@@ -179,7 +179,7 @@ async function loadDwTraffic() {
     const r = await fetch('/api/service/direwolf/log?lines=80');
     const data = await r.json();
     const el = document.getElementById('dw-traffic');
-    el.textContent = data.log || '(no journal output - is Dire Wolf running under systemd?)';
+    el.textContent = data.log || '(no journal output - is Direwolf running under systemd?)';
     el.scrollTop = el.scrollHeight;  // follow the tail
     document.getElementById('dw-traffic-ts').textContent =
       'Updated ' + new Date().toLocaleTimeString();
@@ -206,15 +206,15 @@ async function svcAction(action, svc) {
 }
 
 async function stopDirewolf() {
-  if (!confirm('Stop Dire Wolf?\n\nAll RF operation stops. Bluetooth bridges will ' +
+  if (!confirm('Stop Direwolf?\n\nAll RF operation stops. Bluetooth bridges will ' +
                'keep retrying the KISS TCP connection and phone apps will show no ' +
-               'traffic until Dire Wolf is started again (use Restart Dire Wolf).')) return;
+               'traffic until Direwolf is started again (use Restart Direwolf).')) return;
   await svcAction('stop', 'direwolf.service');
 }
 
 async function restartDirewolf() {
-  if (!confirm('Restart Dire Wolf?\n\nRF operation pauses for a few seconds. ' +
-               'Bluetooth bridges reconnect to Dire Wolf automatically.')) return;
+  if (!confirm('Restart Direwolf?\n\nRF operation pauses for a few seconds. ' +
+               'Bluetooth bridges reconnect to Direwolf automatically.')) return;
   await svcAction('restart', 'direwolf.service');
 }
 

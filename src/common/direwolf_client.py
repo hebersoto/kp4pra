@@ -1,8 +1,8 @@
 """
-KP4PRA TNC - Dire Wolf KISS TCP Client
-Connects to Dire Wolf KISS TCP server (default 127.0.0.1:8001).
+KP4PRA TNC - Direwolf KISS TCP Client
+Connects to Direwolf KISS TCP server (default 127.0.0.1:8001).
 Passes raw binary KISS frames only. No decoding. No logging to disk.
-Supports reconnect on Dire Wolf restart.
+Supports reconnect on Direwolf restart.
 """
 
 import asyncio
@@ -16,10 +16,10 @@ READ_CHUNK = 4096
 
 class DireWolfKissClient:
     """
-    Asyncio-based KISS TCP client for Dire Wolf.
+    Asyncio-based KISS TCP client for Direwolf.
     - Connects to host:port
     - Forwards raw bytes from the bridge in both directions
-    - Reconnects automatically if Dire Wolf restarts
+    - Reconnects automatically if Direwolf restarts
     - Never writes to disk
     """
 
@@ -32,7 +32,7 @@ class DireWolfKissClient:
     ):
         self.host = host
         self.port = port
-        self.on_data = on_data   # called with raw KISS bytes from Dire Wolf
+        self.on_data = on_data   # called with raw KISS bytes from Direwolf
         self.verbose = verbose
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
@@ -59,7 +59,7 @@ class DireWolfKissClient:
         await self._disconnect()
 
     async def send(self, data: bytes):
-        """Queue raw KISS bytes to be sent to Dire Wolf."""
+        """Queue raw KISS bytes to be sent to Direwolf."""
         await self._send_queue.put(data)
 
     async def _connect(self) -> bool:
@@ -72,11 +72,11 @@ class DireWolfKissClient:
             self._writer = writer
             self._connected = True
             if self.verbose:
-                print(f"[KP4PRA TNC] Connected to Dire Wolf KISS TCP {self.host}:{self.port}", flush=True)
+                print(f"[KP4PRA TNC] Connected to Direwolf KISS TCP {self.host}:{self.port}", flush=True)
             return True
         except Exception as e:
             if self.verbose:
-                print(f"[KP4PRA TNC] Dire Wolf connect failed: {e}", flush=True)
+                print(f"[KP4PRA TNC] Direwolf connect failed: {e}", flush=True)
             return False
 
     async def _disconnect(self):
@@ -91,7 +91,7 @@ class DireWolfKissClient:
         self._writer = None
 
     async def _connection_loop(self):
-        """Maintain connection to Dire Wolf; reconnect if lost."""
+        """Maintain connection to Direwolf; reconnect if lost."""
         while self._running:
             if not await self._connect():
                 await asyncio.sleep(RECONNECT_DELAY)
@@ -100,15 +100,15 @@ class DireWolfKissClient:
                 await self._receive_loop()
             except Exception as e:
                 if self.verbose:
-                    print(f"[KP4PRA TNC] Dire Wolf receive error: {e}", flush=True)
+                    print(f"[KP4PRA TNC] Direwolf receive error: {e}", flush=True)
             await self._disconnect()
             if self._running:
                 if self.verbose:
-                    print(f"[KP4PRA TNC] Reconnecting to Dire Wolf in {RECONNECT_DELAY}s...", flush=True)
+                    print(f"[KP4PRA TNC] Reconnecting to Direwolf in {RECONNECT_DELAY}s...", flush=True)
                 await asyncio.sleep(RECONNECT_DELAY)
 
     async def _receive_loop(self):
-        """Read raw KISS bytes from Dire Wolf and pass to on_data callback."""
+        """Read raw KISS bytes from Direwolf and pass to on_data callback."""
         while self._running and self._reader:
             data = await self._reader.read(READ_CHUNK)
             if not data:
@@ -117,7 +117,7 @@ class DireWolfKissClient:
                 await self.on_data(data)
 
     async def _send_loop(self):
-        """Drain the send queue and write to Dire Wolf."""
+        """Drain the send queue and write to Direwolf."""
         while self._running:
             try:
                 data = await asyncio.wait_for(self._send_queue.get(), timeout=1.0)
@@ -129,5 +129,5 @@ class DireWolfKissClient:
                     await self._writer.drain()
                 except Exception as e:
                     if self.verbose:
-                        print(f"[KP4PRA TNC] Dire Wolf send error: {e}", flush=True)
+                        print(f"[KP4PRA TNC] Direwolf send error: {e}", flush=True)
                     # Data is dropped if not connected; no buffering to disk
