@@ -1,5 +1,13 @@
 # KP4PRA TNC — Read-Only Production Deployment & SD Image Creation
 
+
+> **Architecture note:** persistent configuration lives on the /rw
+> partition, NOT in /etc. Config saves and direwolf.conf Apply work with
+> root read-only, no remount, no reboot. Only Bluetooth pairing uses the
+> remount workflow (automated by the web UI). Guides that store config in
+> /etc and remount rw for every change describe a different (simpler but
+> less capable) model - do not mix the two.
+
 The proven layout (running on the reference unit):
 mmcblk0p1  /     ext4  ro       5G    OS + application (read-only in production)
 mmcblk0p2  /rw   ext4  rw       64M+  config, BlueZ pairing state, direwolf.conf
@@ -117,6 +125,64 @@ xz -dc kp4pra-tnc.img.xz | sudo dd of=/dev/sdY bs=4M status=progress conv=fsync
 - Pair the phones for this unit via the wizards.
 - Regenerate SSH host keys if step 1 removed them and the OS doesn't
   auto-regenerate: `sudo mount -o remount,rw / && sudo ssh-keygen -A && sudo mount -o remount,ro /`
+
+
+## Part B2 — tmpfs for stray writers (/tmp, /var/tmp, /var/log)
+
+journald volatile covers the journal, but other software (dpkg, cron,
+third-party tools) writes /tmp, /var/tmp, and /var/log directly. Put all
+three in RAM so nothing stray reaches the SD card:
+
+```bash
+# 1 GB boards (Orange Pi Zero 2W):
+sudo tee -a /etc/fstab << 'FSTAB'
+tmpfs /tmp      tmpfs defaults,noatime,nosuid,nodev,mode=1777,size=256M 0 0
+tmpfs /var/tmp  tmpfs defaults,noatime,nosuid,nodev,mode=1777,size=128M 0 0
+tmpfs /var/log  tmpfs defaults,noatime,nosuid,nodev,mode=0755,size=64M 0 0
+FSTAB
+# 512 MB boards (Raspberry Pi Zero 2 W): use sizes 128M/64M/32M instead.
+sudo mount -a && df -h /tmp /var/tmp /var/log
+```
+
+Do NOT create /var/log/journal (journald must stay Storage=volatile),
+and do NOT put /etc, /var/lib, or /var/lib/bluetooth in tmpfs — those
+must survive reboot (BlueZ state is already bind-mounted from /rw).
+
+Reduce other writers:
+```bash
+sudo apt clean && sudo apt autoremove -y
+printf 'Dir::Cache "";\nDir::Cache::archives "";\n' | sudo tee /etc/apt/apt.conf.d/99no-cache
+sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer man-db.timer 2>/dev/null
+systemctl status rsyslog --no-pager 2>/dev/null && sudo systemctl disable --now rsyslog
+```
+
+## Part B3 — Operator convenience commands (rw / ro)
+
+For manual maintenance at the shell (the web UI uses its own allowlisted
+helpers and does not need these):
+
+```bash
+printf '#!/bin/bash\nmount -o remount,rw /\necho "Root is now read/write."\n' | sudo tee /usr/local/sbin/rw
+printf '#!/bin/bash\nsync\nmount -o remount,ro /\necho "Root is now read-only."\n' | sudo tee /usr/local/sbin/ro
+sudo chmod +x /usr/local/sbin/rw /usr/local/sbin/ro
+```
+
+Usage: `sudo rw` → make changes → `sudo ro` (or reboot).
+
+## Part E — Recovery if the board does not boot after the ro flip
+
+Remove the SD card, insert it into another Linux computer:
+
+```bash
+lsblk                                  # identify the card, e.g. /dev/sdX
+sudo mkdir -p /mnt/sd && sudo mount /dev/sdX1 /mnt/sd
+sudo nano /mnt/sd/etc/fstab            # remove ",ro" from the / line;
+                                       # optionally comment the tmpfs lines
+sudo umount /mnt/sd && sync
+```
+
+Reinsert and boot; fix the underlying issue (check `systemctl --failed`
+and the Part B checklist) before flipping back to ro.
 
 ## Alternative layout (designed, NOT yet implemented): zram /rw
 
