@@ -12,6 +12,9 @@ echo "[stage2] Group memberships (journal read, audio detect, serial PTT)"
 usermod -aG systemd-journal kp4pra-tnc
 usermod -aG audio kp4pra-tnc
 usermod -aG dialout kp4pra 2>/dev/null || true
+# Dire Wolf runs as kp4pra and must traverse /rw/kp4pra-tnc (750,
+# owned kp4pra-tnc) to read its conf through the symlink:
+usermod -aG kp4pra-tnc kp4pra 2>/dev/null || true
 
 echo "[stage2] Moving direwolf.conf to /rw with symlink for -c path"
 if [ -f "$CONF" ] && [ ! -L "$CONF" ]; then
