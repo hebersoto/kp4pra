@@ -33,6 +33,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 log()  { echo -e "${GREEN}[KP4PRA TNC]${NC} $*"; }
+STEP=0; TOTAL_STEPS=10
+step() { STEP=$((STEP+1)); echo -e "${GREEN}[KP4PRA TNC] [${STEP}/${TOTAL_STEPS}]${NC} $*"; }
 warn() { echo -e "${YELLOW}[KP4PRA TNC WARN]${NC} $*"; }
 err()  { echo -e "${RED}[KP4PRA TNC ERROR]${NC} $*" >&2; }
 die()  { err "$*"; exit 1; }
@@ -61,7 +63,7 @@ fi
 
 # ── System user ──────────────────────────────────────────────────────────────
 
-log "Creating system user: $SERVICE_USER"
+step "Creating system user: $SERVICE_USER"
 if ! id "$SERVICE_USER" &>/dev/null; then
     useradd --system --no-create-home --shell /bin/false \
             --groups bluetooth \
@@ -75,7 +77,7 @@ fi
 
 # ── Application directory ────────────────────────────────────────────────────
 
-log "Installing application to $APP_DIR"
+step "Installing application to $APP_DIR"
 mkdir -p "$APP_DIR"
 cp -r "$PROJECT_DIR/src" "$APP_DIR/"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
@@ -83,10 +85,10 @@ chmod -R 755 "$APP_DIR"
 
 # ── Python virtual environment ───────────────────────────────────────────────
 
-log "Creating Python virtualenv at $APP_DIR/venv"
+step "Creating Python virtualenv at $APP_DIR/venv"
 python3 -m venv "$APP_DIR/venv"
 
-log "Installing Python dependencies..."
+step "Installing Python dependencies..."
 "$APP_DIR/venv/bin/pip" install --upgrade pip --quiet
 
 # Install all dependencies at install time (no runtime pip installs).
@@ -110,7 +112,7 @@ log "Python dependencies installed"
 
 # ── Writable configuration directory ─────────────────────────────────────────
 
-log "Setting up writable config directory: $CONFIG_DIR"
+step "Setting up writable config directory: $CONFIG_DIR"
 mkdir -p "$CONFIG_DIR" \
          "$CONFIG_DIR/state" \
          "$CONFIG_DIR/data" \
@@ -129,7 +131,7 @@ fi
 
 # ── BlueZ state directory setup ──────────────────────────────────────────────
 
-log "Setting up BlueZ persistent state directory: $BLUEZ_STATE_DIR"
+step "Setting up BlueZ persistent state directory: $BLUEZ_STATE_DIR"
 mkdir -p "$BLUEZ_STATE_DIR"
 
 # Copy any existing BlueZ pairing state to the persistent location
@@ -143,7 +145,7 @@ chmod -R 750 "$BLUEZ_STATE_DIR"
 
 # ── Systemd units ────────────────────────────────────────────────────────────
 
-log "Installing systemd service units"
+step "Installing systemd service units"
 cp "$PROJECT_DIR/systemd/kp4pra-tnc.target"          /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-rfcomm.service"  /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-ble.service"     /etc/systemd/system/
@@ -190,7 +192,7 @@ systemctl enable var-lib-bluetooth.mount
 
 # ── Sudoers ──────────────────────────────────────────────────────────────────
 
-log "Installing sudoers rules"
+step "Installing sudoers rules"
 cp "$PROJECT_DIR/sudoers.d/kp4pra-tnc" /etc/sudoers.d/kp4pra-tnc
 chmod 0440 /etc/sudoers.d/kp4pra-tnc
 # Validate sudoers syntax
@@ -225,7 +227,7 @@ fi
 
 # ── Enable and start services ────────────────────────────────────────────────
 
-log "Enabling KP4PRA TNC services"
+step "Enabling KP4PRA TNC services"
 systemctl enable kp4pra-tnc.target
 systemctl enable kp4pra-tnc-rfcomm.service
 systemctl enable kp4pra-tnc-ble.service
@@ -247,7 +249,7 @@ systemctl start kp4pra-tnc-web.service    || warn "Web interface start failed"
 
 # ── journald: ensure volatile-only ─────────────────────────────────────────
 
-log "Configuring journald for volatile-only logging (no persistent log files)"
+step "Configuring journald for volatile-only logging (no persistent log files)"
 mkdir -p /etc/systemd/journald.conf.d
 cat > /etc/systemd/journald.conf.d/kp4pra-tnc-volatile.conf << 'EOF'
 # KP4PRA TNC - Force volatile (RAM-only) journal
@@ -280,5 +282,7 @@ echo ""
 warn "  To complete setup on a read-only root system:"
 warn "  1. Reboot to verify services start from saved state"
 warn "  2. Open http://$(hostname).local:8088 to manage Bluetooth"
-warn "  3. Use the Android provisioning wizard to pair your phone"
+warn "  3. Android: use the Android provisioning wizard to pair your phone"
+warn "  4. iPhone: no pairing needed - open aprs.fi, choose BLE KISS TNC,"
+warn "     and select this device (see the iPhone page in the web UI)"
 echo ""
