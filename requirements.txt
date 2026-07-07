@@ -1,0 +1,14 @@
+# KP4PRA TNC - Python Requirements
+# Install during image build only. Never install at runtime.
+# Pinned to a combination verified working on Python 3.13 / Debian trixie.
+
+fastapi==0.115.5
+starlette==0.41.3
+uvicorn[standard]>=0.24.0
+jinja2==3.1.4
+pyyaml>=6.0
+dbus-next>=0.2.3
+# NOTE: PyBluez removed - it is unmaintained and fails to build on
+# Python 3.13. The RFCOMM bridge uses Python's built-in socket module
+# (AF_BLUETOOTH/BTPROTO_RFCOMM); SDP registration uses sdptool from the
+# bluez-tools package (apt install bluez-tools).
