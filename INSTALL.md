@@ -47,6 +47,11 @@ Installs: system user, venv + pinned Python deps, systemd units
 helper scripts, tmpfiles rule, bluetoothd -C compat mode, volatile journald.
 
 ## 6. KP4PRA TNC — stage 2 (Dire Wolf integration)
+
+**Runs automatically at the end of step 5 install.sh.** Run it manually
+only if stage 2 reported errors, or after building Dire Wolf later
+(stage 2 tolerates a missing direwolf binary, but the direwolf service
+cannot start until step 3 is done):
 ```bash
 sudo bash scripts/install-direwolf-integration.sh
 ```
