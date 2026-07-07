@@ -1,4 +1,6 @@
 [Unit]
+StartLimitIntervalSec=60
+StartLimitBurst=5
 Description=KP4PRA TNC Web Management Interface
 Documentation=https://github.com/kp4pra/kp4pra-tnc
 After=network.target bluetooth.target
@@ -14,8 +16,6 @@ WorkingDirectory=/opt/kp4pra-tnc/src/web
 ExecStart=/opt/kp4pra-tnc/venv/bin/python /opt/kp4pra-tnc/src/web/web_app.py
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 # Environment
 Environment=KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml
