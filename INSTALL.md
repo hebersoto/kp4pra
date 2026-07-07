@@ -81,6 +81,11 @@ Validated to install, with caveats: single ARMv6 core + 512MB RAM.
   (extra-index-url=https://www.piwheels.org/simple - default on
   Raspberry Pi OS).
 - Use the 512MB tmpfs sizes from DEPLOYMENT.md.
+- **BLE/iPhone is NOT supported on Zero W Rev 1.x**: the BCM43438
+  controller rejects instance-based LE advertising (Invalid Parameters
+  at HCI level, confirmed with bluetoothctl and btmgmt; firmware
+  reinstall does not help). The BLE bridge detects this and exits
+  cleanly. Android/RFCOMM works normally.
 - Expect a slow web UI and high CPU from Dire Wolf's demodulator.
   The Zero 2 W or Orange Pi Zero 2W is the recommended platform.
 
