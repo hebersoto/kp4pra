@@ -93,10 +93,14 @@ log "Installing Python dependencies..."
 # Versions pinned to a combination verified on Python 3.13 / Debian trixie.
 # PyBluez intentionally absent: unmaintained, fails to build on py3.13.
 # The RFCOMM bridge uses the built-in socket module instead.
-"$APP_DIR/venv/bin/pip" install \
+# --only-binary refuses source builds: on ARMv6/512MB boards (Pi Zero W)
+# compiling uvloop/pydantic-core swaps the box to death. Plain uvicorn
+# (no [standard] extras) avoids uvloop entirely; performance difference
+# is irrelevant for a single-user LAN UI.
+"$APP_DIR/venv/bin/pip" install --only-binary=:all: \
     "fastapi==0.115.5" \
     "starlette==0.41.3" \
-    "uvicorn[standard]" \
+    uvicorn \
     "jinja2==3.1.4" \
     pyyaml \
     dbus-next \
@@ -199,22 +203,11 @@ log "Sudoers rules installed and validated"
 
 # ── Avahi DNS-SD ─────────────────────────────────────────────────────────────
 
-if command -v avahi-daemon &>/dev/null; then
-    log "Installing Avahi DNS-SD service file"
-
-    # Check if Dire Wolf already advertises KISS TNC via DNS-SD
-    if avahi-browse -t -r _kiss-tnc._tcp 2>/dev/null | grep -q "kiss"; then
-        log "Dire Wolf appears to already advertise _kiss-tnc._tcp via Avahi"
-        log "Skipping KP4PRA TNC Avahi service file (not needed)"
-    else
-        cp "$PROJECT_DIR/avahi/kiss-tnc.service" /etc/avahi/services/
-        systemctl reload avahi-daemon 2>/dev/null || true
-        log "Avahi KISS TNC service file installed"
-    fi
-else
-    warn "avahi-daemon not found. DNS-SD discovery not available."
-    warn "Install with: apt install avahi-daemon"
-fi
+# DNS-SD: Dire Wolf (built with dns-sd support) advertises _kiss-tnc._tcp
+# itself - no separate Avahi service file is needed or installed. If your
+# Dire Wolf build lacks dns-sd, create /etc/avahi/services/kiss-tnc.service
+# manually or rebuild Dire Wolf with avahi support.
+log "DNS-SD advertisement is handled by Dire Wolf - skipping Avahi file"
 
 # ── BlueZ configuration ──────────────────────────────────────────────────────
 

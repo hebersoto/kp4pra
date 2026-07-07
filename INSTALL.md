@@ -68,6 +68,17 @@ Read-only root, pre-flight checklist, and golden SD image creation: see **DEPLOY
 Summary: fstab root `ro`, `/rw` partition `rw,noatime`; BlueZ state and
 config live on /rw; runtime state on /run (tmpfs); no persistent logs.
 
+## Low-memory / ARMv6 boards (original Pi Zero W, Rev 1.x)
+
+Validated to install, with caveats: single ARMv6 core + 512MB RAM.
+- Dependencies MUST come from prebuilt wheels. install.sh enforces
+  --only-binary; ensure piwheels is configured in /etc/pip.conf
+  (extra-index-url=https://www.piwheels.org/simple - default on
+  Raspberry Pi OS).
+- Use the 512MB tmpfs sizes from DEPLOYMENT.md.
+- Expect a slow web UI and high CPU from Dire Wolf's demodulator.
+  The Zero 2 W or Orange Pi Zero 2W is the recommended platform.
+
 ## Raspberry Pi Zero 2 W differences
 - Same instructions; device names differ (`/dev/mmcblk0` on both, but
   verify with `lsblk` before partitioning).
