@@ -238,6 +238,8 @@ systemctl enable kp4pra-bt-perms.service
 log "Starting KP4PRA TNC services"
 # Start the bind mount first
 systemctl start var-lib-bluetooth.mount || warn "BlueZ bind mount failed - check /rw/kp4pra-tnc/bluetooth"
+# Fresh Raspberry Pi OS images may ship with radios soft-blocked
+rfkill unblock bluetooth 2>/dev/null || true
 systemctl restart bluetooth.service     || warn "Bluetooth service restart failed"
 systemctl start kp4pra-tnc-agent.service  || warn "Pairing agent start failed (bt-agent from bluez-tools required)"
 systemctl start kp4pra-bt-perms.service   || warn "BlueZ perms fix failed"
