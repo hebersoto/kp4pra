@@ -264,6 +264,20 @@ log "journald configured for volatile storage"
 
 # ── Final status ─────────────────────────────────────────────────────────────
 
+# ── Stage 2: Dire Wolf integration (chained automatically) ──────────────────
+if [ -x "$PROJECT_DIR/scripts/install-direwolf-integration.sh" ]; then
+    log "Running stage 2 (Dire Wolf integration)..."
+    if bash "$PROJECT_DIR/scripts/install-direwolf-integration.sh"; then
+        log "Stage 2 complete"
+    else
+        warn "Stage 2 reported errors - review output above."
+        warn "It can be re-run any time: sudo bash scripts/install-direwolf-integration.sh"
+    fi
+else
+    warn "Stage 2 script not found - run it manually after building Dire Wolf:"
+    warn "  sudo bash scripts/install-direwolf-integration.sh"
+fi
+
 echo ""
 log "═══════════════════════════════════════════════════════"
 log "  KP4PRA TNC installation complete!"
