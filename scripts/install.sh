@@ -158,6 +158,7 @@ log "Installing helper scripts to /usr/local/bin"
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-rw"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-ro"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-fix-bt-perms" /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-legacy-adv"   /usr/local/bin/
 
 log "Installing tmpfiles rule for /run/kp4pra-tnc"
 install -m 644 "$PROJECT_DIR/config/tmpfiles-kp4pra-tnc.conf" /etc/tmpfiles.d/kp4pra-tnc.conf

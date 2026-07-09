@@ -79,3 +79,38 @@ Orange Pi Zero 2W / Debian trixie / Python 3.13 / BlueZ 5.7x.
   /etc/nftables.conf, enable nftables.service.
 - journald volatile config and read-only-root fstab remain as
   documented in README.md.
+
+
+## 2026-07 — Kernel MGMT advertising regression and workaround
+
+Finding: a June-2026 Linux kernel patch (Bluetooth: MGMT: validate Add
+Extended Advertising Data length) causes bluetoothd advertisement
+registration to fail with Invalid Parameters (0x0d). Present in Raspberry
+Pi OS kernel 6.18-rpt and backported into 6.12.9x stable, so all current
+Raspberry Pi OS images (Trixie and Bookworm) are affected on every Pi
+model. Diagnosed with btmon: MGMT Add Extended Advertising Parameters
+succeeds, Add Extended Advertising Data (valid 3-byte flags payload) is
+rejected. Armbian kernels (Orange Pi reference unit) unaffected.
+
+Changes:
+- ble_bridge.py: advertisement registration now has a three-stage
+  strategy: full advertisement -> minimal advertisement (UUID only,
+  no tx-power, no name) -> legacy raw-HCI advertising via
+  /usr/local/bin/kp4pra-legacy-adv (flags + 128-bit KISS service UUID
+  in ADV data, device name in scan response, connectable undirected).
+  Legacy advertising is re-asserted after each client disconnect,
+  because raw leadv stops when a connection is accepted.
+- If all three stages fail, the bridge logs a clear explanation and
+  exits cleanly (exit 0) instead of crash-looping; Android/RFCOMM is
+  unaffected either way.
+- Removed tx-power from the advertisement Includes (rejected by some
+  controllers; also eliminates the harmless TxPower property-probe
+  traceback seen on every BLE start).
+- New bin/kp4pra-legacy-adv helper + sudoers allowlist entry;
+  install.sh installs both.
+
+Revisited verdict: the earlier conclusion that the Pi Zero W Rev 1.1
+hardware does not support BLE advertising was premature - that board
+runs an affected kernel. Its legacy btmgmt advertising toggle works, so
+the raw-HCI fallback is expected to function there; chip-level support
+remains unconfirmed until tested on a healthy kernel.

@@ -1,0 +1,13 @@
+#!/bin/bash
+# KP4PRA TNC - legacy LE advertising via raw HCI.
+# Workaround for the June-2026 kernel MGMT regression that breaks
+# BlueZ instance advertising on current Raspberry Pi OS kernels
+# (shipped in 6.18 and backported into 6.12.9x stable).
+# AD payload: flags (LE General Discoverable, no BR/EDR) + 128-bit
+# KISS BLE service UUID 00000001-ba2a-46c9-ae49-01b0961f68bb (LE order).
+hciconfig hci0 up 2>/dev/null
+hcitool -i hci0 cmd 0x08 0x0008 15 02 01 06 11 07 bb 68 1f 96 b0 01 49 ae c9 46 2a ba 01 00 00 00 00 00 00 00 00 00 00 00 00 00 > /dev/null
+# Scan response: complete local name "KP4PRA TNC"
+hcitool -i hci0 cmd 0x08 0x0009 0c 0b 09 4b 50 34 50 52 41 20 54 4e 43 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 > /dev/null
+# Enable connectable undirected advertising (retry once if already on)
+hciconfig hci0 leadv 0 2>/dev/null || { hciconfig hci0 noleadv 2>/dev/null; sleep 0.3; hciconfig hci0 leadv 0; }

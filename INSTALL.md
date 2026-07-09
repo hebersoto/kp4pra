@@ -10,6 +10,19 @@ Requires Python 3.11+ and BlueZ 5.6x+.
   Imager; preconfigure user `kp4pra`, WiFi, and SSH in the imager.
 Boot, log in as `kp4pra`, and update: `sudo apt update && sudo apt upgrade -y`
 
+> **KNOWN ISSUE (June 2026) — BLE advertising broken on current Raspberry Pi
+> OS kernels.** A kernel patch ("Bluetooth: MGMT: validate Add Extended
+> Advertising Data length", June 2026) breaks BlueZ instance advertising with
+> Invalid Parameters (0x0d). It shipped in kernel 6.18-rpt and was backported
+> into the 6.12.9x stable series, so BOTH current images (Trixie and Bookworm,
+> all Pi models) are affected. Confirmed on Pi Zero W Rev 1.1 and Pi 3 B+;
+> Armbian kernels (Orange Pi) are currently unaffected. The KP4PRA TNC BLE
+> bridge detects the failure and falls back to legacy raw-HCI advertising
+> automatically (bin/kp4pra-legacy-adv, installed by install.sh); if that also
+> fails it exits cleanly and Android/RFCOMM continues working. Track the
+> Raspberry Pi forums and raspberrypi/linux for the upstream fix; no kernel
+> hold is required since the fallback handles affected kernels.
+
 ## 2. Base packages
 ```bash
 sudo apt install -y git python3 python3-venv python3-pip \
@@ -81,11 +94,7 @@ Validated to install, with caveats: single ARMv6 core + 512MB RAM.
   (extra-index-url=https://www.piwheels.org/simple - default on
   Raspberry Pi OS).
 - Use the 512MB tmpfs sizes from DEPLOYMENT.md.
-- **BLE/iPhone is NOT supported on Zero W Rev 1.x**: the BCM43438
-  controller rejects instance-based LE advertising (Invalid Parameters
-  at HCI level, confirmed with bluetoothctl and btmgmt; firmware
-  reinstall does not help). The BLE bridge detects this and exits
-  cleanly. Android/RFCOMM works normally.
+- **BLE on Zero W Rev 1.x**: affected by the June-2026 kernel regression (see KNOWN ISSUE above); the legacy raw-HCI fallback is expected to work but chip-level support on this old BCM43438 is unconfirmed. Android/RFCOMM works normally.
 - Expect a slow web UI and high CPU from Dire Wolf's demodulator.
   The Zero 2 W or Orange Pi Zero 2W is the recommended platform.
 
