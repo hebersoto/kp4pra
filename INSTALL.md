@@ -40,7 +40,7 @@ cmake .. && make -j2 && sudo make install
 ```
 Verify: `direwolf --help` and `cm108` (lists CM108 HID→ADEVICE mapping).
 Create an initial `/home/kp4pra/direwolf.conf` (the web UI will regenerate
-it later; a minimal `ADEVICE plughw:1,0` / `MYCALL N0CALL` file is enough
+it later; a minimal of two lines  `ADEVICE plughw:1,0` / `MYCALL N0CALL` file is enough
 to start).
 
 ## 4. Writable partition (production layout)
