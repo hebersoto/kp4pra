@@ -27,6 +27,24 @@ from common.config import load_config
 from common.runtime_status import write_status, clear_status
 
 # ── KISS over BLE UUIDs ──────────────────────────────────────────────────────
+LEGACY_ADV = {"active": False}
+
+def start_legacy_adv():
+    """Raw-HCI legacy advertising (kernel MGMT regression workaround)."""
+    import subprocess
+    try:
+        r = subprocess.run(["sudo", "/usr/local/bin/kp4pra-legacy-adv"],
+                           capture_output=True, timeout=10)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+def reassert_legacy_adv():
+    """Legacy advertising stops when a connection is accepted - re-enable
+    after each client disconnect so the next connection can find us."""
+    if LEGACY_ADV["active"]:
+        start_legacy_adv()
+
 KISS_BLE_SERVICE_UUID   = "00000001-ba2a-46c9-ae49-01b0961f68bb"
 KISS_BLE_TX_UUID        = "00000002-ba2a-46c9-ae49-01b0961f68bb"  # app writes
 KISS_BLE_RX_UUID        = "00000003-ba2a-46c9-ae49-01b0961f68bb"  # TNC notifies
@@ -324,6 +342,7 @@ async def run_ble_bridge(config: dict):
                 "service_uuid": KISS_BLE_SERVICE_UUID,
             })
             log("BLE client stopped notifications (disconnected)")
+            reassert_legacy_adv()
 
         @method()
         def ReadValue(self, options: 'a{sv}') -> 'ay':
@@ -385,7 +404,8 @@ async def run_ble_bridge(config: dict):
 
         @dbus_property(access=PropertyAccess.READ)
         def Includes(self) -> 'as':
-            return ['tx-power']
+            # Empty: 'tx-power' is rejected by many controllers
+            return []
 
     # ── Object Manager ────────────────────────────────────────────────────────
     class GattApplication(ServiceInterface):
@@ -461,7 +481,43 @@ async def run_ble_bridge(config: dict):
 
     # Start advertisement
     adv_mgr = adapter.get_interface(LE_ADV_MGR_IFACE)
-    await adv_mgr.call_register_advertisement(ADV_PATH, {})
+    try:
+        await adv_mgr.call_register_advertisement(ADV_PATH, {})
+    except Exception as e:
+        log(f"Advertisement rejected ({e}); retrying minimal advertisement")
+        try:
+            bus.unexport(ADV_PATH)
+        except Exception as ue:
+            log(f"unexport warning: {ue}")
+        class MinimalAdvertisement(ServiceInterface):
+            def __init__(self):
+                super().__init__(LE_ADV_IFACE)
+            @method()
+            def Release(self):
+                log("Advertisement released")
+            @dbus_property(access=PropertyAccess.READ)
+            def Type(self) -> 's':
+                return 'peripheral'
+            @dbus_property(access=PropertyAccess.READ)
+            def ServiceUUIDs(self) -> 'as':
+                return [KISS_BLE_SERVICE_UUID]
+        advertisement = MinimalAdvertisement()
+        bus.export(ADV_PATH, advertisement)
+        try:
+            await adv_mgr.call_register_advertisement(ADV_PATH, {})
+        except Exception as e2:
+            print('[KP4PRA TNC BLE] MGMT advertising rejected '
+                  f'({e2}); attempting legacy raw-HCI advertising '
+                  '(kernel regression workaround)...', flush=True)
+            if start_legacy_adv():
+                LEGACY_ADV["active"] = True
+                print('[KP4PRA TNC BLE] Legacy HCI advertising active', flush=True)
+            else:
+                print('[KP4PRA TNC BLE] Legacy advertising also failed. '
+                      'BLE/iPhone unavailable on this system. RFCOMM/Android '
+                      'is unaffected. BLE bridge exiting cleanly.', flush=True)
+                clear_status('ble')
+                os._exit(0)
     log(f"BLE advertisement started as '{device_name}'")
 
     print(f"[KP4PRA TNC] BLE KISS advertising as '{device_name}'", flush=True)
