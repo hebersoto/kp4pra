@@ -37,9 +37,6 @@ NoNewPrivileges=false
 # Sudoers are narrowly scoped to only allowlisted commands.
 
 PrivateTmp=true
-ProtectKernelModules=true
-ProtectKernelTunables=true
-ProtectControlGroups=true
 
 # Bluetooth group for bluetoothctl calls
 SupplementaryGroups=bluetooth
@@ -48,6 +45,11 @@ SupplementaryGroups=bluetooth
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=kp4pra-tnc-web
+
+# WARNING: do NOT add ProtectKernelModules/ProtectKernelTunables/
+# ProtectControlGroups/SystemCallFilter/MemoryDenyWriteExecute here -
+# they IMPLY NoNewPrivileges regardless of the explicit =false above,
+# silently breaking every sudo-based provisioning action.
 
 [Install]
 WantedBy=multi-user.target kp4pra-tnc.target

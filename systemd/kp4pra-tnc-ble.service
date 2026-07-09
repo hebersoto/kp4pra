@@ -48,5 +48,11 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=kp4pra-tnc-ble
 
+# Raw-HCI legacy advertising fallback (kernel MGMT regression workaround):
+# hciconfig/hcitool need these. Ambient capabilities work fine alongside
+# NoNewPrivileges - unlike sudo, which NNP blocks.
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+
 [Install]
 WantedBy=multi-user.target kp4pra-tnc.target

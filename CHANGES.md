@@ -114,3 +114,20 @@ hardware does not support BLE advertising was premature - that board
 runs an affected kernel. Its legacy btmgmt advertising toggle works, so
 the raw-HCI fallback is expected to function there; chip-level support
 remains unconfirmed until tested on a healthy kernel.
+
+## 2026-07-09 - Pi 3 B+ validation and NoNewPrivileges findings
+
+Validated end-to-end on Raspberry Pi 3 B+ (Bookworm, kernel 6.12.93,
+affected by the MGMT regression): automated install with chained stage 2,
+port-80 redirect, Dire Wolf, legacy raw-HCI BLE fallback with working
+iPhone traffic, and Android/RFCOMM provisioning.
+
+Findings and fixes:
+- ProtectKernelModules/ProtectKernelTunables/ProtectControlGroups imply
+  NoNewPrivileges for non-root services and CANNOT be overridden by an
+  explicit NoNewPrivileges=false. This silently broke every sudo call in
+  the web service (restart, remount, pairing). Removed from the web unit
+  with a warning comment.
+- BLE bridge no longer uses sudo for the legacy-adv helper; the BLE unit
+  grants AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW instead, which
+  coexists with NoNewPrivileges. The legacy-adv sudoers entry is removed.

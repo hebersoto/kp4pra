@@ -33,8 +33,12 @@ def start_legacy_adv():
     """Raw-HCI legacy advertising (kernel MGMT regression workaround)."""
     import subprocess
     try:
-        r = subprocess.run(["sudo", "/usr/local/bin/kp4pra-legacy-adv"],
+        r = subprocess.run(["/usr/local/bin/kp4pra-legacy-adv"],
                            capture_output=True, timeout=10)
+        if r.returncode != 0:
+            print(f'[KP4PRA TNC BLE] legacy-adv rc={r.returncode} '
+                  f'stderr={r.stderr.decode(errors="replace").strip()[:300]}',
+                  flush=True)
         return r.returncode == 0
     except Exception:
         return False
