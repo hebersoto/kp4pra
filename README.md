@@ -74,10 +74,27 @@ See **[CHANGES.md](CHANGES.md)** for every fix from on-device bring-up
 
 ## Hardware validated
 
-- Orange Pi Zero 2W (1GB), Debian trixie, Python 3.13, BlueZ 5.7x
+Boards:
+- **Orange Pi Zero 2W** (1GB, Unisoc UWE5622 WiFi5/BT5.0) — Debian trixie,
+  Python 3.13, BlueZ 5.7x. Reference unit: full RFCOMM + BLE, on RF.
+- **Raspberry Pi 3 Model B+** (CYW43455, BT 4.2) — Raspberry Pi OS Lite
+  32-bit Bookworm, Python 3.11, BlueZ 5.66, kernel 6.12.9x. Full automated
+  install validated (chained stage 2, port-80 redirect). BLE works via the
+  legacy raw-HCI advertising fallback (current Pi kernels carry the
+  June-2026 MGMT regression); iPhone traffic and Android provisioning
+  confirmed.
+- **Raspberry Pi Zero W Rev 1.1** (BCM43438, BT 4.1, ARMv6 512MB) —
+  install validated (test mule). Android/RFCOMM works; BLE unconfirmed
+  (affected kernel; legacy fallback untested there). Low-memory caveats
+  in INSTALL.md.
+
+Radios / audio:
 - CM108 USB sound dongle with HID PTT
 - Yaesu FT-991A (USB audio codec + CP210x serial pair, PTT via RTS)
-- Clients: Android APRSDroid (RFCOMM), iPhone aprs.fi (BLE KISS)
+
+Clients:
+- Android APRSDroid (Bluetooth RFCOMM/SPP)
+- iPhone aprs.fi (BLE KISS)
 
 ## Status / roadmap
 
