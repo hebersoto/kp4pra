@@ -94,7 +94,10 @@ Validated to install, with caveats: single ARMv6 core + 512MB RAM.
   (extra-index-url=https://www.piwheels.org/simple - default on
   Raspberry Pi OS).
 - Use the 512MB tmpfs sizes from DEPLOYMENT.md.
-- **BLE on Zero W Rev 1.x**: affected by the June-2026 kernel regression (see KNOWN ISSUE above); the legacy raw-HCI fallback is expected to work but chip-level support on this old BCM43438 is unconfirmed. Android/RFCOMM works normally.
+- **BLE on Zero W Rev 1.x: WORKING** via the legacy raw-HCI advertising
+  fallback (iPhone aprs.fi connect and traffic confirmed). The kernel
+  MGMT regression affects this board like all current Pi kernels; the
+  fallback handles it automatically. Android/RFCOMM works normally.
 - Expect a slow web UI and high CPU from Dire Wolf's demodulator.
   The Zero 2 W or Orange Pi Zero 2W is the recommended platform.
 
