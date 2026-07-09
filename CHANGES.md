@@ -148,3 +148,20 @@ Findings and fixes:
 - BLE bridge no longer uses sudo for the legacy-adv helper; the BLE unit
   grants AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW instead, which
   coexists with NoNewPrivileges. The legacy-adv sudoers entry is removed.
+
+## 2026-07-09 - Zero W BLE operational; file-capabilities mechanism
+
+The Pi Zero W Rev 1.1 (BCM43438) now runs BLE fully: legacy raw-HCI
+fallback advertising, iPhone aprs.fi connect/traffic/reconnect all
+confirmed. The earlier "hardware not supported" verdict was wrong - the
+failures were the kernel MGMT regression throughout.
+
+Mechanism change: ambient capabilities on the unit proved unreliable
+across the Python-to-helper process chain on some kernels (worked on
+Bookworm/6.12 + 3B+, EPERM on Trixie/6.18 + Zero W despite identical
+grants; bare systemd-run with the same caps succeeded). Replaced with
+file capabilities on private tool copies: install.sh copies hcitool and
+hciconfig to /usr/local/lib/kp4pra/ with cap_net_admin,cap_net_raw+ep,
+and kp4pra-legacy-adv invokes those. Works under full unit hardening,
+no sudo, no ambient-cap inheritance. The legacy-adv sudoers entry is
+obsolete and removed.

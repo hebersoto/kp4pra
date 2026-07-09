@@ -84,9 +84,11 @@ Boards:
   June-2026 MGMT regression); iPhone traffic and Android provisioning
   confirmed.
 - **Raspberry Pi Zero W Rev 1.1** (BCM43438, BT 4.1, ARMv6 512MB) —
-  install validated (test mule). Android/RFCOMM works; BLE unconfirmed
-  (affected kernel; legacy fallback untested there). Low-memory caveats
-  in INSTALL.md.
+  Raspberry Pi OS Lite 32-bit, kernel 6.18-rpt (affected by the MGMT
+  regression). Full BLE operational via the legacy raw-HCI fallback with
+  capability-bearing tool copies; iPhone aprs.fi traffic confirmed.
+  Android/RFCOMM works. Low-memory caveats in INSTALL.md; fine as a
+  single-user unit, the Zero 2 W or Orange Pi is more comfortable.
 
 Radios / audio:
 - CM108 USB sound dongle with HID PTT

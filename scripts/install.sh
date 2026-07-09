@@ -160,6 +160,19 @@ install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-ro"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-fix-bt-perms" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-legacy-adv"   /usr/local/bin/
 
+log "Creating capability-bearing HCI tool copies for the legacy-adv fallback"
+# File capabilities on private copies: works regardless of unit hardening,
+# capability inheritance quirks, or NoNewPrivileges (which blocks sudo).
+mkdir -p /usr/local/lib/kp4pra
+for t in hcitool hciconfig; do
+    if [ -x "/usr/bin/$t" ]; then
+        cp "/usr/bin/$t" /usr/local/lib/kp4pra/
+        setcap cap_net_admin,cap_net_raw+ep "/usr/local/lib/kp4pra/$t" ||             warn "setcap failed for $t - legacy BLE advertising fallback may not work"
+    else
+        warn "$t not found - install bluez (legacy BLE advertising fallback needs it)"
+    fi
+done
+
 log "Installing tmpfiles rule for /run/kp4pra-tnc"
 install -m 644 "$PROJECT_DIR/config/tmpfiles-kp4pra-tnc.conf" /etc/tmpfiles.d/kp4pra-tnc.conf
 systemd-tmpfiles --create /etc/tmpfiles.d/kp4pra-tnc.conf
