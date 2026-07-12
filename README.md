@@ -87,6 +87,14 @@ Boards:
   legacy raw-HCI advertising fallback (current Pi kernels carry the
   June-2026 MGMT regression); iPhone traffic and Android provisioning
   confirmed.
+- **Raspberry Pi Zero 2 W Rev 1.0** (quad-core, 512MB) — Raspberry Pi OS
+  Lite 32-bit, Debian 13 trixie, kernel 6.18.34-v7 (affected by the MGMT
+  regression; legacy raw-HCI fallback active). Fully validated: automated
+  install, BLE with iPhone aprs.fi (incl. 20h soak and WiFi-AP
+  coexistence), Android RFCOMM provisioning incl. remove + reboot path,
+  KP4PRA hotspot mode. Note: the board silkscreen's tiny "2 W" is easily
+  misread as an original Zero W — `cat /proc/device-tree/base/model` (or
+  /sys/firmware/devicetree/base/model) is authoritative.
 - **Raspberry Pi Zero W Rev 1.1** (BCM43438, BT 4.1, ARMv6 512MB) —
   Raspberry Pi OS Lite 32-bit, kernel 6.18-rpt (affected by the MGMT
   regression). Full BLE operational via the legacy raw-HCI fallback with

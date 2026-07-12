@@ -189,3 +189,27 @@ WiFi connection profile exists (image flashed without WiFi credentials)
 - out-of-box access is: power on, join KP4PRA, browse 172.16.0.1.
 Explicit mode_at_boot settings still win. Considered but not yet
 implemented: timeout-based fallback when configured WiFi is unreachable.
+
+
+## 2026-07-12 - Zero 2 W full validation session
+
+Board identity: Raspberry Pi Zero 2 W Rev 1.0 (devicetree-confirmed;
+silkscreen easily misread as original Zero W). Raspberry Pi OS Lite
+32-bit, Debian 13 trixie, kernel 6.18.34-v7 (MGMT-regression kernel -
+legacy fallback in use throughout).
+
+Validated: BLE incl. iPhone traffic, 20h advertising soak, and
+WiFi-AP + BLE concurrency; KP4PRA hotspot; Android provisioning
+end-to-end from both the wizard and the Bluetooth Management page,
+including the remove -> reboot -> clean-recovery path.
+
+Findings fixed during the session (committed separately):
+- kp4pra-tnc-agent.service inactive broke non-interactive pairing
+  (workflow needs an agent preflight - queued for web pass).
+- Installed sudoers lacked fix-bt-perms and wifi-mode lines vs repo.
+- Legacy-adv scan response advertised "KP4PRA TNC" in hardcoded hex;
+  now "KP4PRA" to match the adapter alias and MGMT LocalName.
+- remove_device used an interactive bluetoothctl session that echoed
+  commands without executing them - broken since inception on all
+  boards; rewritten argument-style with state verification, along
+  with disconnect_device.

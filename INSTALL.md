@@ -7,7 +7,7 @@ Requires Python 3.11+ and BlueZ 5.6x+.
 ## 1. Flash the OS
 - Orange Pi Zero 2W: Armbian minimal/CLI image → SD card.
 - Raspberry Pi Zero 2 W: Raspberry Pi OS Lite via Raspberry Pi Imager —
-  **32-bit or 64-bit both work** (64-bit validated). On this 512MB board
+  **32-bit or 64-bit both work** (both validated; 32-bit on Trixie is the reference configuration). On this 512MB board
   the 32-bit image leaves more free RAM; choose it if memory is tight.
   Preconfigure user `kp4pra`, WiFi, and SSH in the imager. (WiFi may be
   left unconfigured for headless setup — the TNC then starts its own
