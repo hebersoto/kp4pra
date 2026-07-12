@@ -313,6 +313,18 @@ fi
 
 echo ""
 log "═══════════════════════════════════════════════════════"
+# ── WiFi: unblock and start the KP4PRA hotspot ──────────────────────────────
+rfkill unblock all 2>/dev/null || true
+nmcli radio wifi on 2>/dev/null || true
+if nmcli -t -f DEVICE connection show --active 2>/dev/null | grep -q "^wlan0$"; then
+    warn "Skipping automatic hotspot start: an active WiFi connection is in use"
+    warn "(starting AP mode would drop it). Start it manually when ready:"
+    warn "  sudo kp4pra-wifi-mode ap"
+else
+    log "Starting KP4PRA hotspot (AP mode)"
+    /usr/local/bin/kp4pra-wifi-mode ap || warn "Hotspot start failed - run manually: sudo kp4pra-wifi-mode ap"
+fi
+
 log "  KP4PRA TNC installation complete!"
 log "═══════════════════════════════════════════════════════"
 echo ""

@@ -43,9 +43,10 @@ cd direwolf && mkdir build && cd build
 cmake .. && make -j2 && sudo make install
 ```
 Verify: `direwolf --help` and `cm108` (lists CM108 HID→ADEVICE mapping).
-Create an initial `/home/kp4pra/direwolf.conf` (the web UI will regenerate
-it later; a minimal of two lines  `ADEVICE plughw:1,0` / `MYCALL N0CALL` file is enough
-to start).
+The initial direwolf.conf is created automatically by the installer
+(a minimal config is seeded on /rw with a symlink at
+/home/kp4pra/direwolf.conf). Configure your station via the web UI
+after installation.
 
 ## 4. Writable partition (production layout)
 Create a second partition on the SD card mounted at `/rw`
@@ -62,6 +63,11 @@ sudo bash scripts/install.sh
 Installs: system user, venv + pinned Python deps, systemd units
 (bridges, web, pairing agent, BlueZ bind mount, perms fix), sudoers,
 helper scripts, tmpfiles rule, bluetoothd -C compat mode, volatile journald.
+
+At the end of the install the KP4PRA hotspot starts automatically
+(unless you are installing over a WiFi connection, in which case start
+it manually: `sudo kp4pra-wifi-mode ap`). See section 6b for the SSID,
+password, and web UI address.
 
 ## 6. KP4PRA TNC — stage 2 (Dire Wolf integration)
 
