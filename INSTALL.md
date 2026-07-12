@@ -6,8 +6,12 @@ Requires Python 3.11+ and BlueZ 5.6x+.
 
 ## 1. Flash the OS
 - Orange Pi Zero 2W: Armbian minimal/CLI image → SD card.
-- Raspberry Pi Zero 2 W: Raspberry Pi OS Lite (64-bit) via Raspberry Pi
-  Imager; preconfigure user `kp4pra`, WiFi, and SSH in the imager.
+- Raspberry Pi Zero 2 W: Raspberry Pi OS Lite via Raspberry Pi Imager —
+  **32-bit or 64-bit both work** (64-bit validated). On this 512MB board
+  the 32-bit image leaves more free RAM; choose it if memory is tight.
+  Preconfigure user `kp4pra`, WiFi, and SSH in the imager. (WiFi may be
+  left unconfigured for headless setup — the TNC then starts its own
+  KP4PRA hotspot at boot; see section 6b.)
 Boot, log in as `kp4pra`, and update: `sudo apt update && sudo apt upgrade -y`
 
 > **KNOWN ISSUE (June 2026) — BLE advertising broken on current Raspberry Pi
