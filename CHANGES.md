@@ -181,3 +181,11 @@ kp4pra-wifi-mode.service applies mode_at_boot. Web-UI control card:
 queued for the capability-gating web pass. Note: AP mode disconnects
 the board from client WiFi (single radio) - use the Ethernet dongle or
 the AP itself for management during field configuration.
+
+## 2026-07-11 - Headless hotspot fallback at boot
+
+kp4pra-wifi-mode boot now starts the AP automatically when no client
+WiFi connection profile exists (image flashed without WiFi credentials)
+- out-of-box access is: power on, join KP4PRA, browse 172.16.0.1.
+Explicit mode_at_boot settings still win. Considered but not yet
+implemented: timeout-based fallback when configured WiFi is unreachable.
