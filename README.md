@@ -25,6 +25,10 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
   pairing, no reboot, using the standard KISS-over-BLE UUIDs.
 - **Both bridges** pass raw KISS binary, auto-reconnect if Dire Wolf
   restarts, and survive idle periods (no traffic ≠ disconnect).
+- **WiFi access point (field mode)**: the TNC can broadcast its own
+  network (default SSID KP4PRA) so a phone joins it directly and reaches
+  the web UI at http://172.16.0.1/ - no home WiFi needed. Switchable
+  between client and AP modes; NetworkManager-based.
 - **Web UI** (FastAPI + Jinja2, mobile-friendly): dashboard with live
   status, Bluetooth pairing wizards for Android and iPhone, service
   control (bridges + Dire Wolf), live Dire Wolf traffic view, and a

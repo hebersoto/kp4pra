@@ -153,12 +153,14 @@ cp "$PROJECT_DIR/systemd/kp4pra-tnc-web.service"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/var-lib-bluetooth.mount"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-agent.service"    /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-bt-perms.service"     /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-wifi-mode.service"   /etc/systemd/system/
 
 log "Installing helper scripts to /usr/local/bin"
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-rw"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-ro"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-fix-bt-perms" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-legacy-adv"   /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-wifi-mode"   /usr/local/bin/
 
 log "Creating capability-bearing HCI tool copies for the legacy-adv fallback"
 # File capabilities on private copies: works regardless of unit hardening,
@@ -248,6 +250,7 @@ systemctl enable kp4pra-tnc-ble.service
 systemctl enable kp4pra-tnc-web.service
 systemctl enable kp4pra-tnc-agent.service
 systemctl enable kp4pra-bt-perms.service
+systemctl enable kp4pra-wifi-mode.service
 
 log "Starting KP4PRA TNC services"
 # Start the bind mount first

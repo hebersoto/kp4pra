@@ -165,3 +165,51 @@ hciconfig to /usr/local/lib/kp4pra/ with cap_net_admin,cap_net_raw+ep,
 and kp4pra-legacy-adv invokes those. Works under full unit hardening,
 no sudo, no ambient-cap inheritance. The legacy-adv sudoers entry is
 obsolete and removed.
+
+
+## 2026-07-11 - WiFi access point mode (Pi Zero 2 W validation)
+
+New field-mode feature: kp4pra-wifi-mode switches wlan0 between client
+WiFi and a KP4PRA hotspot (NetworkManager AP profile, ipv4 shared =
+built-in DHCP via dnsmasq, web UI at http://172.16.0.1/). Validated on
+Pi Zero 2 W. Hard-won parameters: explicit RSN/CCMP and PMF DISABLED
+(brcmfmac AP mode times out in 802.1X setup with PMF), pinned channel,
+rfkill unblock + regulatory-domain pre-flight (fresh images ship WiFi
+soft-blocked / country unset). wifi: section in config.yaml (ssid,
+password, channel, mode_at_boot; boot default client). Boot service
+kp4pra-wifi-mode.service applies mode_at_boot. Web-UI control card:
+queued for the capability-gating web pass. Note: AP mode disconnects
+the board from client WiFi (single radio) - use the Ethernet dongle or
+the AP itself for management during field configuration.
+
+
+## 2026-07-11 - WiFi access point mode (Pi Zero 2 W validation)
+
+New field-mode feature: kp4pra-wifi-mode switches wlan0 between client
+WiFi and a KP4PRA hotspot (NetworkManager AP profile, ipv4 shared =
+built-in DHCP via dnsmasq, web UI at http://172.16.0.1/). Validated on
+Pi Zero 2 W. Hard-won parameters: explicit RSN/CCMP and PMF DISABLED
+(brcmfmac AP mode times out in 802.1X setup with PMF), pinned channel,
+rfkill unblock + regulatory-domain pre-flight (fresh images ship WiFi
+soft-blocked / country unset). wifi: section in config.yaml (ssid,
+password, channel, mode_at_boot; boot default client). Boot service
+kp4pra-wifi-mode.service applies mode_at_boot. Web-UI control card:
+queued for the capability-gating web pass. Note: AP mode disconnects
+the board from client WiFi (single radio) - use the Ethernet dongle or
+the AP itself for management during field configuration.
+
+
+## 2026-07-11 - WiFi access point mode (Pi Zero 2 W validation)
+
+New field-mode feature: kp4pra-wifi-mode switches wlan0 between client
+WiFi and a KP4PRA hotspot (NetworkManager AP profile, ipv4 shared =
+built-in DHCP via dnsmasq, web UI at http://172.16.0.1/). Validated on
+Pi Zero 2 W. Hard-won parameters: explicit RSN/CCMP and PMF DISABLED
+(brcmfmac AP mode times out in 802.1X setup with PMF), pinned channel,
+rfkill unblock + regulatory-domain pre-flight (fresh images ship WiFi
+soft-blocked / country unset). wifi: section in config.yaml (ssid,
+password, channel, mode_at_boot; boot default client). Boot service
+kp4pra-wifi-mode.service applies mode_at_boot. Web-UI control card:
+queued for the capability-gating web pass. Note: AP mode disconnects
+the board from client WiFi (single radio) - use the Ethernet dongle or
+the AP itself for management during field configuration.

@@ -1,0 +1,54 @@
+#!/bin/bash
+# KP4PRA TNC - switch wlan0 between client WiFi and the KP4PRA hotspot.
+# Usage: kp4pra-wifi-mode ap|client|status|boot
+# Parameters validated on Pi Zero 2 W (brcmfmac): explicit RSN/CCMP,
+# PMF disabled (chip's AP mode fails 802.1X setup with PMF), pinned
+# channel, rfkill/country pre-flight.
+CONF="/rw/kp4pra-tnc/config.yaml"
+val() { python3 -c "
+import yaml,sys
+try:
+    c=yaml.safe_load(open('$CONF')) or {}
+    print(c.get('wifi',{}).get('$1','$2'))
+except Exception:
+    print('$2')" 2>/dev/null; }
+SSID="$(val ssid KP4PRA)"
+PASS="$(val password qwerty1234)"
+CHAN="$(val channel 6)"
+APIP="172.16.0.1"
+
+preflight() {
+    rfkill unblock wifi 2>/dev/null || rfkill unblock all 2>/dev/null
+    # AP mode requires a regulatory domain; set a default if unset
+    iw reg get 2>/dev/null | grep -q "country 00" && iw reg set US 2>/dev/null
+}
+
+case "$1" in
+  ap)
+    preflight
+    nmcli connection delete KP4PRA-AP >/dev/null 2>&1
+    nmcli connection add type wifi ifname wlan0 con-name KP4PRA-AP autoconnect no \
+        ssid "$SSID" 802-11-wireless.mode ap 802-11-wireless.band bg \
+        802-11-wireless.channel "$CHAN" \
+        wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
+        wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp \
+        wifi-sec.pmf disable \
+        ipv4.method shared ipv4.addresses ${APIP}/24 >/dev/null
+    nmcli connection up KP4PRA-AP && \
+      echo "AP mode: SSID $SSID, web UI at http://$APIP/ (client WiFi disconnected)"
+    ;;
+  client)
+    nmcli connection down KP4PRA-AP 2>/dev/null
+    nmcli device connect wlan0 2>/dev/null || true
+    echo "Client mode: rejoining configured WiFi"
+    ;;
+  status)
+    nmcli -t -f NAME connection show --active 2>/dev/null | grep -q "^KP4PRA-AP$" \
+      && echo "ap" || echo "client"
+    ;;
+  boot)
+    [ "$(val mode_at_boot client)" = "ap" ] && exec "$0" ap
+    echo "Boot mode: client (default)"
+    ;;
+  *) echo "Usage: kp4pra-wifi-mode ap|client|status|boot"; exit 1 ;;
+esac

@@ -43,3 +43,12 @@ web:
   password: ""
   port: 8088
   username: admin
+
+# WiFi access point (field mode). The TNC can broadcast its own network
+# so a phone can join and reach the web UI at http://172.16.0.1/ with no
+# home WiFi. Switch modes: sudo kp4pra-wifi-mode ap|client
+wifi:
+  ssid: "KP4PRA"
+  password: "qwerty1234"    # CHANGE THIS - default is public knowledge
+  channel: 6
+  mode_at_boot: "client"    # "client" = join configured WiFi; "ap" = broadcast hotspot

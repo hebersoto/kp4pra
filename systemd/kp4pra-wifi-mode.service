@@ -1,0 +1,11 @@
+[Unit]
+Description=KP4PRA TNC - Apply configured WiFi mode at boot (client or AP)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kp4pra-wifi-mode boot
+
+[Install]
+WantedBy=multi-user.target
