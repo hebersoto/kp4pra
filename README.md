@@ -1,5 +1,7 @@
 # KP4PRA TNC
 
+![KP4PRA TNC](docs/images/kp4pra-tnc.png)
+
 **Bluetooth KISS TNC bridge and web management interface for Orange Pi /
 Raspberry Pi running [Dire Wolf](https://github.com/wb2osz/direwolf).**
 
