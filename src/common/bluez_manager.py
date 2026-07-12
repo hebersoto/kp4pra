@@ -418,28 +418,45 @@ def untrust_device(address: str) -> tuple[bool, str]:
 
 
 def remove_device(address: str) -> tuple[bool, str]:
-    """
-    Remove/unpair a device. Requires writable /var/lib/bluetooth.
-    Returns (success, message).
-    """
+    """Remove (unpair) a device. Non-interactive, verified against
+    actual device state - the old interactive-stdin bluetoothctl session
+    echoed commands without reliably executing them."""
     _validate_mac(address)
+    import subprocess, time
     try:
-        out = _run_bluetoothctl(f"remove {address}")
-        if "removed" in out.lower() or "succeeded" in out.lower():
+        proc = subprocess.run(["bluetoothctl", "remove", address],
+                              capture_output=True, timeout=15)
+        time.sleep(0.5)
+        try:
+            info = get_device_info(address)
+            still_paired = bool(info.get("paired"))
+        except Exception:
+            still_paired = False  # device gone entirely = removed
+        if not still_paired:
             return True, "Device removed"
-        return False, f"Remove command output: {out.strip()}"
+        out = (proc.stdout.decode(errors="replace")
+               + proc.stderr.decode(errors="replace")).strip()[-200:]
+        return False, f"Device still paired after remove. Output: {out}"
     except Exception as e:
         return False, str(e)
 
 
 def disconnect_device(address: str) -> tuple[bool, str]:
-    """Disconnect a connected device."""
+    """Disconnect a device (runtime action - does not unpair).
+    Verified against actual device state."""
     _validate_mac(address)
+    import subprocess, time
     try:
-        out = _run_bluetoothctl(f"disconnect {address}")
-        if "successful" in out.lower() or "disconnected" in out.lower():
+        subprocess.run(["bluetoothctl", "disconnect", address],
+                       capture_output=True, timeout=15)
+        time.sleep(0.5)
+        try:
+            info = get_device_info(address)
+            if not info.get("connected"):
+                return True, "Device disconnected"
+            return False, "Disconnect command ran but device is still connected"
+        except Exception:
             return True, "Device disconnected"
-        return False, f"Disconnect output: {out.strip()}"
     except Exception as e:
         return False, str(e)
 
