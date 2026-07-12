@@ -1,0 +1,128 @@
+#!/bin/bash
+
+# =============================
+# Colors
+# =============================
+GREEN="\033[1;32m"
+RED="\033[1;31m"
+YELLOW="\033[1;33m"
+WHITE="\033[1;37m"
+MAGENTA="\033[1;35m"
+RESET="\033[0m"
+
+# =============================
+# Disk Available
+# =============================
+DISK_AVAILABLE="$(df -h / 2>/dev/null | awk 'NR==2 {print $4}')"
+[ -z "$DISK_AVAILABLE" ] && DISK_AVAILABLE="Not found"
+
+# =============================
+# Hostname
+# =============================
+HOSTNAME_VAL="$(hostname 2>/dev/null)"
+[ -z "$HOSTNAME_VAL" ] && HOSTNAME_VAL="Not found"
+
+# =============================
+# rnsh Connect ID
+# =============================
+RETICULUM_ID="Not found"
+if command -v journalctl >/dev/null 2>&1; then
+    RETICULUM_ID="$(journalctl -u rnsh -n 100 --no-pager 2>/dev/null \
+        | sed -n 's/.*rnsh listening for commands on <\([^>]*\)>.*/\1/p' \
+        | tail -n1)"
+fi
+if [ -z "$RETICULUM_ID" ] || [ "$RETICULUM_ID" = "Not found" ]; then
+    RETICULUM_ID_FILE="/home/pi/.reticulum/rnsh_identity_new"
+    if [ -f "$RETICULUM_ID_FILE" ] && command -v rnid >/dev/null 2>&1; then
+        RETICULUM_ID="$(rnid -i "$RETICULUM_ID_FILE" 2>/dev/null \
+            | sed -n 's/.*<\([^>]*\)>.*/\1/p' \
+            | head -n1)"
+    fi
+fi
+[ -z "$RETICULUM_ID" ] && RETICULUM_ID="Not found"
+
+# =============================
+# Primary local IP
+# =============================
+NETWORK_IP="$(ip -4 -o addr show up scope global 2>/dev/null | awk '
+    $2 ~ /^(eth|en|wlan|wl)/ {
+        split($4,a,"/");
+        print a[1];
+        exit
+    }'
+)"
+[ -z "$NETWORK_IP" ] && NETWORK_IP="Not found"
+
+# =============================
+# Public IP (ipinfo.io)
+# =============================
+PUBLIC_IP="$(curl -s --max-time 2 https://ipinfo.io/json | awk -F'"' '/"ip":/ {print $4}')"
+[ -z "$PUBLIC_IP" ] && PUBLIC_IP="Not found"
+
+# =============================
+# Outbound Interface
+# =============================
+OUTBOUND_IFACE="$(ip route get 1.1.1.1 2>/dev/null | awk '{
+    for(i=1;i<=NF;i++) if($i=="dev") {print $(i+1); exit}
+}')"
+[ -z "$OUTBOUND_IFACE" ] && OUTBOUND_IFACE="Not found"
+
+# =============================
+# All interfaces
+# =============================
+ALL_IFACES="$(
+for iface in $(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d@ -f1); do
+    [ "$iface" = "lo" ] && continue
+    IPS="$(ip -4 -o addr show dev "$iface" 2>/dev/null | awk '{split($4,a,"/"); print a[1]}')"
+    RAW_STATE="$(cat /sys/class/net/$iface/operstate 2>/dev/null | tr '[:lower:]' '[:upper:]')"
+    [ -z "$RAW_STATE" ] && RAW_STATE="UNKNOWN"
+    if [[ "$iface" =~ ^(tun[0-9]*|tap[0-9]*|wg[0-9]*|tailscale[0-9]*|zt[a-zA-Z0-9]*|vpn[0-9]*|ppp[0-9]*)$ ]]; then
+        if [ -n "$IPS" ]; then STATE="UP"; else STATE="DOWN"; fi
+    else
+        STATE="$RAW_STATE"
+    fi
+    case "$STATE" in
+        UP) COLOR="$GREEN" ;;
+        DOWN) COLOR="$RED" ;;
+        *) COLOR="$YELLOW" ;;
+    esac
+    if [ -n "$IPS" ]; then
+        FIRST=1
+        while IFS= read -r ipaddr; do
+            [ -z "$ipaddr" ] && continue
+            if [ $FIRST -eq 1 ]; then
+                echo -e "${WHITE}$(printf '%-16s' "$iface:")${RESET} ${COLOR}$(printf '%-8s' "$STATE")${RESET} ${MAGENTA}$ipaddr${RESET}"
+                FIRST=0
+            else
+                echo -e "$(printf '%-16s' "") $(printf '%-8s' "") ${MAGENTA}$ipaddr${RESET}"
+            fi
+        done <<< "$IPS"
+    else
+        echo -e "${WHITE}$(printf '%-16s' "$iface:")${RESET} ${COLOR}$(printf '%-8s' "$STATE")${RESET} ${MAGENTA}No IPv4${RESET}"
+    fi
+done
+)"
+[ -z "$ALL_IFACES" ] && ALL_IFACES="Not found"
+
+# =============================
+# Banner
+# =============================
+echo -e "${GREEN}#    # ######  #       ######  ######   ##### ${RESET}"
+echo -e "${GREEN}#   #  #     # #    #  #     # #     # #     #${RESET}"
+echo -e "${GREEN}#  #   #     # #    #  #     # #     # #     #${RESET}"
+echo -e "${GREEN}###    ######  #    #  ######  ######  #######${RESET}"
+echo -e "${GREEN}#  #   #       ####### #       #   #   #     #${RESET}"
+echo -e "${GREEN}#   #  #            #  #       #    #  #     #${RESET}"
+echo -e "${GREEN}#    # #            #  #       #     # #     #${RESET}"
+echo -e "${WHITE}By KP3M Heber Soto${RESET}"
+echo
+echo -e "${GREEN}################### KP4PRA-NETWORK ###################${RESET}"
+echo -e "${WHITE}Hostname:${RESET}            ${MAGENTA}${HOSTNAME_VAL}${RESET}"
+echo -e "${WHITE}Disk Available:${RESET}      ${MAGENTA}${DISK_AVAILABLE}${RESET}"
+echo -e "${WHITE}rnsh Connect ID:${RESET}     ${MAGENTA}${RETICULUM_ID}${RESET}"
+echo -e "${WHITE}Primary Network IP:${RESET}  ${MAGENTA}${NETWORK_IP}${RESET}"
+echo -e "${WHITE}Public IP:${RESET}           ${MAGENTA}${PUBLIC_IP}${RESET}"
+echo -e "${WHITE}Outbound Interface:${RESET}  ${MAGENTA}${OUTBOUND_IFACE}${RESET}"
+echo -e "${WHITE}All Interfaces:${RESET}"
+echo -e "${ALL_IFACES}"
+echo

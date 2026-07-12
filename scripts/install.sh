@@ -313,6 +313,11 @@ fi
 
 echo ""
 log "═══════════════════════════════════════════════════════"
+# ── Login MOTD splash ────────────────────────────────────────────────────────
+log "Installing KP4PRA login banner (MOTD)"
+install -m 755 "$PROJECT_DIR/config/motd/99-kp4pra-network" /etc/update-motd.d/
+rm -f /etc/motd && touch /etc/motd && chmod 644 /etc/motd
+
 # ── WiFi: unblock and start the KP4PRA hotspot ──────────────────────────────
 rfkill unblock all 2>/dev/null || true
 nmcli radio wifi on 2>/dev/null || true
