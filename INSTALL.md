@@ -73,10 +73,45 @@ ADEVICE self-heal at boot, direwolf.conf on /rw with symlink,
 group memberships (systemd-journal, audio, dialout), Dire Wolf
 control sudoers, port 80→8088 redirect.
 
+## 6b. Accessing the web interface — two ways
+
+**On your home/shop network (client mode, the default):** the Pi joins
+the WiFi you configured at flash time. Find its address (`hostname -I`
+on the console, your router's client list, or `http://kp4pra.local/`)
+and browse to it — port 80 works, no :8088 needed.
+
+**Anywhere, via the built-in hotspot (AP / field mode):** the TNC can
+broadcast its own WiFi network so a phone connects directly — no other
+network needed. Switch modes:
+
+```bash
+sudo kp4pra-wifi-mode ap        # start the hotspot
+sudo kp4pra-wifi-mode client    # return to your configured WiFi
+sudo kp4pra-wifi-mode status
+```
+
+Hotspot defaults (change them on the Config page / in
+/rw/kp4pra-tnc/config.yaml under `wifi:` — especially the password):
+
+| Setting | Default |
+|---|---|
+| SSID | `KP4PRA` |
+| Password | `qwerty1234` |
+| Web UI | `http://172.16.0.1/` |
+
+> **Notes:** AP mode disconnects the board from your home WiFi (one
+> radio) — switch back with `kp4pra-wifi-mode client` from a device on
+> the KP4PRA network, or use a USB Ethernet adapter for uninterrupted
+> management. To make the hotspot start automatically at boot (field
+> units), set `wifi.mode_at_boot: "ap"` in the config. Bluetooth
+> KISS (Android and iPhone) works the same in either mode.
+
 ## 7. First-boot verification
 - `http://<host>:8088` (or plain `http://<host>/`) → Dashboard all green.
 - Config page → Station Information → set callsign/grid/etc → Detect
   sound card → Preview → Apply to Dire Wolf.
+- Optional: `sudo kp4pra-wifi-mode ap`, join the KP4PRA WiFi from a
+  phone (password above), browse http://172.16.0.1/ — then switch back.
 - Pair Android via the Android wizard (Just Works — confirm on phone).
 - iPhone: aprs.fi → BLE KISS → select the TNC (no iOS pairing).
 - Services page → Dire Wolf Traffic → Refresh: RF decodes appear.
