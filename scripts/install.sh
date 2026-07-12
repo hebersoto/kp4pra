@@ -52,6 +52,7 @@ bluetoothctl --version >/dev/null 2>&1 || die "bluetoothctl not found. Install: 
 sdptool --help >/dev/null 2>&1 || warn "sdptool not found - install bluez-tools (required for RFCOMM SDP registration)"
 python3 -m venv --help >/dev/null 2>&1 || die "python3-venv not available. Install: apt install python3-venv (or python3.X-venv for your version)"
 command -v bt-agent >/dev/null 2>&1 || warn "bt-agent not found - install bluez-tools (required for Just Works pairing agent)"
+command -v nmcli >/dev/null 2>&1 || warn "NetworkManager (nmcli) not found - WiFi hotspot mode requires it: apt install network-manager"
 
 if ! mountpoint -q /rw 2>/dev/null && ! [ -d /rw/kp4pra-tnc ]; then
     warn "/rw does not appear to be a separate writable partition."
@@ -251,6 +252,19 @@ systemctl enable kp4pra-tnc-web.service
 systemctl enable kp4pra-tnc-agent.service
 systemctl enable kp4pra-bt-perms.service
 systemctl enable kp4pra-wifi-mode.service
+
+# Seed the wifi: section into configs that predate the hotspot feature
+if [ -f "$CONFIG_DIR/config.yaml" ] && ! grep -q "^wifi:" "$CONFIG_DIR/config.yaml"; then
+    log "Seeding wifi section into existing config.yaml"
+    cat >> "$CONFIG_DIR/config.yaml" << 'WIFIEOF'
+
+wifi:
+  ssid: "KP4PRA"
+  password: "qwerty1234"    # CHANGE THIS - default is public knowledge
+  channel: 6
+  mode_at_boot: "client"
+WIFIEOF
+fi
 
 log "Starting KP4PRA TNC services"
 # Start the bind mount first
