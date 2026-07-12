@@ -19,6 +19,9 @@ APIP="172.16.0.1"
 
 preflight() {
     rfkill unblock wifi 2>/dev/null || rfkill unblock all 2>/dev/null
+    # NM keeps its own software radio switch (separate from rfkill); it is
+    # often off on images flashed without WiFi credentials
+    nmcli radio wifi on 2>/dev/null
     # AP mode requires a regulatory domain; set a default if unset
     iw reg get 2>/dev/null | grep -q "country 00" && iw reg set US 2>/dev/null
 }
