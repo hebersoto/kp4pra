@@ -18,3 +18,4 @@ kp4pra-tnc ALL=(ALL) NOPASSWD: /usr/local/bin/kp4pra-remount-ro
 # Reboot
 kp4pra-tnc ALL=(ALL) NOPASSWD: /bin/systemctl reboot
 kp4pra-tnc ALL=(ALL) NOPASSWD: /usr/local/bin/kp4pra-wifi-mode
+kp4pra-tnc ALL=(ALL) NOPASSWD: /usr/local/bin/kp4pra-fix-bt-perms
