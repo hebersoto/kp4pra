@@ -129,4 +129,5 @@ Station stage.
 
 ## License
 
-Private repository — all rights reserved by the owner.
+MIT — see [LICENSE](LICENSE). Free to use, modify, and share; attribution
+appreciated. 73 de KP4PRA.
