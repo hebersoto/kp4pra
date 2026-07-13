@@ -331,6 +331,7 @@ else
 fi
 
 log "  KP4PRA TNC installation complete!"
+log "  Version: $(cat "$APP_DIR/VERSION" 2>/dev/null || echo dev)"
 log "═══════════════════════════════════════════════════════"
 echo ""
 log "  Web interface: http://$(hostname).local:8088"

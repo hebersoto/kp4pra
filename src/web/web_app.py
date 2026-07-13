@@ -53,6 +53,19 @@ app = FastAPI(title=PRODUCT_NAME, docs_url=None, redoc_url=None, openapi_url=Non
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
+def _read_version():
+    for p in ("/opt/kp4pra-tnc/VERSION", __file__.rsplit("/src/", 1)[0] + "/VERSION"):
+        try:
+            return open(p).read().strip()
+        except Exception:
+            continue
+    return "dev"
+
+APP_VERSION = _read_version()
+templates.env.globals["app_version"] = APP_VERSION
+
+
+
 _config = None
 
 def get_config():
@@ -201,6 +214,11 @@ async def config_page(request: Request, _auth=Depends(check_auth)):
 # ─────────────────────────────────────────────────────────────────────────────
 # API: Live status (JSON)
 # ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/version")
+async def api_version():
+    return JSONResponse({"version": APP_VERSION})
+
 
 @app.get("/api/status")
 async def api_status(_auth=Depends(check_auth)):
