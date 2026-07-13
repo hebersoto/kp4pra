@@ -11,7 +11,15 @@ UI for setup, pairing, Dire Wolf configuration, and live traffic
 monitoring. Designed for unattended operation on a read-only filesystem
 with no persistent logs (SD-card friendly).
 
-Built by KP4PRA. Station example: KP3M, FK68wd, Puerto Rico.
+Provides Bluetooth Low Energy (BLE) connectivity for iPhone APRS
+applications such as APRS.fi and other applications that require BLE
+communication, while also providing seamless Bluetooth pairing for
+Android devices. KP4PRA TNC is compatible with applications including
+WOAD, APRSDroid, APRS.fi, and RadioMail. It supports multiple radio and
+sound-card interfaces, including CM108-based devices, DigiRig Lite,
+Mobilink, and additional interfaces currently being implemented.
+
+Built by KP4PRA/KP3M Heber Soto — np4jn@outlook.com
 
 ## What it does
 Android (APRSDroid) ──RFCOMM/SPP──┐
