@@ -111,6 +111,17 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
             if not isinstance(c, int) or not (1 <= c <= 30):
                 errors.append(f"rfcomm.channel must be 1-30")
 
+    if "wifi" in updates:
+        wf = updates["wifi"]
+        if "client_ssid" in wf:
+            s = wf["client_ssid"]
+            if not isinstance(s, str) or len(s) > 32:
+                errors.append("wifi.client_ssid must be 0-32 characters")
+        if "client_password" in wf:
+            pw = wf["client_password"]
+            if not isinstance(pw, str) or (len(pw) != 0 and not (8 <= len(pw) <= 63)):
+                errors.append("wifi.client_password must be 8-63 characters (WPA) or blank")
+
     if "station" in updates:
         st = updates["station"]
         import re as _re

@@ -231,6 +231,30 @@
   </div>
 </div>
 
+<!-- WiFi Client Network -->
+<div class="card">
+  <div class="card-title"><span class="icon">📶</span> WiFi Client Network</div>
+  <div class="form-hint" style="margin-bottom:0.8rem">
+    The network the TNC joins for internet. Leave SSID blank to boot as the
+    KP4PRA hotspot. If set but unreachable, the TNC falls back to hotspot mode
+    after 5 minutes. Changes take effect on reboot, or use the Services page to
+    switch modes now.
+  </div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="wifi-client-ssid">Client WiFi SSID</label>
+      <input class="form-input" id="wifi-client-ssid"
+             value="{{ config.wifi.client_ssid if config.wifi is defined else '' }}"
+             placeholder="(blank = hotspot mode)">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="wifi-client-pass">Client WiFi Password</label>
+      <input class="form-input" id="wifi-client-pass" type="password"
+             placeholder="(leave blank to keep current)">
+    </div>
+  </div>
+</div>
+
 <!-- Web Interface -->
 <div class="card">
   <div class="card-title"><span class="icon">🌍</span> Web Interface</div>
@@ -467,9 +491,14 @@ function collectConfig() {
     debug: {
       verbose_stdout: document.getElementById('debug-verbose').checked,
     },
+    wifi: {
+      client_ssid: document.getElementById('wifi-client-ssid').value.trim(),
+    },
   };
   const pass = document.getElementById('web-pass').value;
   if (pass) cfg.web.password = pass;
+  const wpass = document.getElementById('wifi-client-pass').value;
+  if (wpass) cfg.wifi.client_password = wpass;
   return cfg;
 }
 

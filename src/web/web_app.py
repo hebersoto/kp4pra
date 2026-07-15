@@ -442,6 +442,46 @@ async def api_bt_remove(request: Request, _auth=Depends(check_auth)):
 # API: Service control
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.get("/api/wifi/status")
+async def api_wifi_status(_auth=Depends(check_auth)):
+    import subprocess
+    try:
+        r = subprocess.run(["/usr/local/bin/kp4pra-wifi-mode", "status"],
+                           capture_output=True, timeout=10)
+        mode = r.stdout.decode(errors="replace").strip() or "unknown"
+    except Exception as e:
+        mode = f"error: {e}"
+    cfg = load_config()
+    return JSONResponse({
+        "mode": mode,
+        "client_ssid": cfg.get("wifi", {}).get("client_ssid", ""),
+    })
+
+
+@app.post("/api/wifi/mode")
+async def api_wifi_mode(request: Request, _auth=Depends(check_auth)):
+    import subprocess
+    body = await request.json()
+    mode = body.get("mode", "")
+    if mode not in ("ap", "client"):
+        return JSONResponse({"success": False, "message": "mode must be 'ap' or 'client'"}, status_code=400)
+    if mode == "client":
+        cfg = load_config()
+        if not cfg.get("wifi", {}).get("client_ssid", "").strip():
+            return JSONResponse({"success": False,
+                "message": "No client WiFi configured. Set a Client WiFi SSID on the Config page first."}, status_code=400)
+    try:
+        r = subprocess.run(["sudo", "/usr/local/bin/kp4pra-wifi-mode", mode],
+                           capture_output=True, timeout=45)
+        out = r.stdout.decode(errors="replace").strip()
+        if r.returncode == 0:
+            return JSONResponse({"success": True, "message": out or f"Switched to {mode} mode"})
+        err = r.stderr.decode(errors="replace").strip()
+        return JSONResponse({"success": False, "message": err or out or "wifi-mode failed"}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
 @app.post("/api/service/restart")
 async def api_service_restart(request: Request, _auth=Depends(check_auth)):
     body = await request.json()
