@@ -53,6 +53,13 @@ DEFAULT_CONFIG = {
     "debug": {
         "verbose_stdout": False,
     },
+    "wifi": {
+        "ssid": "",
+        "password": "qwerty1234",
+        "channel": 6,
+        "client_ssid": "",
+        "client_password": "",
+    },
 }
 
 CONFIG_PATH = os.environ.get("KP4PRA_CONFIG", "/rw/kp4pra-tnc/config.yaml")

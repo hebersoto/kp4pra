@@ -28,14 +28,14 @@ rfcomm:
 station:
   aliasssid: ''
   calias: CDIGI
-  callsign: KP3M
-  clock: KP3M-5
-  lat: 18.142575
-  lon: -66.160243
-  mygrid: FK68wd
+  callsign: N0CALL
+  clock: ''
+  lat: 0.0
+  lon: 0.0
+  mygrid: ''
   ptt: CM108
   ptt_param: ''
-  sound: CM108 USB dongle
+  sound: ''
   ssid: ''
 web:
   auth_enabled: false
@@ -48,7 +48,12 @@ web:
 # so a phone can join and reach the web UI at http://172.16.0.1/ with no
 # home WiFi. Switch modes: sudo kp4pra-wifi-mode ap|client
 wifi:
-  ssid: "KP4PRA"
-  password: "qwerty1234"    # CHANGE THIS - default is public knowledge
+  # --- Access Point (the KP4PRA hotspot the TNC broadcasts) ---
+  ssid: ''                  # AP SSID (blank -> defaults to KP4PRA)
+  password: "qwerty1234"    # AP password - CHANGE THIS, default is public
   channel: 6
-  mode_at_boot: "client"    # "client" = join configured WiFi; "ap" = broadcast hotspot
+  # --- Client network (the WiFi the TNC should JOIN, if any) ---
+  client_ssid: ''           # home/shop WiFi to join. BLANK -> boot straight to AP mode.
+  client_password: ''
+  # If client_ssid is set but the join fails within 5 minutes, the TNC
+  # automatically falls back to AP mode so it stays reachable.
