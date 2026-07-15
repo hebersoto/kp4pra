@@ -9,8 +9,11 @@ def test_ax25_roundtrip():
     dest,src,path,c,pid,p=split_frame(f)
     assert (dest,src,path,ns(c),nr(c),pid,p)==('KP4PRA-10','NP4JN',[],2,3,PID_NO_L3,b'hello')
 
-def test_hash_stable():
-    assert challenge_response('12345678','SECRET')==challenge_response('12345678','secret')
+def test_hash_case_sensitive_and_8_digits():
+    # Winlink secure login is case-SENSITIVE; response is an 8-char numeric string
+    r = challenge_response('12345678','SECRET')
+    assert isinstance(r, str) and len(r) == 8 and r.isdigit()
+    assert challenge_response('12345678','SECRET') != challenge_response('12345678','secret')
 
 
 def test_s_frame_detection_and_nr():
