@@ -85,10 +85,12 @@ control sudoers, port 80→8088 redirect.
 
 ## 6b. Accessing the web interface — two ways
 
-**On your home/shop network (client mode, the default):** the Pi joins
-the WiFi you configured at flash time. Find its address (`hostname -I`
-on the console, your router's client list, or `http://kp4pra.local/`)
-and browse to it — port 80 works, no :8088 needed.
+**On your home/shop network (client mode):** set the WiFi the TNC should
+join in the config (`wifi.client_ssid` / `wifi.client_password` in
+/rw/kp4pra-tnc/config.yaml, or preconfigure WiFi in the imager at flash
+time). Find its address (`hostname -I` on the console, your router's
+client list, or `http://kp4pra.local/`) and browse to it — port 80
+works, no :8088 needed.
 
 **Anywhere, via the built-in hotspot (AP / field mode):** the TNC can
 broadcast its own WiFi network so a phone connects directly — no other
@@ -108,6 +110,14 @@ Hotspot defaults (change them on the Config page / in
 | SSID | `KP4PRA` |
 | Password | `qwerty1234` |
 | Web UI | `http://172.16.0.1/` |
+
+**Boot behavior:**
+- `wifi.client_ssid` **blank** → the TNC boots straight into AP mode
+  (the hotspot above) so it is always reachable out of the box.
+- `wifi.client_ssid` **set** → the TNC tries to join that network; if it
+  has not connected within **5 minutes**, it automatically falls back to
+  AP mode so a failed WiFi never leaves the unit unreachable.
+- Switch manually anytime: `sudo kp4pra-wifi-mode ap|client|status`.
 
 > **Notes:** AP mode disconnects the board from your home WiFi (one
 > radio) — switch back with `kp4pra-wifi-mode client` from a device on

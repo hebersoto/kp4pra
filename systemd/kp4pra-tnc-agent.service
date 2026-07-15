@@ -8,6 +8,9 @@ PartOf=kp4pra-tnc.target
 Type=simple
 ExecStart=/usr/bin/bt-agent --capability=NoInputNoOutput
 Restart=on-failure
+# bt-agent ignores SIGTERM when D-Bus is torn down first (reboot race),
+# hanging shutdown for the 90s default. It is stateless - kill fast.
+TimeoutStopSec=5
 RestartSec=5
 
 [Install]
