@@ -52,3 +52,11 @@ wifi:
   password: "qwerty1234"    # CHANGE THIS - default is public knowledge
   channel: 6
   mode_at_boot: "client"    # "client" = join configured WiFi; "ap" = broadcast hotspot
+
+# Native Python Winlink RMS gateway
+rms:
+  enabled: false
+  cms_call: ""       # Approved gateway callsign, normally CALL-10
+  cms_password: ""   # Winlink secure password
+  frequency_hz: 145050000
+  mode: "PACKET-1200"

@@ -53,6 +53,15 @@ DEFAULT_CONFIG = {
     "debug": {
         "verbose_stdout": False,
     },
+    "rms": {
+        "enabled": False,
+        "cms_call": "",
+        "cms_password": "",
+        "frequency_hz": 145050000,
+        "mode": "PACKET-1200",
+        "cms_host": "cms.winlink.org",
+        "cms_port": 8772,
+    },
 }
 
 CONFIG_PATH = os.environ.get("KP4PRA_CONFIG", "/rw/kp4pra-tnc/config.yaml")

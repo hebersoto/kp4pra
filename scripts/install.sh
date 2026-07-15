@@ -245,6 +245,7 @@ fi
 # ── Enable and start services ────────────────────────────────────────────────
 
 step "Enabling KP4PRA TNC services"
+systemctl enable kp4pra-tnc-rms.service
 systemctl enable kp4pra-tnc.target
 systemctl enable kp4pra-tnc-rfcomm.service
 systemctl enable kp4pra-tnc-ble.service
