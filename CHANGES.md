@@ -225,3 +225,14 @@ Fixes:
   straight to AP mode; a configured-but-unreachable client network falls
   back to AP after 5 minutes so the unit is never unreachable.
   Documented in INSTALL.md section 6b.
+
+## v1.0.2 - 2026-07-15
+
+Fixes:
+- Web UI port 80 redirect: added a persistent redirect service
+  (bin/kp4pra-web-redirect + kp4pra-web-redirect.service) that maps
+  tcp/80 -> 8088 on all interfaces. This was configured by hand on
+  early boards but never captured in install.sh, so fresh installs had
+  no port-80 access. The rule lives in its own nft table (ip kp4pra) so
+  NetworkManager's AP-mode ruleset does not clobber it; verified to
+  coexist with the KP4PRA hotspot.
