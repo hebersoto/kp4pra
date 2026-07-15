@@ -236,3 +236,12 @@ Fixes:
   no port-80 access. The rule lives in its own nft table (ip kp4pra) so
   NetworkManager's AP-mode ruleset does not clobber it; verified to
   coexist with the KP4PRA hotspot.
+
+## v1.1.0 - 2026-07-15
+
+Features:
+- Web UI WiFi controls: Config page gains a WiFi Client Network card
+  (client SSID/password); Services page gains a WiFi Mode toggle to
+  switch between AP hotspot and client mode. New /api/wifi/status and
+  /api/wifi/mode endpoints; client mode is refused when no client SSID
+  is configured. Client-password validation (8-63 chars or blank).
