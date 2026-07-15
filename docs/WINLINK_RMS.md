@@ -40,3 +40,22 @@ This first implementation intentionally supports direct, single-hop packet RMS
 operation with one user session. Digipeater paths, multiple simultaneous users,
 selective-repeat retransmission, local message storage, and hybrid forwarding
 are outside the minimalist RMS scope.
+
+## Connectivity requirement (limitation)
+
+The RMS gateway relays between an RF Winlink client and Winlink's CMS
+servers, so the TNC MUST have working internet access:
+
+- **Client-mode WiFi** (wifi.client_ssid set and joined to a network
+  with internet), or
+- **A USB Ethernet adapter**.
+
+The gateway CANNOT function while the board is in AP/hotspot mode with no
+other upstream - there is no route to CMS in that state. On single-radio
+boards you cannot be both a standalone hotspot and an internet-connected
+RMS gateway at the same time; use Ethernet for internet if you also need
+the local AP.
+
+The gateway detects an unreachable CMS and closes the RF session cleanly
+(sends DM), so a no-internet condition fails gracefully rather than
+hanging the client.
