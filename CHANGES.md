@@ -213,3 +213,15 @@ Findings fixed during the session (committed separately):
   commands without executing them - broken since inception on all
   boards; rewritten argument-style with state verification, along
   with disconnect_device.
+
+## v1.0.1 - 2026-07-15
+
+Fixes:
+- Agent service: TimeoutStopSec=5 - bt-agent ignores SIGTERM when D-Bus
+  is torn down first at shutdown, previously hanging reboots ~90s.
+- Shipped config template: station section blanked to N0CALL/0.0
+  sentinels (personal station data removed from the example).
+- WiFi: new client_ssid/client_password config; blank client SSID boots
+  straight to AP mode; a configured-but-unreachable client network falls
+  back to AP after 5 minutes so the unit is never unreachable.
+  Documented in INSTALL.md section 6b.
