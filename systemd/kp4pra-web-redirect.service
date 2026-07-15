@@ -1,0 +1,13 @@
+[Unit]
+Description=KP4PRA TNC - port 80 -> 8088 web redirect (all interfaces)
+After=network.target nftables.service
+# Re-run after NetworkManager settles so AP-mode rules don't win
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kp4pra-web-redirect
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target kp4pra-tnc.target
