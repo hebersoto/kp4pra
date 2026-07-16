@@ -270,3 +270,11 @@ Fixes:
 Fixes:
 - Services page: WiFi Mode card moved inside the two-column grid so it
   matches the width of the other service cards (was rendering full-width).
+
+## v1.1.4 - 2026-07-15
+
+Fixes:
+- AP mode: default SSID to KP4PRA when wifi.ssid is blank in config.
+  Fresh installs ship wifi.ssid: '' (present but empty); the config
+  reader returned that empty string rather than the KP4PRA default,
+  so nmcli refused the connection and AP mode failed. Now guarded.
