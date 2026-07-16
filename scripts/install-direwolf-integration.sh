@@ -16,14 +16,34 @@ usermod -aG dialout kp4pra 2>/dev/null || true
 # owned kp4pra-tnc) to read its conf through the symlink:
 usermod -aG kp4pra-tnc kp4pra 2>/dev/null || true
 
-echo "[stage2] Moving direwolf.conf to /rw with symlink for -c path"
+echo "[stage2] Seeding /rw/kp4pra-tnc/direwolf.conf and symlink for -c path"
+RW_CONF="/rw/kp4pra-tnc/direwolf.conf"
+# 1. If the admin pre-created a real conf at $CONF, migrate it to /rw.
 if [ -f "$CONF" ] && [ ! -L "$CONF" ]; then
-    cp "$CONF" /rw/kp4pra-tnc/direwolf.conf
+    cp "$CONF" "$RW_CONF"
     mv "$CONF" "$CONF.bak"
-    ln -s /rw/kp4pra-tnc/direwolf.conf "$CONF"
 fi
-touch /rw/kp4pra-tnc/direwolf.conf
-chown kp4pra-tnc:kp4pra-tnc /rw/kp4pra-tnc/direwolf.conf
+# 2. If /rw has no usable conf yet, write a minimal starter so Dire Wolf
+#    can start on first boot (the web UI overwrites this when the user
+#    saves their station config).
+if [ ! -s "$RW_CONF" ]; then
+    cat > "$RW_CONF" << 'DWCONF'
+# KP4PRA TNC - minimal starter Dire Wolf config.
+# Replace via the web UI (Config -> station -> Apply) with real settings.
+ADEVICE plughw:1,0
+ACHANNELS 1
+CHANNEL 0
+MYCALL N0CALL
+MODEM 1200
+DWCONF
+fi
+chown kp4pra-tnc:kp4pra-tnc "$RW_CONF"
+# 3. ALWAYS ensure the symlink exists (this was the fresh-install bug:
+#    previously the link was only made when $CONF pre-existed).
+if [ ! -L "$CONF" ]; then
+    rm -f "$CONF"
+    ln -s "$RW_CONF" "$CONF"
+fi
 
 echo "[stage2] ADEVICE self-heal service"
 install -m 755 "$PROJECT_DIR/bin/kp4pra-adevice-fix" /usr/local/bin/
