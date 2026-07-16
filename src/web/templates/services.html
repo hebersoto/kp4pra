@@ -125,23 +125,24 @@
     <div id="dw-result" style="margin-top:0.5rem;font-size:0.82rem"></div>
   </div>
 
+
+  <!-- WiFi Mode -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📶</span> WiFi Mode</div>
+    <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
+      Switch between the KP4PRA hotspot (AP) and joining your configured client
+      network. Switching changes the WiFi radio and may disconnect you from this
+      page if you are connected over WiFi.
+    </div>
+    <div style="margin-bottom:0.75rem">Current mode: <strong id="wifi-mode-status">checking...</strong></div>
+    <div class="card-actions">
+      <button class="btn btn-primary btn-sm" onclick="wifiMode('client')">Switch to Client (join network)</button>
+      <button class="btn btn-secondary btn-sm" onclick="wifiMode('ap')">Switch to AP (hotspot)</button>
+    </div>
+    <div id="wifi-mode-result" style="margin-top:0.6rem;font-size:0.85rem"></div>
+  </div>
 </div>
 
-<!-- Direwolf traffic -->
-<div class="card">
-  <div class="card-title"><span class="icon">📶</span> WiFi Mode</div>
-  <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
-    Switch between the KP4PRA hotspot (AP) and joining your configured client
-    network. Switching changes the WiFi radio and may disconnect you from this
-    page if you are connected over WiFi.
-  </div>
-  <div style="margin-bottom:0.75rem">Current mode: <strong id="wifi-mode-status">checking...</strong></div>
-  <div class="card-actions">
-    <button class="btn btn-primary btn-sm" onclick="wifiMode('client')">Switch to Client (join network)</button>
-    <button class="btn btn-secondary btn-sm" onclick="wifiMode('ap')">Switch to AP (hotspot)</button>
-  </div>
-  <div id="wifi-mode-result" style="margin-top:0.6rem;font-size:0.85rem"></div>
-</div>
 
 <div class="card">
   <div class="card-title"><span class="icon">📡</span> Direwolf Traffic
