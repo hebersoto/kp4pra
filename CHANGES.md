@@ -245,3 +245,12 @@ Features:
   switch between AP hotspot and client mode. New /api/wifi/status and
   /api/wifi/mode endpoints; client mode is refused when no client SSID
   is configured. Client-password validation (8-63 chars or blank).
+
+## v1.1.1 - 2026-07-15
+
+Docs:
+- DEPLOYMENT.md: full Raspberry Pi OS support. Part A warns the Armbian
+  mkfs steps destroy a Pi's root (p1=boot, p2=root, auto-expanded) and
+  gives safe /rw options. Sections reordered (B2/B3 before C). Golden
+  image geometry-agnostic (reads actual end sector, no hardcoded size).
+  ro-flip PARTUUID-aware for Pi; Part E mounts p2 on Pi.
