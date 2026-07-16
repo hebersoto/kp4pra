@@ -254,3 +254,13 @@ Docs:
   gives safe /rw options. Sections reordered (B2/B3 before C). Golden
   image geometry-agnostic (reads actual end sector, no hardcoded size).
   ro-flip PARTUUID-aware for Pi; Part E mounts p2 on Pi.
+
+## v1.1.2 - 2026-07-15
+
+Fixes:
+- Installer: install-direwolf-integration.sh now seeds a minimal
+  direwolf.conf and ALWAYS creates the /home/kp4pra/direwolf.conf
+  symlink. Previously the symlink was only created when a conf already
+  existed, so fresh installs (following current INSTALL.md, which has no
+  manual-creation step) had no conf and Dire Wolf failed to start (stuck
+  in 'activating'). The web UI overwrites the seed on first station save.
