@@ -13,6 +13,9 @@ try:
 except Exception:
     print('$2')" 2>/dev/null; }
 SSID="$(val ssid KP4PRA)"
+# val returns the value even when it is an empty string (ssid: '' in
+# config), so the default above does not apply to a present-but-blank key.
+[ -z "$SSID" ] && SSID="KP4PRA"
 PASS="$(val password qwerty1234)"
 CHAN="$(val channel 6)"
 APIP="172.16.0.1"
