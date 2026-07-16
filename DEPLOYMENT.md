@@ -16,6 +16,52 @@ journald   Storage=volatile            no logs on disk
 
 ## Part A — Partitioning (fresh card or existing system)
 
+### Raspberry Pi OS — READ THIS FIRST (Part A differs from Armbian)
+
+> **DANGER:** The fdisk/mkfs steps in this Part are written for the
+> Armbian / Orange Pi layout where **p1 is the root filesystem**. On
+> **Raspberry Pi OS the layout is inverted** - p1 is `/boot/firmware`
+> and **p2 is the root filesystem**, and p2 **auto-expands to fill the
+> entire card on first boot**. Running `mkfs.ext4 /dev/mmcblk0p2` on a
+> Raspberry Pi **FORMATS YOUR ROOT FILESYSTEM and destroys the system.**
+> Do NOT follow the Armbian steps below on a Raspberry Pi.
+
+**On Raspberry Pi OS, choose ONE of these instead:**
+
+**(a) `/rw` as a directory on root (simplest, fully supported):**
+
+```bash
+sudo mkdir -p /rw
+```
+
+The board runs read-WRITE root. It is still SD-friendly via tmpfs for
+volatile directories (Part B2). Read-only-root mode (Part C) is not used
+with this option. This is a perfectly fine production posture for most
+users and is what `scripts/install.sh` expects by default.
+
+**(b) Real `/rw` partition (only needed for read-only-root, Part C):**
+
+The root partition fills the card, so you must shrink it and add a third
+partition **offline from another Linux PC** - you cannot shrink a mounted
+root filesystem. With the card in a USB reader on another machine
+(card = `/dev/sdX`, verify with `lsblk` first), the easiest route is
+GParted: shrink `/dev/sdX2` by ~512MB, then create an ext4 partition
+`/dev/sdX3` labeled `kp4pra-rw` in the freed space. Reinsert the card in
+the Pi, then:
+
+```bash
+sudo mkdir -p /rw
+echo 'LABEL=kp4pra-rw  /rw  ext4  defaults,rw,noatime  0  2' | sudo tee -a /etc/fstab
+sudo mount /rw
+```
+
+The Armbian partitioning steps that follow apply ONLY to Orange Pi /
+Armbian images, where p1 is root and free space follows it.
+
+---
+
+## Part A (Armbian / Orange Pi) — Partitioning (fresh card or existing system)
+
 The OS image occupies p1. Create p2 in the free space after it:
 
 ```bash
@@ -66,91 +112,34 @@ sudo fatrace -f W | grep -vE "/rw/|/run/|/dev/|/proc/|/tmp/" &
 cat /proc/swaps    # should show /dev/zram0 only
 ```
 
-## Part C — Flip to read-only
 
-```bash
-sudo sed -i 's|\(\s/\s\+ext4\s\+\)defaults|\1defaults,ro|' /etc/fstab
-grep ' / ' /etc/fstab      # verify: defaults,ro
-sudo reboot
-```
-
-After reboot:
-```bash
-mount | grep ' / ' | grep ro && echo "root RO OK"
-systemctl --failed         # must be empty
-# Full functional pass: dashboard green, phone connects, config save works,
-# pairing via wizard works (workflow remounts rw -> action -> ro -> reboot).
-```
-To temporarily undo for maintenance: `sudo mount -o remount,rw /`
-(remount ro again or reboot when done). To undo permanently, remove `,ro`
-from fstab.
-
-## Part D — Creating the golden SD image
-
-Do this from a SECOND Linux machine (or another SBC) with the source SD
-card in a USB reader (shown as /dev/sdX — VERIFY with lsblk, wrong X
-destroys a disk).
-
-1. Prepare the source system (on the Pi, before shutdown):
-```bash
-# Generalize: remove secrets and identity that must not be cloned
-sudo rm -f /home/kp4pra/.git-credentials /home/kp4pra/.bash_history
-sudo rm -f /etc/ssh/ssh_host_*            # regenerated on first boot by most images;
-                                          # if not: ssh-keygen -A in a firstboot unit
-# Optional: clear WiFi credentials if the image will be distributed
-# Optional: reset station config to defaults in /rw/kp4pra-tnc/config.yaml
-# Remove pairing state so each unit pairs its own phones:
-sudo rm -rf /rw/kp4pra-tnc/bluetooth/*
-sudo poweroff
-```
-
-2. Capture only the used part of the card (p1 5G + p2 64M ≈ 5.1G, not 32G):
-```bash
-# End of p2 in sectors:
-sudo fdisk -l /dev/sdX            # note End of sdX2, e.g. 10625023
-# Image = (End+1) sectors:
-sudo dd if=/dev/sdX of=kp4pra-tnc.img bs=512 count=10625024 status=progress
-# Compress for storage/distribution:
-xz -T0 -9 kp4pra-tnc.img          # -> kp4pra-tnc.img.xz (typically ~1-2 GB)
-```
-
-3. Flash to a new card (any size >= image size):
-```bash
-xz -dc kp4pra-tnc.img.xz | sudo dd of=/dev/sdY bs=4M status=progress conv=fsync
-```
-
-4. First boot on the new unit:
-- Set hostname if desired (requires temporary rw remount).
-- Open the web UI -> Config: set the unit's callsign/station info, Apply.
-- Pair the phones for this unit via the wizards.
-- Regenerate SSH host keys if step 1 removed them and the OS doesn't
-  auto-regenerate: `sudo mount -o remount,rw / && sudo ssh-keygen -A && sudo mount -o remount,ro /`
-
-
-## Part B2 — tmpfs for stray writers (/tmp, /var/tmp, /var/log)
+## Part B2 — tmpfs for stray writers (/var/tmp, /var/log)
 
 journald volatile covers the journal, but other software (dpkg, cron,
-third-party tools) writes /tmp, /var/tmp, and /var/log directly. Put all
-three in RAM so nothing stray reaches the SD card:
+third-party tools) writes /var/tmp and /var/log directly. Put these in RAM
+so nothing stray reaches the SD card.
+
+> **Raspberry Pi OS:** `/tmp` is ALREADY tmpfs by default - confirm with
+> `findmnt /tmp` and do NOT add a `/tmp` line (it conflicts). Add only
+> `/var/tmp` and `/var/log`. Mounting tmpfs over `/var/log` hides existing
+> logs while mounted (services re-create what they need) - expected.
 
 ```bash
-# 1 GB boards (Orange Pi Zero 2W):
 sudo tee -a /etc/fstab << 'FSTAB'
-tmpfs /tmp      tmpfs defaults,noatime,nosuid,nodev,mode=1777,size=256M 0 0
-tmpfs /var/tmp  tmpfs defaults,noatime,nosuid,nodev,mode=1777,size=128M 0 0
-tmpfs /var/log  tmpfs defaults,noatime,nosuid,nodev,mode=0755,size=64M 0 0
+tmpfs /var/tmp tmpfs defaults,noatime,nosuid,nodev,mode=1777,size=32M 0 0
+tmpfs /var/log tmpfs defaults,noatime,nosuid,nodev,mode=0755,size=32M 0 0
 FSTAB
-# 512 MB boards (Raspberry Pi Zero 2 W): use sizes 128M/64M/32M instead.
-sudo mount -a && df -h /tmp /var/tmp /var/log
+sudo systemctl daemon-reload
+sudo mount /var/tmp && sudo mount /var/log
 ```
 
-Do NOT create /var/log/journal (journald must stay Storage=volatile),
-and do NOT put /etc, /var/lib, or /var/lib/bluetooth in tmpfs — those
-must survive reboot (BlueZ state is already bind-mounted from /rw).
+The `size=` values cap RAM use, not disk - they are independent of SD-card
+size. 32M suits 512MB-RAM boards (Pi 3 A+, Zero 2 W); raise them on
+boards with more RAM if logs are heavy.
 
-Reduce other writers:
+Reduce writers at the source too:
+
 ```bash
-sudo apt clean && sudo apt autoremove -y
 printf 'Dir::Cache "";\nDir::Cache::archives "";\n' | sudo tee /etc/apt/apt.conf.d/99no-cache
 sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer man-db.timer 2>/dev/null
 systemctl status rsyslog --no-pager 2>/dev/null && sudo systemctl disable --now rsyslog
@@ -169,13 +158,91 @@ sudo chmod +x /usr/local/sbin/rw /usr/local/sbin/ro
 
 Usage: `sudo rw` → make changes → `sudo ro` (or reboot).
 
+## Part C — Flip to read-only
+
+Only after every Part B / B2 / B3 check passes AND `/rw` is a real
+partition (not the directory-on-root option, which keeps root read-write).
+
+**Raspberry Pi OS** uses PARTUUID and `defaults,noatime` on the root line,
+so edit it by hand (the Armbian sed below does not match):
+
+```bash
+sudo nano /etc/fstab
+# on the "/" line change:  defaults,noatime
+#                    to:    defaults,noatime,ro
+grep ' / ' /etc/fstab       # verify ,ro present
+sudo reboot
+```
+
+**Armbian / Orange Pi** (root line is plain `defaults`):
+
+```bash
+sudo sed -i 's|\(\s/\s\+ext4\s\+\)defaults|\1defaults,ro|' /etc/fstab
+grep ' / ' /etc/fstab
+sudo reboot
+```
+
+After reboot (either OS):
+
+```bash
+mount | grep ' / ' | grep ro && echo "root RO OK"
+systemctl --failed          # must be empty
+# Full functional pass: dashboard green, phone connects, config save works,
+# pairing via wizard works (workflow remounts rw -> action -> ro -> reboot).
+```
+
+To temporarily undo for maintenance: `sudo mount -o remount,rw /` (remount
+ro or reboot when done). To undo permanently, remove `,ro` from fstab.
+
+## Part D — Creating the golden SD image
+
+Do this from a SECOND Linux machine with the source SD card in a USB
+reader (shown as /dev/sdX — VERIFY with lsblk, wrong X destroys a disk).
+
+1. Prepare the source system (on the Pi, before shutdown):
+
+```bash
+sudo rm -f /home/kp4pra/.git-credentials /home/kp4pra/.bash_history
+sudo rm -f /etc/ssh/ssh_host_*            # regenerated on first boot by most images
+sudo rm -rf /rw/kp4pra-tnc/bluetooth/*    # each unit pairs its own phones
+# Optional: clear WiFi client creds and reset station config for distribution
+sudo poweroff
+```
+
+2. Capture only the used portion of the card — read the actual end sector,
+   never assume a size (works on any card, any OS layout):
+
+```bash
+# Find the LAST used sector across all partitions (the highest End value):
+sudo fdisk -l /dev/sdX
+# Image size = (highest End sector + 1). Substitute it below as END:
+sudo dd if=/dev/sdX of=kp4pra-tnc.img bs=512 count=$((END + 1)) status=progress
+xz -T0 -9 kp4pra-tnc.img                  # -> kp4pra-tnc.img.xz
+```
+
+3. Flash to a new card (any size >= image size):
+
+```bash
+xz -dc kp4pra-tnc.img.xz | sudo dd of=/dev/sdY bs=4M status=progress conv=fsync
+```
+
+4. First boot on the new unit:
+- Set hostname if desired (temporary rw remount if root is ro).
+- Web UI → Config: set the unit's callsign/station info, Apply.
+- Pair phones for this unit via the wizards.
+- If step 1 removed SSH host keys and the OS did not auto-regenerate:
+  `sudo ssh-keygen -A` (rw remount first if root is read-only).
+
 ## Part E — Recovery if the board does not boot after the ro flip
 
 Remove the SD card, insert it into another Linux computer:
 
 ```bash
 lsblk                                  # identify the card, e.g. /dev/sdX
-sudo mkdir -p /mnt/sd && sudo mount /dev/sdX1 /mnt/sd
+sudo mkdir -p /mnt/sd
+# Root is p2 on Raspberry Pi OS (p1 = /boot/firmware); p1 on Armbian:
+sudo mount /dev/sdX2 /mnt/sd           # Raspberry Pi OS
+# sudo mount /dev/sdX1 /mnt/sd         # Armbian / Orange Pi
 sudo nano /mnt/sd/etc/fstab            # remove ",ro" from the / line;
                                        # optionally comment the tmpfs lines
 sudo umount /mnt/sd && sync
