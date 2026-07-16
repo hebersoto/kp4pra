@@ -264,3 +264,9 @@ Fixes:
   existed, so fresh installs (following current INSTALL.md, which has no
   manual-creation step) had no conf and Dire Wolf failed to start (stuck
   in 'activating'). The web UI overwrites the seed on first station save.
+
+## v1.1.3 - 2026-07-15
+
+Fixes:
+- Services page: WiFi Mode card moved inside the two-column grid so it
+  matches the width of the other service cards (was rendering full-width).
