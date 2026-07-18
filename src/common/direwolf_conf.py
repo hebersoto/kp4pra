@@ -85,20 +85,32 @@ def detect_sound_cards() -> list:
 
 
 def detect_cm108_adevice() -> Optional[str]:
-    """Find the ADEVICE bound to the CM108 PTT HID at /dev/hidraw0.
-    Same logic as the shell script: run `cm108`, find the /dev/hidraw0
-    line, extract the plughw:* token on that line."""
+    """Find the ADEVICE for the CM108 sound card from `cm108` output.
+    Matches the CM108 PTT HID on ANY /dev/hidraw* (not just hidraw0 - the
+    hidraw number is not stable across reboots / USB re-enumeration), and
+    PREFERS the name-based plughw:<name>,N token over the number-based
+    plughw:<num>,N when both are present, because the card NUMBER shifts
+    with enumeration order while the name is stable. Returns None if no
+    CM108 mapping is found, so callers can fall back."""
     try:
         out = subprocess.run(["cm108"], capture_output=True, timeout=5
                              ).stdout.decode(errors="replace")
     except Exception:
         return None
+    name_form = None
+    number_form = None
     for line in out.splitlines():
-        if "/dev/hidraw0" in line:
-            for tok in line.split():
-                if tok.startswith("plughw:"):
-                    return tok
-    return None
+        if "/dev/hidraw" not in line:
+            continue
+        for tok in line.split():
+            if tok.startswith("plughw:"):
+                body = tok.split(":", 1)[1]
+                # plughw:1,0 -> number form; plughw:Device,0 -> name form
+                if body[:1].isdigit():
+                    number_form = number_form or tok
+                else:
+                    name_form = name_form or tok
+    return name_form or number_form
 
 
 def _call_with_ssid(call: str, ssid) -> str:
