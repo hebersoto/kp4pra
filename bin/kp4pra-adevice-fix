@@ -1,12 +1,18 @@
 #!/bin/bash
 # KP4PRA TNC - fix ADEVICE in direwolf.conf from cm108 /dev/hidraw0 mapping.
 # Runs at boot before direwolf.service so USB card renumbering self-heals.
+# Match the CM108 on ANY /dev/hidraw* (the hidraw number is not stable
+# across reboots / USB re-enumeration), and PREFER the name-based
+# plughw:<name>,N over the number-based plughw:<num>,N, since the card
+# NUMBER shifts with enumeration order while the name is stable.
 target_adevice=$(cm108 2>/dev/null | awk '
-/\/dev\/hidraw0/ {
+/\/dev\/hidraw[0-9]+/ {
     for (i = 1; i <= NF; i++) {
-        if ($i ~ /^plughw:/) { print $i; exit }
+        if ($i ~ /^plughw:[A-Za-z]/) { name_form = $i }
+        else if ($i ~ /^plughw:[0-9]/) { if (num_form == "") num_form = $i }
     }
-}')
+}
+END { if (name_form != "") print name_form; else print num_form }')
 [ -z "$target_adevice" ] && { echo "No CM108 hidraw0/ADEVICE mapping found."; exit 0; }
 conf_file=$(realpath /home/kp4pra/direwolf.conf 2>/dev/null)
 [ -f "$conf_file" ] || { echo "Config file not found: $conf_file"; exit 0; }
