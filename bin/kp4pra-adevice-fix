@@ -5,6 +5,18 @@
 # across reboots / USB re-enumeration), and PREFER the name-based
 # plughw:<name>,N over the number-based plughw:<num>,N, since the card
 # NUMBER shifts with enumeration order while the name is stable.
+# Wait (bounded) for the USB sound card to enumerate before detecting.
+# On cold boot the DigiRig/CM108 can take 20-40s to appear; without this
+# the self-heal finds nothing and Direwolf starts with no audio device.
+echo "Waiting for USB sound card to enumerate (up to 45s)..."
+for i in $(seq 1 45); do
+    if cm108 2>/dev/null | grep -q "/dev/hidraw"; then
+        echo "USB sound card detected after ${i}s."
+        break
+    fi
+    sleep 1
+done
+
 target_adevice=$(cm108 2>/dev/null | awk '
 /\/dev\/hidraw[0-9]+/ {
     for (i = 1; i <= NF; i++) {
