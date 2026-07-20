@@ -29,8 +29,18 @@ gap between elements = 1 unit, gap between letters = 3 units.
 
 ## Enable / disable
 
-    sudo systemctl enable --now kp4pra-morse-id.timer   # enable
-    sudo systemctl disable --now kp4pra-morse-id.timer  # disable
+The feature is **enabled by default** (auto-enabled by the installer).
+
+**Everyday control - the web Config page:** the "Morse callsign ID on the
+ACT LED" toggle in the Config page turns it on or off. The timer keeps
+running; the ID script reads this toggle each time it fires, so changes
+take effect on the next 15-minute cycle with no restart or shell access.
+This maps to `station.morse_id_enabled` in the config.
+
+**Remove entirely (shell):** to stop the timer from firing at all:
+
+    sudo systemctl disable --now kp4pra-morse-id.timer   # stop entirely
+    sudo systemctl enable --now kp4pra-morse-id.timer    # restore
 
 ## Test on demand
 

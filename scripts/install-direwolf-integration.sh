@@ -47,6 +47,12 @@ fi
 
 echo "[stage2] ADEVICE self-heal service"
 install -m 755 "$PROJECT_DIR/bin/kp4pra-adevice-fix" /usr/local/bin/
+
+echo "[stage2] Morse callsign ID on the ACT LED (every 15 min when operational)"
+install -m 755 "$PROJECT_DIR/bin/kp4pra-morse-id" /usr/local/bin/
+cp "$PROJECT_DIR/systemd/kp4pra-morse-id.service" /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-morse-id.timer" /etc/systemd/system/
+systemctl enable kp4pra-morse-id.timer
 cp "$PROJECT_DIR/systemd/kp4pra-adevice.service" /etc/systemd/system/
 
 echo "[stage2] Dire Wolf systemd unit"

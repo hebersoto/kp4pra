@@ -10,6 +10,19 @@ UNIT_MS=120        # 10 WPM -> 1 unit = 120ms
 CONF=${KP4PRA_CONFIG:-/rw/kp4pra-tnc/config.yaml}
 
 # ---- Health gate: only ID when fully operational --------------------------
+# Config toggle: skip entirely if disabled in the web UI.
+ENABLED=$(python3 -c "
+import yaml
+try:
+    c=yaml.safe_load(open('$CONF')) or {}
+    print(c.get('station',{}).get('morse_id_enabled', True))
+except Exception:
+    print(True)" 2>/dev/null)
+if [ "$ENABLED" = "False" ]; then
+    echo "kp4pra-morse-id: disabled in config, skipping."
+    exit 0
+fi
+
 is_active() { systemctl is-active --quiet "$1"; }
 
 # Dire Wolf must be up AND have an audio device (no "Pointless to continue"

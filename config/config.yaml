@@ -29,6 +29,7 @@ station:
   aliasssid: ''
   calias: CDIGI
   callsign: N0CALL
+  morse_id_enabled: true   # blink callsign in Morse on the ACT LED every 15 min when operational
   clock: ''
   lat: 0.0
   lon: 0.0
