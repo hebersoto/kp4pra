@@ -99,3 +99,20 @@ and sets `ADEVICE plughw:AllInOneCable,0` automatically.
   the radio (CHIRP); not used by the TNC.
 - Hot-plug: the AIOC enumerated cleanly on hot-plug in testing (no reboot
   needed); the self-heal picked it up and Dire Wolf started on it.
+
+## AIOC (All-In-One-Cable, NA6D / skuep)
+
+The AIOC is supported out of the box. It enumerates as a USB sound card
+named "AllInOneCable" (USB VID:PID 1209:7388) with a CM108-style HID PTT
+endpoint, so the same detection used for CM108/DigiRig devices finds it
+and sets `ADEVICE plughw:AllInOneCable,0` automatically.
+
+- PTT: use `PTT CM108` (the AIOC provides a CM108-compatible HID). Dire
+  Wolf may print harmless warnings about the CM108 PTT interface on the
+  AIOC; they are safe to ignore.
+- Sample rate: runs at Dire Wolf's default 44100 Hz (no ARATE override),
+  which the AIOC accepts; kept at 44100 for consistency across sound cards.
+- It also presents a virtual serial port (/dev/ttyACM0) for programming
+  the radio (CHIRP); not used by the TNC.
+- Hot-plug: the AIOC enumerated cleanly on hot-plug in testing (no reboot
+  needed); the self-heal picked it up and Dire Wolf started on it.
