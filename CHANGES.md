@@ -278,3 +278,21 @@ Fixes:
   Fresh installs ship wifi.ssid: '' (present but empty); the config
   reader returned that empty string rather than the KP4PRA default,
   so nmcli refused the connection and AP mode failed. Now guarded.
+
+## v1.1.5 - 2026-07-19
+
+Fixes (USB sound card / Direwolf startup):
+- ADEVICE detection now matches the CM108 on any /dev/hidraw* (not just
+  hidraw0) and prefers the stable plughw:<name> form over plughw:<number>,
+  since card numbers shift with USB enumeration order while the name is
+  stable.
+- The boot-time self-heal (kp4pra-adevice-fix) now waits up to 45s for the
+  USB sound card to enumerate before detecting ADEVICE, so Direwolf starts
+  with the correct device instead of failing when the card is slow to
+  appear on cold boot.
+- direwolf.service RestartSec 5->2 as a backstop for residual races.
+
+Note: these mitigate SLOW USB enumeration. If the USB sound card fails to
+enumerate at all on cold boot (device never appears), that is a hardware/
+USB-power issue - a powered USB hub and/or better power supply is the
+recommended fix.
