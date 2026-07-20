@@ -296,3 +296,14 @@ Note: these mitigate SLOW USB enumeration. If the USB sound card fails to
 enumerate at all on cold boot (device never appears), that is a hardware/
 USB-power issue - a powered USB hub and/or better power supply is the
 recommended fix.
+
+## v1.2.0 - 2026-07-19
+
+Features:
+- Morse-code station ID on the Raspberry Pi green ACT LED. When the TNC
+  is fully operational (Dire Wolf running with a working audio device and
+  at least one KISS bridge active), it blinks the configured station
+  callsign in Morse at 10 WPM every 15 minutes, then restores the LED's
+  normal SD-activity indication. Health-gated, so the absence of the
+  periodic blink also serves as a "not ready" indicator. Enable/disable
+  via kp4pra-morse-id.timer. See docs/MORSE_ID.md.
