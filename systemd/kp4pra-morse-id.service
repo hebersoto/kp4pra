@@ -1,0 +1,8 @@
+[Unit]
+Description=KP4PRA TNC - Morse-code callsign ID on the ACT LED (when operational)
+After=direwolf.service
+
+[Service]
+Type=oneshot
+# Needs root to write /sys/class/leds/ACT/{trigger,brightness}
+ExecStart=/usr/local/bin/kp4pra-morse-id
