@@ -307,3 +307,12 @@ Features:
   normal SD-activity indication. Health-gated, so the absence of the
   periodic blink also serves as a "not ready" indicator. Enable/disable
   via kp4pra-morse-id.timer. See docs/MORSE_ID.md.
+
+## v1.2.1 - 2026-07-19
+
+Changes:
+- Morse callsign ID: added a Config-page toggle (station.morse_id_enabled,
+  default enabled). The timer keeps running and the ID script reads the
+  toggle each fire, so enabling/disabling takes effect on the next cycle
+  with no shell access. The installer now auto-enables the Morse ID timer
+  on fresh installs. Docs updated.
