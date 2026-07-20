@@ -316,3 +316,14 @@ Changes:
   toggle each fire, so enabling/disabling takes effect on the next cycle
   with no shell access. The installer now auto-enables the Morse ID timer
   on fresh installs. Docs updated.
+
+## v1.2.2 - 2026-07-20
+
+Changes:
+- AIOC (All-In-One-Cable) support. The AIOC enumerates as a CM108-class
+  USB sound card (plughw:AllInOneCable,0, VID 1209:7388) and is detected
+  automatically by the existing logic. detect_sound_cards() now returns
+  the stable ALSA name form instead of the card number, so the web Detect
+  button matches the boot-time self-heal. Runs at Dire Wolf's default
+  44100 Hz for consistency across sound cards. Documented in
+  docs/USB_SOUND_CARD.md.
