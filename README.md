@@ -113,8 +113,8 @@ Boards:
   single-user unit, the Zero 2 W or Orange Pi is more comfortable.
 
 Radios / audio:
-- CM108 USB sound dongle with HID PTT (includes AIOC - All-In-One-Cable -
-  devices; validated ADEVICE plughw:AllInOneCable,0)
+- CM108 USB sound dongle with HID PTT
+- AIOC (All-In-One-Cable) - validated ADEVICE plughw:AllInOneCable,0
 - Yaesu FT-991A (USB audio codec + CP210x serial pair, PTT via RTS)
 
 Clients:
