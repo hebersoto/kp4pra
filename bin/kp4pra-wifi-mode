@@ -13,6 +13,9 @@ try:
 except Exception:
     print('$2')" 2>/dev/null; }
 SSID="$(val ssid KP4PRA)"
+# val returns the value even when it is an empty string (ssid: '' in
+# config), so the default above does not apply to a present-but-blank key.
+[ -z "$SSID" ] && SSID="KP4PRA"
 PASS="$(val password qwerty1234)"
 CHAN="$(val channel 6)"
 APIP="172.16.0.1"
@@ -50,8 +53,37 @@ case "$1" in
       && echo "ap" || echo "client"
     ;;
   boot)
-    [ "$(val mode_at_boot client)" = "ap" ] && exec "$0" ap
-    echo "Boot mode: client (default)"
+    CLIENT_SSID="$(val client_ssid '')"
+    # No client network configured -> come up as the KP4PRA hotspot.
+    if [ -z "$CLIENT_SSID" ]; then
+        echo "Boot: no client WiFi configured -> AP mode"
+        exec "$0" ap
+    fi
+    # Client network configured: ensure a NM profile exists for it, then
+    # wait up to 5 minutes for association; fall back to AP if it never joins.
+    preflight
+    CLIENT_PASS="$(val client_password '')"
+    if ! nmcli -t -f NAME connection show | grep -qx "$CLIENT_SSID"; then
+        if [ -n "$CLIENT_PASS" ]; then
+            nmcli connection add type wifi ifname wlan0 con-name "$CLIENT_SSID" \
+                ssid "$CLIENT_SSID" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$CLIENT_PASS" \
+                autoconnect yes 2>/dev/null
+        else
+            nmcli connection add type wifi ifname wlan0 con-name "$CLIENT_SSID" \
+                ssid "$CLIENT_SSID" autoconnect yes 2>/dev/null
+        fi
+    fi
+    nmcli connection up "$CLIENT_SSID" 2>/dev/null || nmcli device connect wlan0 2>/dev/null || true
+    echo "Boot: waiting up to 5 min for client WiFi '$CLIENT_SSID'..."
+    for i in $(seq 1 60); do
+        if nmcli -t -f DEVICE,STATE device | grep -q "^wlan0:connected$"; then
+            echo "Boot: joined '$CLIENT_SSID' (client mode)"
+            exit 0
+        fi
+        sleep 5
+    done
+    echo "Boot: client WiFi not joined after 5 min -> AP mode fallback"
+    exec "$0" ap
     ;;
   *) echo "Usage: kp4pra-wifi-mode ap|client|status|boot"; exit 1 ;;
 esac

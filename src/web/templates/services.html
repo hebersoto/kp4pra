@@ -125,9 +125,25 @@
     <div id="dw-result" style="margin-top:0.5rem;font-size:0.82rem"></div>
   </div>
 
+
+  <!-- WiFi Mode -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📶</span> WiFi Mode</div>
+    <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
+      Switch between the KP4PRA hotspot (AP) and joining your configured client
+      network. Switching changes the WiFi radio and may disconnect you from this
+      page if you are connected over WiFi.
+    </div>
+    <div style="margin-bottom:0.75rem">Current mode: <strong id="wifi-mode-status">checking...</strong></div>
+    <div class="card-actions">
+      <button class="btn btn-primary btn-sm" onclick="wifiMode('client')">Switch to Client (join network)</button>
+      <button class="btn btn-secondary btn-sm" onclick="wifiMode('ap')">Switch to AP (hotspot)</button>
+    </div>
+    <div id="wifi-mode-result" style="margin-top:0.6rem;font-size:0.85rem"></div>
+  </div>
 </div>
 
-<!-- Direwolf traffic -->
+
 <div class="card">
   <div class="card-title"><span class="icon">📡</span> Direwolf Traffic
     <span class="badge badge-warning" style="margin-left:auto;font-size:0.7rem">Volatile — not saved</span>
@@ -198,6 +214,39 @@ function toggleDwAuto(on) {
   }
 }
 
+async function loadWifiMode() {
+  try {
+    const r = await fetch('/api/wifi/status');
+    const d = await r.json();
+    const label = d.mode === 'ap' ? 'AP (hotspot)'
+                : d.mode === 'client' ? 'Client (joined network)'
+                : d.mode;
+    document.getElementById('wifi-mode-status').textContent = label;
+  } catch(e) {
+    document.getElementById('wifi-mode-status').textContent = 'unknown';
+  }
+}
+
+async function wifiMode(mode) {
+  const warn = mode === 'client'
+    ? 'Switch to Client mode?\n\nThe TNC will leave the KP4PRA hotspot and try to '
+      + 'join your configured client network. If you are connected over the hotspot '
+      + 'you will lose this page - reconnect on the client network.'
+    : 'Switch to AP mode?\n\nThe TNC will stop using your client WiFi and broadcast '
+      + 'the KP4PRA hotspot. If you are connected over the client network you will '
+      + 'lose this page - join the KP4PRA network and browse http://172.16.0.1/.';
+  if (!confirm(warn)) return;
+  const el = document.getElementById('wifi-mode-result');
+  el.textContent = 'Switching WiFi mode...';
+  try {
+    const r = await post('/api/wifi/mode', {mode: mode});
+    el.textContent = (r.success ? 'OK: ' : 'Error: ') + r.message;
+    loadWifiMode();
+  } catch(e) {
+    el.textContent = 'Request failed (expected if the switch dropped your connection): ' + e;
+  }
+}
+
 async function svcAction(action, svc) {
   showResult(null, `${action} ${svc}…`);
   const r = await post(`/api/service/${action}`, {service: svc});
@@ -234,5 +283,7 @@ function showResult(success, msg) {
   el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
   el.scrollIntoView({behavior:'smooth'});
 }
+
+loadWifiMode();
 </script>
 {% endblock %}

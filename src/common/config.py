@@ -53,6 +53,14 @@ DEFAULT_CONFIG = {
     "debug": {
         "verbose_stdout": False,
     },
+    "wifi": {
+        "ssid": "",
+        "password": "qwerty1234",
+        "channel": 6,
+        "mode_at_boot": "client",
+        "client_ssid": "",
+        "client_password": "",
+    },
     "rms": {
         "enabled": False,
         "cms_call": "",

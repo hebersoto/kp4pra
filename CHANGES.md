@@ -213,3 +213,156 @@ Findings fixed during the session (committed separately):
   commands without executing them - broken since inception on all
   boards; rewritten argument-style with state verification, along
   with disconnect_device.
+
+## v1.0.1 - 2026-07-15
+
+Fixes:
+- Agent service: TimeoutStopSec=5 - bt-agent ignores SIGTERM when D-Bus
+  is torn down first at shutdown, previously hanging reboots ~90s.
+- Shipped config template: station section blanked to N0CALL/0.0
+  sentinels (personal station data removed from the example).
+- WiFi: new client_ssid/client_password config; blank client SSID boots
+  straight to AP mode; a configured-but-unreachable client network falls
+  back to AP after 5 minutes so the unit is never unreachable.
+  Documented in INSTALL.md section 6b.
+
+## v1.0.2 - 2026-07-15
+
+Fixes:
+- Web UI port 80 redirect: added a persistent redirect service
+  (bin/kp4pra-web-redirect + kp4pra-web-redirect.service) that maps
+  tcp/80 -> 8088 on all interfaces. This was configured by hand on
+  early boards but never captured in install.sh, so fresh installs had
+  no port-80 access. The rule lives in its own nft table (ip kp4pra) so
+  NetworkManager's AP-mode ruleset does not clobber it; verified to
+  coexist with the KP4PRA hotspot.
+
+## v1.1.0 - 2026-07-15
+
+Features:
+- Web UI WiFi controls: Config page gains a WiFi Client Network card
+  (client SSID/password); Services page gains a WiFi Mode toggle to
+  switch between AP hotspot and client mode. New /api/wifi/status and
+  /api/wifi/mode endpoints; client mode is refused when no client SSID
+  is configured. Client-password validation (8-63 chars or blank).
+
+## v1.1.1 - 2026-07-15
+
+Docs:
+- DEPLOYMENT.md: full Raspberry Pi OS support. Part A warns the Armbian
+  mkfs steps destroy a Pi's root (p1=boot, p2=root, auto-expanded) and
+  gives safe /rw options. Sections reordered (B2/B3 before C). Golden
+  image geometry-agnostic (reads actual end sector, no hardcoded size).
+  ro-flip PARTUUID-aware for Pi; Part E mounts p2 on Pi.
+
+## v1.1.2 - 2026-07-15
+
+Fixes:
+- Installer: install-direwolf-integration.sh now seeds a minimal
+  direwolf.conf and ALWAYS creates the /home/kp4pra/direwolf.conf
+  symlink. Previously the symlink was only created when a conf already
+  existed, so fresh installs (following current INSTALL.md, which has no
+  manual-creation step) had no conf and Dire Wolf failed to start (stuck
+  in 'activating'). The web UI overwrites the seed on first station save.
+
+## v1.1.3 - 2026-07-15
+
+Fixes:
+- Services page: WiFi Mode card moved inside the two-column grid so it
+  matches the width of the other service cards (was rendering full-width).
+
+## v1.1.4 - 2026-07-15
+
+Fixes:
+- AP mode: default SSID to KP4PRA when wifi.ssid is blank in config.
+  Fresh installs ship wifi.ssid: '' (present but empty); the config
+  reader returned that empty string rather than the KP4PRA default,
+  so nmcli refused the connection and AP mode failed. Now guarded.
+
+## v1.1.5 - 2026-07-19
+
+Fixes (USB sound card / Direwolf startup):
+- ADEVICE detection now matches the CM108 on any /dev/hidraw* (not just
+  hidraw0) and prefers the stable plughw:<name> form over plughw:<number>,
+  since card numbers shift with USB enumeration order while the name is
+  stable.
+- The boot-time self-heal (kp4pra-adevice-fix) now waits up to 45s for the
+  USB sound card to enumerate before detecting ADEVICE, so Direwolf starts
+  with the correct device instead of failing when the card is slow to
+  appear on cold boot.
+- direwolf.service RestartSec 5->2 as a backstop for residual races.
+
+Note: these mitigate SLOW USB enumeration. If the USB sound card fails to
+enumerate at all on cold boot (device never appears), that is a hardware/
+USB-power issue - a powered USB hub and/or better power supply is the
+recommended fix.
+
+## v1.2.0 - 2026-07-19
+
+Features:
+- Morse-code station ID on the Raspberry Pi green ACT LED. When the TNC
+  is fully operational (Dire Wolf running with a working audio device and
+  at least one KISS bridge active), it blinks the configured station
+  callsign in Morse at 10 WPM every 15 minutes, then restores the LED's
+  normal SD-activity indication. Health-gated, so the absence of the
+  periodic blink also serves as a "not ready" indicator. Enable/disable
+  via kp4pra-morse-id.timer. See docs/MORSE_ID.md.
+
+## v1.2.1 - 2026-07-19
+
+Changes:
+- Morse callsign ID: added a Config-page toggle (station.morse_id_enabled,
+  default enabled). The timer keeps running and the ID script reads the
+  toggle each fire, so enabling/disabling takes effect on the next cycle
+  with no shell access. The installer now auto-enables the Morse ID timer
+  on fresh installs. Docs updated.
+
+## v1.2.2 - 2026-07-20
+
+Changes:
+- AIOC (All-In-One-Cable) support. The AIOC enumerates as a CM108-class
+  USB sound card (plughw:AllInOneCable,0, VID 1209:7388) and is detected
+  automatically by the existing logic. detect_sound_cards() now returns
+  the stable ALSA name form instead of the card number, so the web Detect
+  button matches the boot-time self-heal. Runs at Dire Wolf's default
+  44100 Hz for consistency across sound cards. Documented in
+  docs/USB_SOUND_CARD.md.
+
+## v1.2.2 - 2026-07-20
+
+Changes:
+- AIOC (All-In-One-Cable) support. The AIOC enumerates as a CM108-class
+  USB sound card (plughw:AllInOneCable,0, VID 1209:7388) and is detected
+  automatically by the existing logic. detect_sound_cards() now returns
+  the stable ALSA name form instead of the card number, so the web Detect
+  button matches the boot-time self-heal. Runs at Dire Wolf's default
+  44100 Hz for consistency across sound cards. Documented in
+  docs/USB_SOUND_CARD.md.
+
+## v1.2.3 - 2026-07-20
+
+Fixes:
+- Config page: a duplicate "station" key in collectConfig() (introduced
+  in 1.2.1 with the Morse ID toggle) overwrote the station object with
+  only morse_id_enabled, so Apply to Direwolf generated an empty MYCALL
+  and blank CBEACON callsign. Merged morse_id_enabled into the real
+  station block; Apply now sends the full station config again.
+
+## v1.2.4 - 2026-07-20
+
+Fixes:
+- detect_sound_cards() now genuinely returns the stable ALSA name form
+  (plughw:<name>) for the web Detect button, matching the boot-time
+  self-heal. The v1.2.2 change was described in its commit but the code
+  edit did not actually land; the Detect button was still returning the
+  card-number form (e.g. plughw:0,0 for the AIOC). Now verified.
+
+## v1.2.4 - 2026-07-20
+
+Fixes:
+- detect_sound_cards() (web Detect button) now uses the ALSA card ID for
+  the plughw device instead of the human-readable bracketed description.
+  aplay -l reports "card N: <ID> [<description>]"; ALSA accepts the ID
+  (e.g. AllInOneCable) but rejects the hyphenated description
+  (All-In-One-Cable) as a device name. The Detect button now returns a
+  working plughw that matches the boot-time self-heal.

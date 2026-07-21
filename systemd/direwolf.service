@@ -8,7 +8,7 @@ Type=simple
 User=kp4pra
 ExecStart=/usr/local/bin/direwolf -a 100 -c /home/kp4pra/direwolf.conf -T "%%H:%%M:%%S"
 Restart=on-failure
-RestartSec=5
+RestartSec=2
 StandardOutput=journal
 StandardError=journal
 

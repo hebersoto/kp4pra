@@ -65,7 +65,11 @@ def detect_sound_cards() -> list:
         m = re.match(r"card (\d+): (\S+) \[(.*?)\], device (\d+):", line)
         if not m:
             continue
-        card_num, _, card_name, dev = m.group(1), m.group(2), m.group(3), m.group(4)
+        # group(2) = ALSA card ID (e.g. AllInOneCable) - REQUIRED for plughw.
+        # group(3) = human description (e.g. All-In-One-Cable) - display only;
+        # ALSA rejects the hyphenated description as a device name.
+        card_num, card_id, card_desc, dev = m.group(1), m.group(2), m.group(3), m.group(4)
+        card_name = card_desc  # friendly name for label/display
         low = card_name.lower()
         label = card_name
         for lbl, keys in CARD_SIGNATURES:
@@ -77,7 +81,7 @@ def detect_sound_cards() -> list:
             label = "Yaesu USB radio"
         ptt_s, ptt_p = PTT_SUGGESTIONS.get(label, ("", ""))
         entry = {"card": int(card_num), "name": card_name,
-                 "label": label, "plughw": f"plughw:{card_num},{dev}",
+                 "label": label, "plughw": f"plughw:{card_id},{dev}",
                  "ptt_suggest": ptt_s, "ptt_param_suggest": ptt_p}
         if not any(x["plughw"] == entry["plughw"] for x in cards):
             cards.append(entry)
@@ -85,20 +89,32 @@ def detect_sound_cards() -> list:
 
 
 def detect_cm108_adevice() -> Optional[str]:
-    """Find the ADEVICE bound to the CM108 PTT HID at /dev/hidraw0.
-    Same logic as the shell script: run `cm108`, find the /dev/hidraw0
-    line, extract the plughw:* token on that line."""
+    """Find the ADEVICE for the CM108 sound card from `cm108` output.
+    Matches the CM108 PTT HID on ANY /dev/hidraw* (not just hidraw0 - the
+    hidraw number is not stable across reboots / USB re-enumeration), and
+    PREFERS the name-based plughw:<name>,N token over the number-based
+    plughw:<num>,N when both are present, because the card NUMBER shifts
+    with enumeration order while the name is stable. Returns None if no
+    CM108 mapping is found, so callers can fall back."""
     try:
         out = subprocess.run(["cm108"], capture_output=True, timeout=5
                              ).stdout.decode(errors="replace")
     except Exception:
         return None
+    name_form = None
+    number_form = None
     for line in out.splitlines():
-        if "/dev/hidraw0" in line:
-            for tok in line.split():
-                if tok.startswith("plughw:"):
-                    return tok
-    return None
+        if "/dev/hidraw" not in line:
+            continue
+        for tok in line.split():
+            if tok.startswith("plughw:"):
+                body = tok.split(":", 1)[1]
+                # plughw:1,0 -> number form; plughw:Device,0 -> name form
+                if body[:1].isdigit():
+                    number_form = number_form or tok
+                else:
+                    name_form = name_form or tok
+    return name_form or number_form
 
 
 def _call_with_ssid(call: str, ssid) -> str:

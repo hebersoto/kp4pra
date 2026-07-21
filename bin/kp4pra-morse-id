@@ -1,0 +1,98 @@
+#!/bin/bash
+# KP4PRA TNC - Morse-code station ID on the green ACT LED.
+# Blinks the configured station callsign at 10 WPM, but ONLY when the TNC
+# is fully operational (Dire Wolf up with a working audio device AND at
+# least one KISS bridge running). Fires every 15 minutes via the timer.
+# Takes over the ACT LED for the duration, then restores SD-activity.
+
+LED=/sys/class/leds/ACT
+UNIT_MS=120        # 10 WPM -> 1 unit = 120ms
+CONF=${KP4PRA_CONFIG:-/rw/kp4pra-tnc/config.yaml}
+
+# ---- Health gate: only ID when fully operational --------------------------
+# Config toggle: skip entirely if disabled in the web UI.
+ENABLED=$(python3 -c "
+import yaml
+try:
+    c=yaml.safe_load(open('$CONF')) or {}
+    print(c.get('station',{}).get('morse_id_enabled', True))
+except Exception:
+    print(True)" 2>/dev/null)
+if [ "$ENABLED" = "False" ]; then
+    echo "kp4pra-morse-id: disabled in config, skipping."
+    exit 0
+fi
+
+is_active() { systemctl is-active --quiet "$1"; }
+
+# Dire Wolf must be up AND have an audio device (no "Pointless to continue"
+# more recent than the last successful open).
+direwolf_ok() {
+    is_active direwolf.service || return 1
+    # If the most recent audio-relevant line is a failure, not ok.
+    local last
+    last=$(journalctl -u direwolf.service -b --no-pager -o cat 2>/dev/null \
+           | grep -iE "receive audio level|Pointless to continue" | tail -1)
+    case "$last" in
+        *"Pointless"*) return 1 ;;
+        *"receive audio level"*) return 0 ;;
+        *) return 1 ;;   # no evidence of a working device yet
+    esac
+}
+
+# At least one KISS bridge (BLE or RFCOMM) must be running.
+bridge_ok() {
+    is_active kp4pra-tnc-ble.service || is_active kp4pra-tnc-rfcomm.service
+}
+
+if ! direwolf_ok || ! bridge_ok; then
+    echo "kp4pra-morse-id: not fully operational, skipping ID."
+    exit 0
+fi
+
+# ---- Callsign from config -------------------------------------------------
+CALL=$(python3 -c "
+import yaml
+try:
+    c=yaml.safe_load(open('$CONF')) or {}
+    print((c.get('station',{}).get('callsign','') or 'KP4PRA').upper())
+except Exception:
+    print('KP4PRA')" 2>/dev/null)
+[ -z "$CALL" ] && CALL="KP4PRA"
+
+declare -A M=(
+ [A]=".-" [B]="-..." [C]="-.-." [D]="-.." [E]="." [F]="..-." [G]="--."
+ [H]="...." [I]=".." [J]=".---" [K]="-.-" [L]=".-.." [M]="--" [N]="-."
+ [O]="---" [P]=".--." [Q]="--.-" [R]=".-." [S]="..." [T]="-" [U]="..-"
+ [V]="...-" [W]=".--" [X]="-..-" [Y]="-.--" [Z]="--.."
+ [0]="-----" [1]=".----" [2]="..---" [3]="...--" [4]="....-"
+ [5]="....." [6]="-...." [7]="--..." [8]="---.." [9]="----."
+)
+
+naps() { local ms=$(( $1 * UNIT_MS )); sleep "$(printf '%d.%03d' $((ms/1000)) $((ms%1000)))"; }
+on()  { echo 1 > "$LED/brightness" 2>/dev/null; }
+off() { echo 0 > "$LED/brightness" 2>/dev/null; }
+
+# Save current trigger so we can restore it (usually mmc0).
+PREV_TRIG=$(sed -n 's/.*\[\(.*\)\].*/\1/p' "$LED/trigger" 2>/dev/null)
+[ -z "$PREV_TRIG" ] && PREV_TRIG=mmc0
+
+echo none > "$LED/trigger" 2>/dev/null
+off
+
+for (( i=0; i<${#CALL}; i++ )); do
+    ch="${CALL:$i:1}"
+    code="${M[$ch]}"
+    [ -z "$code" ] && continue
+    for (( j=0; j<${#code}; j++ )); do
+        el="${code:$j:1}"
+        on
+        if [ "$el" = "." ]; then naps 1; else naps 3; fi
+        off
+        naps 1
+    done
+    naps 2
+done
+
+off
+echo "$PREV_TRIG" > "$LED/trigger" 2>/dev/null

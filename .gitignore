@@ -5,3 +5,6 @@
 id_rsa*
 id_ed25519*
 *credentials*
+__pycache__/
+__pycache__/
+*.pyc

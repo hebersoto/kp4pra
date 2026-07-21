@@ -1,0 +1,8 @@
+#!/bin/bash
+# KP4PRA TNC - redirect tcp/80 -> 8088 on ALL interfaces, in a private
+# nft table so NetworkManager's AP-mode ruleset changes don't clobber it.
+set -e
+nft delete table ip kp4pra 2>/dev/null || true
+nft add table ip kp4pra
+nft 'add chain ip kp4pra prerouting { type nat hook prerouting priority -100 ; }'
+nft add rule ip kp4pra prerouting tcp dport 80 redirect to :8088

@@ -274,6 +274,30 @@
   </div>
 </div>
 
+<!-- WiFi Client Network -->
+<div class="card">
+  <div class="card-title"><span class="icon">📶</span> WiFi Client Network</div>
+  <div class="form-hint" style="margin-bottom:0.8rem">
+    The network the TNC joins for internet. Leave SSID blank to boot as the
+    KP4PRA hotspot. If set but unreachable, the TNC falls back to hotspot mode
+    after 5 minutes. Changes take effect on reboot, or use the Services page to
+    switch modes now.
+  </div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="wifi-client-ssid">Client WiFi SSID</label>
+      <input class="form-input" id="wifi-client-ssid"
+             value="{{ config.wifi.client_ssid if config.wifi is defined else '' }}"
+             placeholder="(blank = hotspot mode)">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="wifi-client-pass">Client WiFi Password</label>
+      <input class="form-input" id="wifi-client-pass" type="password"
+             placeholder="(leave blank to keep current)">
+    </div>
+  </div>
+</div>
+
 <!-- Web Interface -->
 <div class="card">
   <div class="card-title"><span class="icon">🌍</span> Web Interface</div>
@@ -317,6 +341,14 @@
 <div class="card">
   <div class="card-title"><span class="icon">🔧</span> Debug</div>
   <div class="toggle-row">
+    <span class="toggle-label">Morse callsign ID on the ACT LED (every 15 min when operational)</span>
+    <label class="toggle">
+      <input type="checkbox" id="morse-id-enabled"
+             {% if config.station is not defined or config.station.morse_id_enabled is not defined or config.station.morse_id_enabled %}checked{% endif %}>
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+  <div class="form-group toggle-row">
     <span class="toggle-label">Verbose stdout/stderr (current boot only, not persisted)</span>
     <label class="toggle">
       <input type="checkbox" id="debug-verbose"
@@ -479,6 +511,7 @@ function collectConfig() {
       clock: document.getElementById('st-clock').value.trim().toUpperCase(),
       calias: document.getElementById('st-calias').value.trim().toUpperCase(),
       aliasssid: document.getElementById('st-aliasssid').value.trim(),
+      morse_id_enabled: document.getElementById('morse-id-enabled').checked,
     },
     direwolf: {
       host: document.getElementById('dw-host').value.trim(),
@@ -516,11 +549,16 @@ function collectConfig() {
     debug: {
       verbose_stdout: document.getElementById('debug-verbose').checked,
     },
+    wifi: {
+      client_ssid: document.getElementById('wifi-client-ssid').value.trim(),
+    },
   };
   const pass = document.getElementById('web-pass').value;
   if (pass) cfg.web.password = pass;
   const rmsPass = document.getElementById('rms-pass').value;
   if (rmsPass) cfg.rms.cms_password = rmsPass;
+  const wpass = document.getElementById('wifi-client-pass').value;
+  if (wpass) cfg.wifi.client_password = wpass;
   return cfg;
 }
 
