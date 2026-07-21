@@ -468,6 +468,7 @@ function collectConfig() {
       clock: document.getElementById('st-clock').value.trim().toUpperCase(),
       calias: document.getElementById('st-calias').value.trim().toUpperCase(),
       aliasssid: document.getElementById('st-aliasssid').value.trim(),
+      morse_id_enabled: document.getElementById('morse-id-enabled').checked,
     },
     direwolf: {
       host: document.getElementById('dw-host').value.trim(),
@@ -498,9 +499,6 @@ function collectConfig() {
     },
     debug: {
       verbose_stdout: document.getElementById('debug-verbose').checked,
-    },
-    station: {
-      morse_id_enabled: document.getElementById('morse-id-enabled').checked,
     },
     wifi: {
       client_ssid: document.getElementById('wifi-client-ssid').value.trim(),
