@@ -338,3 +338,12 @@ Changes:
   button matches the boot-time self-heal. Runs at Dire Wolf's default
   44100 Hz for consistency across sound cards. Documented in
   docs/USB_SOUND_CARD.md.
+
+## v1.2.3 - 2026-07-20
+
+Fixes:
+- Config page: a duplicate "station" key in collectConfig() (introduced
+  in 1.2.1 with the Morse ID toggle) overwrote the station object with
+  only morse_id_enabled, so Apply to Direwolf generated an empty MYCALL
+  and blank CBEACON callsign. Merged morse_id_enabled into the real
+  station block; Apply now sends the full station config again.
