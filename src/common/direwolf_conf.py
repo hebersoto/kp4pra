@@ -65,7 +65,11 @@ def detect_sound_cards() -> list:
         m = re.match(r"card (\d+): (\S+) \[(.*?)\], device (\d+):", line)
         if not m:
             continue
-        card_num, _, card_name, dev = m.group(1), m.group(2), m.group(3), m.group(4)
+        # group(2) = ALSA card ID (e.g. AllInOneCable) - REQUIRED for plughw.
+        # group(3) = human description (e.g. All-In-One-Cable) - display only;
+        # ALSA rejects the hyphenated description as a device name.
+        card_num, card_id, card_desc, dev = m.group(1), m.group(2), m.group(3), m.group(4)
+        card_name = card_desc  # friendly name for label/display
         low = card_name.lower()
         label = card_name
         for lbl, keys in CARD_SIGNATURES:
@@ -77,7 +81,7 @@ def detect_sound_cards() -> list:
             label = "Yaesu USB radio"
         ptt_s, ptt_p = PTT_SUGGESTIONS.get(label, ("", ""))
         entry = {"card": int(card_num), "name": card_name,
-                 "label": label, "plughw": f"plughw:{card_name},{dev}",
+                 "label": label, "plughw": f"plughw:{card_id},{dev}",
                  "ptt_suggest": ptt_s, "ptt_param_suggest": ptt_p}
         if not any(x["plughw"] == entry["plughw"] for x in cards):
             cards.append(entry)
