@@ -115,6 +115,7 @@ Boards:
 Radios / audio:
 - CM108 USB sound dongle with HID PTT
 - AIOC (All-In-One-Cable) - validated ADEVICE plughw:AllInOneCable,0
+- DigiRig Lite
 - Yaesu FT-991A (USB audio codec + CP210x serial pair, PTT via RTS)
 
 Clients:
