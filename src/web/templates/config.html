@@ -157,10 +157,16 @@
         <option value="true" {% if config.rms.enabled %}selected{% endif %}>Enabled</option>
       </select>
     </div>
+    {% set _rms_parts = config.rms.cms_call.split('-') %}
     <div class="form-group">
-      <label class="form-label" for="rms-call">CMS / RMS Callsign</label>
-      <input class="form-input" id="rms-call" maxlength="9" value="{{ config.rms.cms_call }}" placeholder="MYCALL-10">
-      <div class="form-hint">Approved Winlink gateway callsign.</div>
+      <label class="form-label" for="rms-callsign">RMS Callsign</label>
+      <input class="form-input" id="rms-callsign" maxlength="6" value="{{ _rms_parts[0] }}" placeholder="MYCALL">
+      <div class="form-hint">Approved Winlink gateway callsign. Can differ from the Station callsign above.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rms-ssid">RMS SSID</label>
+      <input class="form-input" id="rms-ssid" type="number" min="1" max="15" value="{{ _rms_parts[1] if _rms_parts|length > 1 else '' }}" placeholder="(optional)">
+      <div class="form-hint">Optional. If used, must be 1-15.</div>
     </div>
     <div class="form-group">
       <label class="form-label" for="rms-pass">CMS Password</label>
@@ -497,6 +503,14 @@ function toggleAuthFields(on) {
   document.getElementById('auth-fields').style.display = on ? '' : 'none';
 }
 
+function callWithSsid(callId, ssidId) {
+  // Mirrors _call_with_ssid() in common/direwolf_conf.py: CALLSIGN or
+  // CALLSIGN-SSID, never a stray dash or space when SSID is blank.
+  const call = document.getElementById(callId).value.trim().toUpperCase();
+  const ssid = document.getElementById(ssidId).value.trim();
+  return ssid ? `${call}-${ssid}` : call;
+}
+
 function collectConfig() {
   const cfg = {
     station: {
@@ -519,7 +533,7 @@ function collectConfig() {
     },
     rms: {
       enabled: document.getElementById('rms-enabled').value === 'true',
-      cms_call: document.getElementById('rms-call').value.trim().toUpperCase(),
+      cms_call: callWithSsid('rms-callsign', 'rms-ssid'),
       frequency_hz: parseInt(document.getElementById('rms-frequency').value),
       mode: document.getElementById('rms-mode').value,
     },
