@@ -347,3 +347,12 @@ Fixes:
   only morse_id_enabled, so Apply to Direwolf generated an empty MYCALL
   and blank CBEACON callsign. Merged morse_id_enabled into the real
   station block; Apply now sends the full station config again.
+
+## v1.2.4 - 2026-07-20
+
+Fixes:
+- detect_sound_cards() now genuinely returns the stable ALSA name form
+  (plughw:<name>) for the web Detect button, matching the boot-time
+  self-heal. The v1.2.2 change was described in its commit but the code
+  edit did not actually land; the Detect button was still returning the
+  card-number form (e.g. plughw:0,0 for the AIOC). Now verified.
