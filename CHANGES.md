@@ -356,3 +356,13 @@ Fixes:
   self-heal. The v1.2.2 change was described in its commit but the code
   edit did not actually land; the Detect button was still returning the
   card-number form (e.g. plughw:0,0 for the AIOC). Now verified.
+
+## v1.2.4 - 2026-07-20
+
+Fixes:
+- detect_sound_cards() (web Detect button) now uses the ALSA card ID for
+  the plughw device instead of the human-readable bracketed description.
+  aplay -l reports "card N: <ID> [<description>]"; ALSA accepts the ID
+  (e.g. AllInOneCable) but rejects the hyphenated description
+  (All-In-One-Cable) as a device name. The Detect button now returns a
+  working plughw that matches the boot-time self-heal.
