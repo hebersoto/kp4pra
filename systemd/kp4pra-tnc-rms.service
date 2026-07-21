@@ -22,4 +22,4 @@ ProtectSystem=strict
 ReadWritePaths=/run/kp4pra-tnc /rw/kp4pra-tnc
 
 [Install]
-WantedBy=kp4pra-tnc.target
+WantedBy=multi-user.target kp4pra-tnc.target

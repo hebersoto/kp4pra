@@ -141,6 +141,39 @@
     </div>
     <div id="wifi-mode-result" style="margin-top:0.6rem;font-size:0.85rem"></div>
   </div>
+
+  <!-- RMS Gateway -->
+  <div class="card">
+    <div class="card-title"><span class="icon">✉</span> Winlink RMS Gateway</div>
+    <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
+      kp4pra-tnc-rms.service &mdash; Winlink B2F relay to CMS
+    </div>
+    {% set rms = status.rms_gateway %}
+    <div class="status-row">
+      <span class="status-label">State</span>
+      <span class="status-value">
+        {% if rms.running %}<span class="badge badge-success">Running</span>
+        {% elif rms.active_state == "activating" %}<span class="badge badge-warning">Starting</span>
+        {% elif rms.active_state == "failed" %}<span class="badge badge-error">Failed</span>
+        {% else %}<span class="badge badge-disabled">{{ rms.active_state | default("Stopped") }}</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Enabled in config</span>
+      <span class="status-value">
+        {% if status.config.rms_enabled %}<span class="badge badge-success">Yes</span>
+        {% else %}<span class="badge badge-disabled">No</span>{% endif %}
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Gateway callsign</span>
+      <span class="status-value">{{ status.config.rms_call | default("—") }}</span>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:1rem">
+      <button class="btn btn-primary btn-sm" onclick="svcAction('restart','kp4pra-tnc-rms.service')">Start</button>
+      <button class="btn btn-secondary btn-sm" onclick="svcAction('stop','kp4pra-tnc-rms.service')">Stop</button>
+    </div>
+  </div>
 </div>
 
 

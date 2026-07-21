@@ -120,6 +120,7 @@ def get_live_status() -> dict:
         "connected_devices": get_connected_devices(),
         "rfcomm_bridge": get_service_status("kp4pra-tnc-rfcomm.service"),
         "ble_bridge": get_service_status("kp4pra-tnc-ble.service"),
+        "rms_gateway": get_service_status("kp4pra-tnc-rms.service"),
         "ble_runtime": read_status("ble"),
         "rfcomm_runtime": read_status("rfcomm"),
         "direwolf_tcp": check_direwolf_tcp(dw["host"], dw["port"]),
@@ -136,6 +137,8 @@ def get_live_status() -> dict:
             "dns_sd_name": cfg["dns_sd"]["instance_name"],
             "web_port": cfg["web"]["port"],
             "bluez_strategy": cfg["bluetooth"]["bluez_state_strategy"],
+            "rms_enabled": cfg["rms"]["enabled"],
+            "rms_call": cfg["rms"]["cms_call"],
         },
     }
 
