@@ -149,3 +149,35 @@ def test_handle_forwards_iframe_payload_to_cms():
 
     assert bytes(fake_cms.sent) == b'hello cms'
     assert gw.link.vr == 1  # N(R) advanced after accepting in-sequence I-frame
+def test_cms_to_rf_blocks_when_window_full_and_resumes_on_ack():
+    # Feed enough data for 9 frames (>7). The 8th frame must not be sent
+    # until something external advances link.va (simulating an RR from
+    # the RF station). We advance va from a background task after a short
+    # delay and confirm the frame count before/after proves the block
+    # actually happened, not just that it eventually finished.
+    gw = make_gateway()
+    gw.writer = FakeWriter()
+    gw.link = LinkState('NP4JN')
+    gw.cms = FakeCms([b'C' * (200 * 9)])  # 9 full 200-byte frames
+
+    async def scenario():
+        task = asyncio.create_task(gw.cms_to_rf())
+        # Give cms_to_rf time to send the first 7 frames and hit the gate.
+        await asyncio.sleep(0.2)
+        sent_before = len(gw.writer.sent)
+
+        # Give it more time WITHOUT acking -- it must still be stuck at 7.
+        await asyncio.sleep(0.3)
+        sent_while_blocked = len(gw.writer.sent)
+
+        # Now simulate peer ack: advance va, which should free the gate.
+        gw.link.va = 2
+        await asyncio.wait_for(task, timeout=2)
+        sent_after = len(gw.writer.sent)
+        return sent_before, sent_while_blocked, sent_after
+
+    sent_before, sent_while_blocked, sent_after = run(scenario())
+
+    assert sent_before == 7, f"expected exactly 7 frames sent before ack, got {sent_before}"
+    assert sent_while_blocked == 7, f"loop must not send more while window is full, got {sent_while_blocked}"
+    assert sent_after == 9, f"expected all 9 frames sent after ack freed the window, got {sent_after}"
