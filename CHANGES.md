@@ -406,3 +406,14 @@ Fixes:
   (e.g. AllInOneCable) but rejects the hyphenated description
   (All-In-One-Cable) as a device name. The Detect button now returns a
   working plughw that matches the boot-time self-heal.
+
+## v1.3.1 - 2026-07-22
+
+Changes:
+- Added a pre-commit secret guard (scripts/git-hooks/pre-commit) that blocks
+  commits containing private keys, non-blank credential values in tracked
+  YAML (cms_password, cms_user, password, client_password, psk), or known
+  secret literals listed in an untracked .git/secret-guard-literals file.
+  The documented public AP default is allowlisted so normal commits are not
+  blocked. Hooks are not tracked by git, so install once per clone with
+  `bash scripts/install-hooks.sh`.
