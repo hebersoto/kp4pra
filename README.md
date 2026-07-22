@@ -49,6 +49,34 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
   GPIO pin), CDIGIPEAT alias — Preview and Apply regenerates
   direwolf.conf and restarts Dire Wolf; bridges reconnect automatically.
 
+## Winlink RMS Gateway
+
+Native Python implementation (`src/rms/`) that turns the TNC into a
+Winlink RMS gateway, relaying transparently to Winlink CMS. No LinBPQ
+or other third-party Winlink software required.
+
+- **RF access**: a standard AX.25 connected-mode link over Dire Wolf
+  KISS. Any Winlink client (Winlink Express, `pat`, etc.) connects over
+  the air to the gateway's approved callsign; the gateway logs into
+  Winlink CMS using its own secure-login credentials and relays the
+  session transparently. One RF session at a time.
+- **Telnet / "Network Post Office" access**: a transparent TCP proxy to
+  the real CMS, reachable on all network interfaces (default port
+  8772, matching Winlink Express's own "Network Post Office" convention).
+  No login logic on the gateway's side — the connecting client performs
+  its own complete secure login directly against CMS's real protocol,
+  using its own Winlink account credentials, exactly as if plugged in by
+  cable. Fully independent of the RF path; RF and Telnet sessions do not
+  contend with each other.
+- **Services tab**: live gateway status with Start/Stop.
+- **Config page**: enable/disable, gateway Callsign/SSID (can differ
+  from the station callsign), CMS password, RF frequency, and packet
+  mode.
+- Live-tested end to end: real RF Winlink sessions and real Telnet/
+  Network Post Office sessions, both completing full B2F message
+  exchanges against production CMS. See [CHANGES.md](CHANGES.md) for
+  the AX.25 protocol fixes found and resolved during testing.
+
 ## Appliance design principles
 
 - **Read-only root** in production; all persistent state on a small
@@ -70,6 +98,7 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
 | `src/rfcomm/` | RFCOMM/SPP bridge (Android) — built-in socket AF_BLUETOOTH, no PyBluez |
 | `src/ble/` | BLE KISS GATT bridge (iPhone) — dbus-next |
 | `src/web/` | FastAPI app + Jinja2 templates (green/white theme, CSS variables) |
+| `src/rms/` | Winlink RMS gateway — AX.25/KISS framing, CMS secure-login, RF and Telnet relay |
 | `systemd/` | Service units: bridges, web, pairing agent, Dire Wolf, ADEVICE fix, BlueZ bind mount, perms fix |
 | `bin/` | Helper scripts (remount rw/ro, BlueZ perms, ADEVICE fix) |
 | `sudoers.d/` | Allowlisted sudo rules |
@@ -125,7 +154,9 @@ Clients:
 ## Status / roadmap
 
 Working: both Bluetooth paths bidirectional, web provisioning end to
-end, Dire Wolf generation/control/traffic view.
+end, Dire Wolf generation/control/traffic view, Winlink RMS gateway
+(RF and Telnet/Network Post Office access), live-tested against
+production CMS.
 Next: production hardening (zram + read-only root switch), Clock Source
 Station stage.
 
