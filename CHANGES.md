@@ -1,3 +1,43 @@
+## RMS Gateway (src/rms/) — new in 1.3.0
+- Native Python Winlink RMS gateway: Dire Wolf KISS TCP -> AX.25 connected
+  mode -> authenticated CMS stream. RF Winlink clients (Winlink Express,
+  pat, etc.) connect over the air; the gateway relays transparently to
+  Winlink CMS using the approved gateway callsign's secure-login
+  credentials.
+- FIX: AX.25 command/response and Poll/Final bit handling. UA/DM/ack-RR
+  frames were previously always sent as Command frames with no Final
+  bit, which is spec-invalid as a reply to a Poll-bit SABM/DISC -- RF
+  clients would not recognize the link as established and would
+  retry-loop indefinitely instead of completing login. Found via a
+  side-by-side capture against a working BPQ32 RMS reference. Fixed by
+  adding response-frame support to make_frame() and mirroring the
+  incoming Poll bit into Final on every reply.
+- FIX: rapid re-SABM race condition. A peer retrying SABM quickly could
+  leave a stale cms_to_rf() task racing the new session's CmsSession
+  over the same socket, crashing with "read() called while another
+  coroutine is already waiting for incoming data". Fixed by cancelling
+  any live relay task before starting a new session.
+- Telnet Winlink / "Network Post Office" access: a transparent TCP
+  proxy to the real CMS on all network interfaces (default port 8772,
+  matching Winlink Express's own convention). No local login logic --
+  the connecting client performs its entire secure-login exchange
+  directly against real CMS's protocol, since only CMS can validate an
+  arbitrary station's own Winlink account password. Fully independent
+  of the RF session state; RF and Telnet sessions do not contend with
+  each other.
+- Services tab: new card showing live gateway status with Start/Stop.
+- Config page: RMS Gateway toggle, split Callsign/SSID fields (the RMS
+  gateway callsign may differ from the station callsign), CMS password,
+  frequency, and packet mode.
+- 21 automated tests: 10 covering AX.25/KISS framing edge cases (split
+  reads, digipeater paths, window boundaries), 11 covering Gateway relay
+  logic (chunking, flow control, session teardown, the re-SABM race fix,
+  and Telnet proxy fidelity/independence).
+- Live-tested end to end: real RF session via Winlink Express through a
+  physical radio link, and real Telnet/Network Post Office session, both
+  completing full B2F exchanges against production CMS with clean
+  session teardown.
+
 # KP4PRA TNC — Changes applied in this bundle (v2)
 
 All fixes discovered and validated during on-device bring-up on
