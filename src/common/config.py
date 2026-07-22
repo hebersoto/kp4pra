@@ -70,7 +70,7 @@ DEFAULT_CONFIG = {
         "cms_host": "cms.winlink.org",
         "cms_port": 8772,
         "telnet_enabled": True,
-        "telnet_port": 8774,
+        "telnet_port": 8772,  # Winlink Express "Telnet Winlink" defaults to 8772
     },
 }
 
