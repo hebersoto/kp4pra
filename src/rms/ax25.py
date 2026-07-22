@@ -57,17 +57,29 @@ def split_frame(frame:bytes)->Tuple[str,str,List[str],int,int,bytes]:
         pid=frame[i]; i+=1
     return addrs[0],addrs[1],addrs[2:],ctrl,pid,frame[i:]
 
-def make_frame(dest:str,src:str,ctrl:int,payload:bytes=b'',pid:int=-1)->bytes:
-    out=bytearray(); out+=encode_call(dest,last=False,command=True); out+=encode_call(src,last=True)
+def make_frame(dest:str,src:str,ctrl:int,payload:bytes=b'',pid:int=-1,response:bool=False)->bytes:
+    # AX.25 command/response convention: for a COMMAND frame, the dest
+    # address C-bit=1 and src C-bit=0. For a RESPONSE frame (required for
+    # UA/DM replying to a Poll SABM/DISC, and conventional for RR sent as
+    # an ack rather than a poll), it is inverted: dest C-bit=0, src C-bit=1.
+    # response=False (default) preserves prior behavior exactly.
+    out=bytearray()
+    out+=encode_call(dest,last=False,command=not response)
+    out+=encode_call(src,last=True,command=response)
     out.append(ctrl)
     if pid>=0: out.append(pid)
     out+=payload; return bytes(out)
+
+def frame_command_bits(frame:bytes):
+    """Return (dest_c_bit_set, src_c_bit_set) -- for tests/diagnostics."""
+    return bool(frame[6]&0x80), bool(frame[13]&0x80)
 
 def is_s(c): return (c&0x03)==0x01
 def is_sabm(c): return (c&0xEF)==0x2F
 def is_disc(c): return (c&0xEF)==0x43
 def is_ua(c): return (c&0xEF)==0x63
 def is_i(c): return (c&1)==0
+def poll_bit(c): return bool(c&0x10)
 def ns(c): return (c>>1)&7
 def nr(c): return (c>>5)&7
 def rr(n:int,pf=False): return 0x01|((n&7)<<5)|(0x10 if pf else 0)

@@ -7,7 +7,7 @@ import asyncio, os, signal, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.config import load_config
 from common.runtime_status import write_status
-from rms.ax25 import KissDecoder,kiss_encode,split_frame,make_frame,is_sabm,is_disc,is_i,is_s,ns,nr,rr,iframe,UA,DM,PID_NO_L3,LinkState
+from rms.ax25 import KissDecoder,kiss_encode,split_frame,make_frame,is_sabm,is_disc,is_i,is_s,ns,nr,rr,iframe,poll_bit,UA,DM,PID_NO_L3,LinkState
 from rms.cms import CmsSession
 
 MODE_CODES={'PACKET-1200':0,'PACKET-9600':3}
@@ -61,13 +61,38 @@ class Gateway:
         mycall=self.rms['cms_call'].upper()
         if dest.upper()!=mycall:
             return
+        # AX.25 spec: a station receiving a Poll-bit (P=1) SABM/DISC/I frame
+        # MUST reply with the Final bit (F=1) set on its Response frame, or
+        # the peer's data-link state machine will not consider the
+        # exchange confirmed. pf_in mirrors whatever Poll bit we just saw.
+        pf_in = poll_bit(ctrl)
         if is_sabm(ctrl):
-            log(f"handle: SABM from {src}")
+            log(f"handle: SABM from {src} (poll={pf_in})")
             if self.link and self.link.remote!=src:
                 log(f"handle: rejecting SABM from {src}, busy with {self.link.remote}")
-                await self.tx(make_frame(src,mycall,DM)); return
-            self.link=LinkState(src); await self.tx(make_frame(src,mycall,UA)); self.status('connecting_cms',remote=src)
-            log(f"handle: UA sent to {src}, opening CMS session")
+                await self.tx(make_frame(src,mycall,DM|(0x10 if pf_in else 0),response=True)); return
+            # Tear down any previous CMS session/task cleanly before starting
+            # a new one. Without this, a rapid re-SABM (e.g. a peer retrying
+            # because it didn't recognize our prior UA) leaves the old
+            # cms_to_rf() task still running -- it reads self.cms fresh each
+            # loop iteration, so once self.cms is reassigned below to the
+            # NEW session, both the old (orphaned) task and the new task end
+            # up calling .recv() on the same CmsSession concurrently, which
+            # crashes with 'read() called while another coroutine is
+            # already waiting for incoming data'.
+            if self.cms_task and not self.cms_task.done():
+                log("handle: cancelling stale cms_to_rf task from a previous session")
+                self.cms_task.cancel()
+                try:
+                    await self.cms_task
+                except asyncio.CancelledError:
+                    pass
+            if self.cms:
+                await self.cms.close()
+            self.link=LinkState(src)
+            await self.tx(make_frame(src,mycall,UA|(0x10 if pf_in else 0),response=True))
+            self.status('connecting_cms',remote=src)
+            log(f"handle: UA(response,F={pf_in}) sent to {src}, opening CMS session")
             self.cms=CmsSession(src,mycall,self.rms['cms_password'],self.rms['frequency_hz'],MODE_CODES.get(self.rms.get('mode','PACKET-1200'),0),self.rms.get('cms_host','cms.winlink.org'),self.rms.get('cms_port',8772))
             try:
                 await self.cms.connect(); self.status('connected',remote=src)
@@ -75,12 +100,14 @@ class Gateway:
                 self.cms_task=asyncio.create_task(self.cms_to_rf())
             except Exception as e:
                 log(f"handle: CMS connect FAILED: {type(e).__name__}: {e}")
-                self.status('cms_error',remote=src,message=str(e)); await self.tx(make_frame(src,mycall,DM)); await self.close_session()
+                self.status('cms_error',remote=src,message=str(e))
+                await self.tx(make_frame(src,mycall,DM,response=True)); await self.close_session()
             return
         if not self.link or src!=self.link.remote: return
         if is_disc(ctrl):
-            log(f"handle: DISC from {src}")
-            await self.tx(make_frame(src,mycall,UA)); await self.close_session(); return
+            log(f"handle: DISC from {src} (poll={pf_in})")
+            await self.tx(make_frame(src,mycall,UA|(0x10 if pf_in else 0),response=True))
+            await self.close_session(); return
         if is_i(ctrl) or is_s(ctrl):
             log(f"handle: frame from {src} N(R)={nr(ctrl)} (was va={self.link.va})")
             self.link.va=nr(ctrl)
@@ -88,13 +115,13 @@ class Gateway:
             log(f"handle: I-frame N(S)={ns(ctrl)} expected={self.link.vr} payload={payload!r}")
             if ns(ctrl)==self.link.vr:
                 self.link.vr=(self.link.vr+1)&7
-                await self.tx(make_frame(src,mycall,rr(self.link.vr)))
+                await self.tx(make_frame(src,mycall,rr(self.link.vr,pf_in),response=True))
                 if self.cms and payload:
                     log(f"handle: forwarding {len(payload)} bytes to CMS")
                     await self.cms.send(payload)
             else:
                 log("handle: out-of-sequence I-frame")
-                await self.tx(make_frame(src,mycall,rr(self.link.vr,True)))
+                await self.tx(make_frame(src,mycall,rr(self.link.vr,True),response=True))
     async def run(self):
         if not self.rms.get('enabled'): self.status('disabled'); return
         self.status('starting')
