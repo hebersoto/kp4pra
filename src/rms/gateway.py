@@ -27,11 +27,9 @@ class Gateway:
             self.writer.write(kiss_encode(frame)); await self.writer.drain()
 
     async def _start_new_session(self,remote_call,mycall):
-        """Shared by the RF SABM path and the Telnet accept path: cancel any
-        stale relay task/CmsSession from a previous session, then open a
-        fresh authenticated CMS session for remote_call. Caller is
-        responsible for setting self.link (RF) or leaving it None (telnet)
-        and for creating the actual relay task afterward."""
+        """Shared by the RF SABM path: cancel any stale relay task/CmsSession
+        from a previous session, then open a fresh authenticated CMS session
+        for remote_call using the gateway's OWN approved credentials."""
         if self.cms_task and not self.cms_task.done():
             log("session: cancelling stale relay task from a previous session")
             self.cms_task.cancel()
@@ -45,13 +43,8 @@ class Gateway:
         await self.cms.connect()
 
     def _busy_with_other(self,src):
-        """True if a session (RF or Telnet) is already active and it is NOT
-        simply the same RF station reconnecting (which is allowed to reset
-        its own session). Telnet sessions never match by src (self.link is
-        None while telnet is active), so any new arrival is correctly
-        treated as 'busy' rather than silently overwriting the active
-        session's self.cms/self.link -- the same class of race fixed
-        earlier for rapid RF re-SABM."""
+        """True if an RF session is active and it is NOT simply the same
+        station reconnecting (which is allowed to reset its own session)."""
         return self.cms is not None and not (self.link and self.link.remote==src)
 
     async def cms_to_rf(self):
@@ -82,42 +75,6 @@ class Gateway:
             log("cms_to_rf: exiting, closing session")
             await self.close_session()
 
-    async def telnet_relay(self,reader,writer):
-        log("telnet_relay: started")
-        async def cms_to_client():
-            try:
-                while self.cms:
-                    data=await self.cms.recv(1024)
-                    if not data:
-                        log("telnet_relay: cms.recv() returned empty -- CMS closed the stream")
-                        break
-                    log(f"telnet_relay: got {len(data)} bytes from CMS")
-                    writer.write(data); await writer.drain()
-            except Exception as e:
-                log(f"telnet_relay: cms_to_client EXCEPTION {type(e).__name__}: {e}")
-        async def client_to_cms():
-            try:
-                while self.cms:
-                    data=await reader.read(1024)
-                    if not data:
-                        log("telnet_relay: client closed the connection")
-                        break
-                    log(f"telnet_relay: forwarding {len(data)} bytes to CMS")
-                    await self.cms.send(data)
-            except Exception as e:
-                log(f"telnet_relay: client_to_cms EXCEPTION {type(e).__name__}: {e}")
-        try:
-            t1=asyncio.create_task(cms_to_client())
-            t2=asyncio.create_task(client_to_cms())
-            done,pending=await asyncio.wait([t1,t2],return_when=asyncio.FIRST_COMPLETED)
-            for p in pending:
-                p.cancel()
-                try: await p
-                except asyncio.CancelledError: pass
-        finally:
-            log("telnet_relay: exiting, closing session")
-            await self.close_session()
-
     async def close_session(self):
         if self.cms: await self.cms.close()
         self.cms=None; self.link=None; self.status('listening')
@@ -138,7 +95,7 @@ class Gateway:
         if is_sabm(ctrl):
             log(f"handle: SABM from {src} (poll={pf_in})")
             if self._busy_with_other(src):
-                busy_desc = self.link.remote if self.link else "a Telnet session"
+                busy_desc = self.link.remote if self.link else "busy"
                 log(f"handle: rejecting SABM from {src}, busy with {busy_desc}")
                 await self.tx(make_frame(src,mycall,DM|(0x10 if pf_in else 0),response=True)); return
             self.link=LinkState(src)
@@ -176,47 +133,61 @@ class Gateway:
                 await self.tx(make_frame(src,mycall,rr(self.link.vr,True),response=True))
 
     async def handle_telnet(self,reader,writer):
+        # "Network Post Office" access: treat this exactly like a network
+        # cable to the real CMS. No local login logic -- we cannot validate
+        # an arbitrary connecting station's own Winlink account password
+        # ourselves (only the real CMS knows it), so the connecting client
+        # performs its ENTIRE secure-login exchange directly against real
+        # CMS's actual protocol, byte for byte, through us. This never
+        # touches self.cms/self.link (the gateway's OWN authenticated
+        # session used for RF), so Telnet and RF sessions are fully
+        # independent and do not contend with each other.
         peer=writer.get_extra_info('peername')
         remote_desc=f"{peer[0]}:{peer[1]}" if peer else "telnet client"
         log(f"telnet: connection from {remote_desc}")
+        cms_host=self.rms.get('cms_host','cms.winlink.org')
+        cms_port=int(self.rms.get('cms_port',8772))
         try:
-            # Same 'Callsign :' prompt/response convention our own CmsSession
-            # uses against real CMS -- a Telnet Winlink client answers this
-            # with its callsign, which CmsSession then needs up front to log
-            # into CMS on the client's behalf.
-            writer.write(b"Callsign :"); await writer.drain()
-            line=await asyncio.wait_for(reader.readline(),30)
-            if not line:
-                log(f"telnet: {remote_desc} disconnected before sending callsign")
-                return
-            text=line.decode(errors='replace').strip()
-            parts=text.split()
-            remote_call=parts[0].upper() if parts else ''
-            if not remote_call:
-                log(f"telnet: {remote_desc} sent no callsign, closing")
-                return
-            log(f"telnet: callsign {remote_call} from {remote_desc}")
-            mycall=self.rms['cms_call'].upper()
-            if self._busy_with_other(remote_call):
-                busy_desc = self.link.remote if self.link else "another Telnet session"
-                log(f"telnet: rejecting {remote_call}, busy with {busy_desc}")
-                writer.write(b"Busy - try again later.\r\n"); await writer.drain()
-                return
-            self.status('connecting_cms',remote=remote_call)
-            try:
-                await self._start_new_session(remote_call,mycall)
-            except Exception as e:
-                log(f"telnet: CMS connect FAILED: {type(e).__name__}: {e}")
-                self.status('cms_error',remote=remote_call,message=str(e))
-                await self.close_session(); return
-            self.link=None  # telnet sessions carry no AX.25 LinkState
-            self.status('connected',remote=remote_call)
-            log(f"telnet: CMS connected for {remote_call}, starting relay")
-            self.cms_task=asyncio.create_task(self.telnet_relay(reader,writer))
-            await self.cms_task
+            cms_reader,cms_writer=await asyncio.open_connection(cms_host,cms_port)
+            log(f"telnet: proxying {remote_desc} directly to {cms_host}:{cms_port}")
         except Exception as e:
-            log(f"telnet: EXCEPTION {type(e).__name__}: {e}")
+            log(f"telnet: could not reach CMS for {remote_desc}: {type(e).__name__}: {e}")
+            try: writer.close()
+            except Exception: pass
+            return
+        async def cms_to_client():
+            try:
+                while True:
+                    data=await cms_reader.read(1024)
+                    if not data:
+                        log(f"telnet: CMS closed the stream for {remote_desc}")
+                        break
+                    log(f"telnet: {len(data)} bytes CMS->{remote_desc}: {data!r}")
+                    writer.write(data); await writer.drain()
+            except Exception as e:
+                log(f"telnet: cms_to_client EXCEPTION for {remote_desc}: {type(e).__name__}: {e}")
+        async def client_to_cms():
+            try:
+                while True:
+                    data=await reader.read(1024)
+                    if not data:
+                        log(f"telnet: {remote_desc} closed the connection")
+                        break
+                    log(f"telnet: {len(data)} bytes {remote_desc}->CMS: {data!r}")
+                    cms_writer.write(data); await cms_writer.drain()
+            except Exception as e:
+                log(f"telnet: client_to_cms EXCEPTION for {remote_desc}: {type(e).__name__}: {e}")
+        try:
+            t1=asyncio.create_task(cms_to_client())
+            t2=asyncio.create_task(client_to_cms())
+            done,pending=await asyncio.wait([t1,t2],return_when=asyncio.FIRST_COMPLETED)
+            for p in pending:
+                p.cancel()
+                try: await p
+                except asyncio.CancelledError: pass
         finally:
+            try: cms_writer.close()
+            except Exception: pass
             try: writer.close()
             except Exception: pass
             log(f"telnet: connection from {remote_desc} closed")
@@ -238,7 +209,7 @@ class Gateway:
                 self.status('kiss_error',message=str(e)); await asyncio.sleep(5)
 
     async def _run_telnet(self):
-        port=int(self.rms.get('telnet_port',8774))
+        port=int(self.rms.get('telnet_port',8772))
         server=await asyncio.start_server(self.handle_telnet,'0.0.0.0',port)
         log(f"run: telnet (Winlink over TCP) listening on 0.0.0.0:{port}")
         async with server:

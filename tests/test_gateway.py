@@ -267,13 +267,9 @@ def test_rapid_resabm_cancels_stale_cms_to_rf_task():
 
 
 class FakeStreamReader:
-    """Minimal stand-in for asyncio.StreamReader for telnet tests."""
-    def __init__(self, lines_then_eof=()):
-        self._chunks = list(lines_then_eof)
-    async def readline(self):
-        if self._chunks:
-            return self._chunks.pop(0)
-        return b''
+    """Minimal stand-in for asyncio.StreamReader for telnet proxy tests."""
+    def __init__(self, chunks_then_eof=()):
+        self._chunks = list(chunks_then_eof)
     async def read(self, n=1024):
         if self._chunks:
             return self._chunks.pop(0)
@@ -295,66 +291,60 @@ class FakeStreamWriter:
         self.closed = True
 
 
-def test_telnet_happy_path_relays_both_directions():
+def test_telnet_proxies_bytes_both_directions_to_real_cms():
+    # "Network Post Office" access must be a pure transparent proxy: no
+    # local login logic, no gateway credentials involved -- the connecting
+    # client does its ENTIRE secure-login exchange directly against the
+    # actual CMS protocol, byte for byte, through us.
     gw = make_gateway()
-    reader = FakeStreamReader([b'N0CALL\r\n'])
-    writer = FakeStreamWriter()
+    client_reader = FakeStreamReader([b';SR: 12345678 145050000 0\r', b''])
+    client_writer = FakeStreamWriter()
+
+    cms_reader = FakeStreamReader([b'[WL2K-5.0-B2FTEST$]\r', b';SQ: 87654321\r'])
+    cms_writer = FakeStreamWriter()
 
     import rms.gateway as gwmod
-    fake_cms_holder = {}
-    class RecordingCms(FakeCms):
-        def __init__(self, remote_call, gateway_call, *a, **k):
-            super().__init__([b'[WL2K-5.0-B2FTEST$]\r'])
-            self.remote_call = remote_call
-            self.gateway_call = gateway_call
-            fake_cms_holder['instance'] = self
-        async def connect(self):
-            pass
-    orig_cms_cls = gwmod.CmsSession
-    gwmod.CmsSession = RecordingCms
+    calls = []
+    async def fake_open_connection(host, port):
+        calls.append((host, port))
+        return cms_reader, cms_writer
+    orig = gwmod.asyncio.open_connection
+    gwmod.asyncio.open_connection = fake_open_connection
 
     try:
-        run(gw.handle_telnet(reader, writer))
+        run(gw.handle_telnet(client_reader, client_writer))
     finally:
-        gwmod.CmsSession = orig_cms_cls
+        gwmod.asyncio.open_connection = orig
 
-    assert b'Callsign :' in writer.sent
-    assert b'[WL2K-5.0-B2FTEST$]' in writer.sent
-    assert fake_cms_holder['instance'].remote_call == 'N0CALL'
-    assert gw.link is None
-    assert gw.cms is None
-    assert writer.closed
-
-
-def test_telnet_rejects_when_rf_session_active():
-    gw = make_gateway()
-    gw.link = LinkState('OTHERCALL')
-    gw.cms = FakeCms([])
-
-    reader = FakeStreamReader([b'N0CALL\r\n'])
-    writer = FakeStreamWriter()
-
-    run(gw.handle_telnet(reader, writer))
-
-    assert b'Busy' in writer.sent
-    assert gw.link.remote == 'OTHERCALL'
+    assert calls == [('cms.winlink.org', 8772)], f"unexpected upstream target: {calls}"
+    assert b'[WL2K-5.0-B2FTEST$]' in client_writer.sent
+    assert b';SQ: 87654321' in client_writer.sent
+    assert b';SR: 12345678 145050000 0' in cms_writer.sent
+    assert gw.cms is None and gw.link is None
+    assert client_writer.closed
 
 
-def test_rf_sabm_rejected_when_telnet_session_active():
+def test_telnet_and_rf_do_not_contend_for_the_same_session_state():
     gw = make_gateway()
     gw.writer = FakeWriter()
-    gw.link = None
-    gw.cms = FakeCms([])
+    gw.link = LinkState('NP4JN')
+    gw.cms = FakeCms([])  # RF session "active"
 
-    frame = make_frame('KP3M-2', 'NP4JN', 0x2F)
-    run(gw.handle(frame))
+    client_reader = FakeStreamReader([b''])
+    client_writer = FakeStreamWriter()
+    cms_reader = FakeStreamReader([b'banner\r'])
+    cms_writer = FakeStreamWriter()
 
-    from rms.ax25 import KissDecoder
-    dec = KissDecoder()
-    frames = []
-    for raw in gw.writer.sent:
-        frames.extend(dec.feed(raw))
-    assert len(frames) == 1
-    dest, src, path, ctrl, pid, payload = split_frame(frames[0])
-    assert (ctrl & 0xEF) == DM and dest == 'NP4JN'
-    assert gw.link is None
+    import rms.gateway as gwmod
+    async def fake_open_connection(host, port):
+        return cms_reader, cms_writer
+    orig = gwmod.asyncio.open_connection
+    gwmod.asyncio.open_connection = fake_open_connection
+
+    try:
+        run(gw.handle_telnet(client_reader, client_writer))
+    finally:
+        gwmod.asyncio.open_connection = orig
+
+    assert gw.link.remote == 'NP4JN'
+    assert gw.cms is not None
