@@ -53,8 +53,19 @@ wifi:
   ssid: ''                  # AP SSID (blank -> defaults to KP4PRA)
   password: "qwerty1234"    # AP password - CHANGE THIS, default is public
   channel: 6
+  mode_at_boot: "client"    # "client" = join configured WiFi; "ap" = broadcast hotspot
   # --- Client network (the WiFi the TNC should JOIN, if any) ---
   client_ssid: ''           # home/shop WiFi to join. BLANK -> boot straight to AP mode.
   client_password: ''
   # If client_ssid is set but the join fails within 5 minutes, the TNC
   # automatically falls back to AP mode so it stays reachable.
+
+# Native Python Winlink RMS gateway
+rms:
+  enabled: false
+  cms_call: ""       # Approved gateway callsign, normally CALL-10
+  cms_password: ""   # Winlink secure password
+  frequency_hz: 145050000
+  mode: "PACKET-1200"
+  telnet_enabled: true   # Winlink-over-TCP access, all interfaces (0.0.0.0)
+  telnet_port: 8772  # Winlink Express "Telnet Winlink" defaults to 8772

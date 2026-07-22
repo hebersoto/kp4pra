@@ -57,8 +57,20 @@ DEFAULT_CONFIG = {
         "ssid": "",
         "password": "qwerty1234",
         "channel": 6,
+        "mode_at_boot": "client",
         "client_ssid": "",
         "client_password": "",
+    },
+    "rms": {
+        "enabled": False,
+        "cms_call": "",
+        "cms_password": "",
+        "frequency_hz": 145050000,
+        "mode": "PACKET-1200",
+        "cms_host": "cms.winlink.org",
+        "cms_port": 8772,
+        "telnet_enabled": True,
+        "telnet_port": 8772,  # Winlink Express "Telnet Winlink" defaults to 8772
     },
 }
 

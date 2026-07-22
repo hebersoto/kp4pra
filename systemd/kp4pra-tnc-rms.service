@@ -1,0 +1,25 @@
+[Unit]
+Description=KP4PRA TNC Native Python Winlink RMS Gateway
+After=network-online.target direwolf.service
+Wants=network-online.target direwolf.service
+
+[Service]
+Type=simple
+# Runs unprivileged like every other KP4PRA service - the gateway only
+# needs outbound TCP (Dire Wolf KISS + Winlink CMS).
+User=kp4pra-tnc
+Group=kp4pra-tnc
+Environment=PYTHONPATH=/opt/kp4pra-tnc/src
+Environment=KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml
+# venv python: load_config needs PyYAML, which lives in the venv
+ExecStart=/opt/kp4pra-tnc/venv/bin/python -m rms.gateway
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=kp4pra-tnc
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/run/kp4pra-tnc /rw/kp4pra-tnc
+
+[Install]
+WantedBy=multi-user.target kp4pra-tnc.target

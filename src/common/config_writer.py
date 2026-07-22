@@ -164,6 +164,26 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
             if not isinstance(ck, str) or not _re.match(r"^[A-Za-z0-9]{1,6}(-([1-9]|1[0-5]))?$", ck):
                 errors.append("station.clock must be CALLSIGN or CALLSIGN-SSID (SSID 1-15)")
 
+
+    if "rms" in updates:
+        rms = updates["rms"]
+        import re as _re
+        if "cms_call" in rms and rms["cms_call"]:
+            c = str(rms["cms_call"]).upper()
+            if not _re.match(r"^[A-Z0-9]{1,6}(-([1-9]|1[0-5]))?$", c):
+                errors.append("rms.cms_call must be CALLSIGN or CALLSIGN-SSID")
+        if rms.get("enabled") and not rms.get("cms_call"):
+            errors.append("rms.cms_call is required when RMS is enabled")
+        if "cms_password" in rms and len(str(rms["cms_password"])) > 64:
+            errors.append("rms.cms_password is too long")
+        if "frequency_hz" in rms:
+            try:
+                f = int(rms["frequency_hz"])
+                if not 1000000 <= f <= 1300000000: errors.append("rms.frequency_hz is invalid")
+            except (TypeError, ValueError): errors.append("rms.frequency_hz must be an integer")
+        if "mode" in rms and rms["mode"] not in ("PACKET-1200", "PACKET-9600"):
+            errors.append("rms.mode must be PACKET-1200 or PACKET-9600")
+
     if errors:
         return False, "; ".join(errors)
     return True, ""

@@ -136,6 +136,7 @@ def restart_service(service_name: str) -> Tuple[bool, str]:
         "kp4pra-tnc-rfcomm.service",
         "kp4pra-tnc-ble.service",
         "kp4pra-tnc-web.service",
+        "kp4pra-tnc-rms.service",
         "bluetooth.service",
         "direwolf.service",
     }
@@ -158,6 +159,7 @@ def stop_service(service_name: str) -> Tuple[bool, str]:
     ALLOWED = {
         "kp4pra-tnc-rfcomm.service",
         "kp4pra-tnc-ble.service",
+        "kp4pra-tnc-rms.service",
         "direwolf.service",
     }
     if service_name not in ALLOWED:
@@ -180,6 +182,7 @@ def get_service_status(service_name: str) -> dict:
         "kp4pra-tnc-rfcomm.service",
         "kp4pra-tnc-ble.service",
         "kp4pra-tnc-web.service",
+        "kp4pra-tnc-rms.service",
         "bluetooth.service",
         "direwolf.service",
     }

@@ -138,6 +138,55 @@
   </div>
 </div>
 
+
+<!-- Winlink RMS -->
+<div class="card">
+  <div class="card-title"><span class="icon">✉</span> Winlink RMS Gateway</div>
+  <div class="alert alert-info" style="margin-bottom:1rem">
+    <span class="alert-icon">ℹ</span>
+    <div>You need to have internet access on the KP4PRA TNC and be an approved sysop in Winlink.</div>
+  </div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    Native Python RMS service. It connects directly to Dire Wolf KISS and the Winlink CMS; LinBPQ is not used.
+  </p>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="rms-enabled">RMS Gateway</label>
+      <select class="form-select" id="rms-enabled">
+        <option value="false" {% if not config.rms.enabled %}selected{% endif %}>Disabled</option>
+        <option value="true" {% if config.rms.enabled %}selected{% endif %}>Enabled</option>
+      </select>
+    </div>
+    {% set _rms_parts = config.rms.cms_call.split('-') %}
+    <div class="form-group">
+      <label class="form-label" for="rms-callsign">RMS Callsign</label>
+      <input class="form-input" id="rms-callsign" maxlength="6" value="{{ _rms_parts[0] }}" placeholder="MYCALL">
+      <div class="form-hint">Approved Winlink gateway callsign. Can differ from the Station callsign above.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rms-ssid">RMS SSID</label>
+      <input class="form-input" id="rms-ssid" type="number" min="1" max="15" value="{{ _rms_parts[1] if _rms_parts|length > 1 else '' }}" placeholder="(optional)">
+      <div class="form-hint">Optional. If used, must be 1-15.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rms-pass">CMS Password</label>
+      <input class="form-input" id="rms-pass" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password">
+      <div class="form-hint">The password is stored in the protected KP4PRA YAML file and is never returned to the browser.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rms-frequency">RF Frequency (Hz)</label>
+      <input class="form-input" id="rms-frequency" type="number" min="1000000" max="1300000000" value="{{ config.rms.frequency_hz }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rms-mode">Packet Mode</label>
+      <select class="form-select" id="rms-mode">
+        <option value="PACKET-1200" {% if config.rms.mode == 'PACKET-1200' %}selected{% endif %}>Packet 1200</option>
+        <option value="PACKET-9600" {% if config.rms.mode == 'PACKET-9600' %}selected{% endif %}>Packet 9600</option>
+      </select>
+    </div>
+  </div>
+</div>
+
 <!-- BLE -->
 <div class="card">
   <div class="card-title"><span class="icon">📡</span> BLE KISS Bridge</div>
@@ -454,6 +503,14 @@ function toggleAuthFields(on) {
   document.getElementById('auth-fields').style.display = on ? '' : 'none';
 }
 
+function callWithSsid(callId, ssidId) {
+  // Mirrors _call_with_ssid() in common/direwolf_conf.py: CALLSIGN or
+  // CALLSIGN-SSID, never a stray dash or space when SSID is blank.
+  const call = document.getElementById(callId).value.trim().toUpperCase();
+  const ssid = document.getElementById(ssidId).value.trim();
+  return ssid ? `${call}-${ssid}` : call;
+}
+
 function collectConfig() {
   const cfg = {
     station: {
@@ -473,6 +530,12 @@ function collectConfig() {
     direwolf: {
       host: document.getElementById('dw-host').value.trim(),
       port: parseInt(document.getElementById('dw-port').value),
+    },
+    rms: {
+      enabled: document.getElementById('rms-enabled').value === 'true',
+      cms_call: callWithSsid('rms-callsign', 'rms-ssid'),
+      frequency_hz: parseInt(document.getElementById('rms-frequency').value),
+      mode: document.getElementById('rms-mode').value,
     },
     ble: {
       device_name: document.getElementById('ble-name').value.trim(),
@@ -506,6 +569,8 @@ function collectConfig() {
   };
   const pass = document.getElementById('web-pass').value;
   if (pass) cfg.web.password = pass;
+  const rmsPass = document.getElementById('rms-pass').value;
+  if (rmsPass) cfg.rms.cms_password = rmsPass;
   const wpass = document.getElementById('wifi-client-pass').value;
   if (wpass) cfg.wifi.client_password = wpass;
   return cfg;
