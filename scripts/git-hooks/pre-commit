@@ -1,0 +1,60 @@
+#!/bin/bash
+# KP4PRA TNC - secret guard. Blocks commits that would publish credentials.
+# Install per clone with: bash scripts/install-hooks.sh
+# Deliberate bypass: git commit --no-verify
+
+fail=0
+red() { printf '\033[31m%s\033[0m\n' "$1"; }
+
+# Values that are intentionally public in the tracked template.
+ALLOWED_DEFAULTS="qwerty1234"
+
+is_allowed() {
+    for a in $ALLOWED_DEFAULTS; do [ "$1" = "$a" ] && return 0; done
+    return 1
+}
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+for f in $staged; do
+    content=$(git show ":$f" 2>/dev/null) || continue
+
+    if grep -qE "BEGIN (OPENSSH|RSA|DSA|EC|PGP) PRIVATE KEY" <<< "$content"; then
+        red "BLOCKED: $f contains a PRIVATE KEY."
+        fail=1
+    fi
+
+    case "$f" in
+      *.yaml|*.yml)
+        while IFS= read -r line; do
+            key=$(sed -E "s/^[[:space:]]*([A-Za-z_]+)[[:space:]]*:.*/\1/" <<< "$line")
+            val=$(sed -E "s/^[[:space:]]*[A-Za-z_]+[[:space:]]*:[[:space:]]*//" <<< "$line" \
+                  | sed -E "s/[[:space:]]*#.*$//" | tr -d "\"' ")
+            [ -z "$val" ] && continue
+            is_allowed "$val" && continue
+            red "BLOCKED: $f has a non-blank credential:  $key"
+            fail=1
+        done < <(grep -E "^[[:space:]]*(cms_password|cms_user|password|client_password|psk)[[:space:]]*:" <<< "$content")
+        ;;
+    esac
+
+    if [ -f "$(git rev-parse --git-dir)/secret-guard-literals" ]; then
+        while IFS= read -r lit; do
+            [ -z "$lit" ] && continue
+            if grep -qF -- "$lit" <<< "$content"; then
+                red "BLOCKED: $f contains a known secret literal."
+                fail=1
+            fi
+        done < "$(git rev-parse --git-dir)/secret-guard-literals"
+    fi
+done
+
+if [ "$fail" -ne 0 ]; then
+    echo
+    red "Commit aborted by secret guard."
+    echo "Real values belong in /rw/kp4pra-tnc/config.yaml, not the tracked template."
+    echo "Deliberate override: git commit --no-verify"
+    exit 1
+fi
+exit 0
