@@ -67,3 +67,5 @@ rms:
   cms_password: ""   # Winlink secure password
   frequency_hz: 145050000
   mode: "PACKET-1200"
+  telnet_enabled: true   # Winlink-over-TCP access, all interfaces (0.0.0.0)
+  telnet_port: 8774

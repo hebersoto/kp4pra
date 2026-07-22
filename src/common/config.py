@@ -69,6 +69,8 @@ DEFAULT_CONFIG = {
         "mode": "PACKET-1200",
         "cms_host": "cms.winlink.org",
         "cms_port": 8772,
+        "telnet_enabled": True,
+        "telnet_port": 8774,
     },
 }
 

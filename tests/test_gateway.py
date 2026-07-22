@@ -223,10 +223,6 @@ def test_handle_resabm_from_same_station_resets_session():
 
 
 def test_rapid_resabm_cancels_stale_cms_to_rf_task():
-    # Simulates WP4DAS-style rapid retry: a second SABM arrives from the
-    # SAME station while the first session's cms_to_rf() task is still
-    # alive (blocked in cms.recv()). The old task must be cancelled, not
-    # left to race the new task over the same/next CmsSession's socket.
     gw = make_gateway()
     gw.writer = FakeWriter()
 
@@ -268,3 +264,97 @@ def test_rapid_resabm_cancels_stale_cms_to_rf_task():
     assert first_task.done(), "stale cms_to_rf task from the first session was not cancelled"
     assert len(created) == 2, f"expected exactly 2 CmsSession instances, got {len(created)}"
     assert created[0].closed, "first (stale) CmsSession was not closed"
+
+
+class FakeStreamReader:
+    """Minimal stand-in for asyncio.StreamReader for telnet tests."""
+    def __init__(self, lines_then_eof=()):
+        self._chunks = list(lines_then_eof)
+    async def readline(self):
+        if self._chunks:
+            return self._chunks.pop(0)
+        return b''
+    async def read(self, n=1024):
+        if self._chunks:
+            return self._chunks.pop(0)
+        return b''
+
+
+class FakeStreamWriter:
+    def __init__(self, peer=('192.168.1.50', 8080)):
+        self.sent = bytearray()
+        self._peer = peer
+        self.closed = False
+    def write(self, data):
+        self.sent += data
+    async def drain(self):
+        pass
+    def get_extra_info(self, name):
+        return self._peer if name == 'peername' else None
+    def close(self):
+        self.closed = True
+
+
+def test_telnet_happy_path_relays_both_directions():
+    gw = make_gateway()
+    reader = FakeStreamReader([b'N0CALL\r\n'])
+    writer = FakeStreamWriter()
+
+    import rms.gateway as gwmod
+    fake_cms_holder = {}
+    class RecordingCms(FakeCms):
+        def __init__(self, remote_call, gateway_call, *a, **k):
+            super().__init__([b'[WL2K-5.0-B2FTEST$]\r'])
+            self.remote_call = remote_call
+            self.gateway_call = gateway_call
+            fake_cms_holder['instance'] = self
+        async def connect(self):
+            pass
+    orig_cms_cls = gwmod.CmsSession
+    gwmod.CmsSession = RecordingCms
+
+    try:
+        run(gw.handle_telnet(reader, writer))
+    finally:
+        gwmod.CmsSession = orig_cms_cls
+
+    assert b'Callsign :' in writer.sent
+    assert b'[WL2K-5.0-B2FTEST$]' in writer.sent
+    assert fake_cms_holder['instance'].remote_call == 'N0CALL'
+    assert gw.link is None
+    assert gw.cms is None
+    assert writer.closed
+
+
+def test_telnet_rejects_when_rf_session_active():
+    gw = make_gateway()
+    gw.link = LinkState('OTHERCALL')
+    gw.cms = FakeCms([])
+
+    reader = FakeStreamReader([b'N0CALL\r\n'])
+    writer = FakeStreamWriter()
+
+    run(gw.handle_telnet(reader, writer))
+
+    assert b'Busy' in writer.sent
+    assert gw.link.remote == 'OTHERCALL'
+
+
+def test_rf_sabm_rejected_when_telnet_session_active():
+    gw = make_gateway()
+    gw.writer = FakeWriter()
+    gw.link = None
+    gw.cms = FakeCms([])
+
+    frame = make_frame('KP3M-2', 'NP4JN', 0x2F)
+    run(gw.handle(frame))
+
+    from rms.ax25 import KissDecoder
+    dec = KissDecoder()
+    frames = []
+    for raw in gw.writer.sent:
+        frames.extend(dec.feed(raw))
+    assert len(frames) == 1
+    dest, src, path, ctrl, pid, payload = split_frame(frames[0])
+    assert (ctrl & 0xEF) == DM and dest == 'NP4JN'
+    assert gw.link is None
