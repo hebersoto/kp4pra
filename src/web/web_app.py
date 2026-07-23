@@ -72,6 +72,21 @@ templates.env.globals["dashboard_secured"] = auth.dashboard_password_set
 templates.env.globals["station_callsign_valid"] = auth.callsign_valid
 
 
+def _mail_counts() -> dict:
+    """Queue counts by state, safe against a missing/unreadable queue so
+    page rendering never breaks."""
+    try:
+        return mailqueue.counts()
+    except Exception:
+        base = {s: 0 for s in mailqueue.STATES}
+        base["total"] = 0
+        return base
+
+
+# Nav badge = messages awaiting trustee review (Holding).
+templates.env.globals["mail_held_count"] = lambda: _mail_counts().get("Holding", 0)
+
+
 
 _config = None
 
@@ -213,6 +228,7 @@ async def dashboard(request: Request, _auth=Depends(check_auth)):
         "request": request,
         "product_name": PRODUCT_NAME,
         "status": status_data,
+        "mail_counts": _mail_counts(),
     })
 
 
@@ -302,6 +318,96 @@ async def mail_sent(request: Request, lang: str = "en"):
         "product_name": PRODUCT_NAME,
         "t": mail_i18n.get_strings(lang),
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin: Web Email message management (spec section 10). Authenticated.
+#
+# Approve : Holding/Rejected/Failed -> Approved (queued for Phase 4 delivery).
+# Reject  : Holding/Approved/Failed -> Rejected (kept on disk for the record).
+# Delete  : permanently removes the file (requires explicit confirmation).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MSG_ACTIONS = {"approve", "reject", "delete"}
+_APPROVE_FROM = {"Holding", "Rejected", "Failed"}
+_REJECT_FROM = {"Holding", "Approved", "Failed"}
+
+
+@app.get("/admin/messages", response_class=HTMLResponse)
+async def messages_list(request: Request, status: str = None,
+                        _auth=Depends(check_auth)):
+    flt = status if status in mailqueue.STATES else None
+    msgs = mailqueue.list_messages(flt)
+    return templates.TemplateResponse("messages.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "messages": msgs,
+        "counts": _mail_counts(),
+        "filter": flt,
+        "states": list(mailqueue.STATES),
+    })
+
+
+@app.get("/admin/messages/{mid}", response_class=HTMLResponse)
+async def message_detail(request: Request, mid: str,
+                         _auth=Depends(check_auth)):
+    rec = mailqueue.get(mid)
+    if rec is None:
+        return RedirectResponse(url="/admin/messages", status_code=303)
+    return templates.TemplateResponse("message_detail.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "m": rec,
+    })
+
+
+@app.post("/api/messages/action")
+async def api_messages_action(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    action = body.get("action")
+    ids = body.get("ids") or []
+    confirm = bool(body.get("confirm", False))
+
+    if action not in _MSG_ACTIONS:
+        return JSONResponse({"success": False, "message": "Unknown action."},
+                            status_code=400)
+    if not isinstance(ids, list) or not ids:
+        return JSONResponse({"success": False, "message": "No messages selected."},
+                            status_code=400)
+    if action == "delete" and not confirm:
+        return JSONResponse({"success": False, "need_confirm": True,
+                             "message": "Confirmation required to delete."},
+                            status_code=400)
+
+    done = 0
+    skipped = 0
+    for mid in ids:
+        rec = mailqueue.get(mid)
+        if rec is None:
+            skipped += 1
+            continue
+        st = rec.get("status")
+        if action == "approve":
+            if st in _APPROVE_FROM:
+                mailqueue.set_status(mid, "Approved")
+                done += 1
+            else:
+                skipped += 1
+        elif action == "reject":
+            if st in _REJECT_FROM:
+                mailqueue.set_status(mid, "Rejected")
+                done += 1
+            else:
+                skipped += 1
+        elif action == "delete":
+            if mailqueue.delete(mid):
+                done += 1
+            else:
+                skipped += 1
+
+    return JSONResponse({"success": True, "action": action,
+                         "done": done, "skipped": skipped,
+                         "counts": _mail_counts()})
 
 
 # ─────────────────────────────────────────────────────────────────────────────

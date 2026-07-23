@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Messages — KP4PRA TNC{% endblock %}
+
+{% block head %}
+<style>
+  .msg-table { width:100%; border-collapse:collapse; font-size:0.9rem; }
+  .msg-table th, .msg-table td {
+    text-align:left; padding:0.55rem 0.6rem;
+    border-bottom:1px solid var(--kp4pra-border); vertical-align:top;
+  }
+  .msg-table th { font-size:0.78rem; text-transform:uppercase;
+    letter-spacing:0.03em; color:var(--kp4pra-muted-text); }
+  .msg-table tbody tr:hover { background:var(--kp4pra-surface); }
+  .msg-table .col-sel { width:2rem; }
+  .msg-subj a { color:var(--kp4pra-primary-dark); text-decoration:none; font-weight:600; }
+  .msg-subj a:hover { text-decoration:underline; }
+  .msg-meta { color:var(--kp4pra-muted-text); font-size:0.8rem; white-space:nowrap; }
+  .filter-tabs { display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .filter-tabs a {
+    font-size:0.82rem; padding:0.3rem 0.7rem; border-radius:999px;
+    text-decoration:none; color:var(--kp4pra-text);
+    background:var(--kp4pra-surface-2); border:1px solid transparent;
+  }
+  .filter-tabs a.active { background:var(--kp4pra-primary); color:#fff; }
+  .bulk-bar { display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
+  @media (max-width:640px){ .msg-table .col-hide { display:none; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Web Email Messages</div>
+  <div class="page-subtitle">Review, approve, reject, or delete messages submitted through the public Web Email Interface.</div>
+</div>
+
+<div class="filter-tabs">
+  <a href="/admin/messages" class="{{ 'active' if not filter else '' }}">All ({{ counts.total }})</a>
+  {% for s in states %}
+  <a href="/admin/messages?status={{ s }}" class="{{ 'active' if filter == s else '' }}">{{ s }} ({{ counts[s] }})</a>
+  {% endfor %}
+</div>
+
+<div id="action-result" style="display:none;margin-bottom:1rem"></div>
+
+{% if messages %}
+<div class="bulk-bar">
+  <label style="font-size:0.85rem;display:flex;gap:0.35rem;align-items:center">
+    <input type="checkbox" id="sel-all" onclick="toggleAll(this)"> Select all
+  </label>
+  <span style="flex:1"></span>
+  <button class="btn btn-primary" onclick="bulk('approve')">Approve selected</button>
+  <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="bulk('reject')">Reject selected</button>
+  <button class="btn" style="border:1px solid var(--kp4pra-error);color:var(--kp4pra-error)" onclick="bulk('delete')">Delete selected</button>
+</div>
+
+<div class="card" style="padding:0.25rem 0.5rem">
+<table class="msg-table">
+  <thead>
+    <tr>
+      <th class="col-sel"></th>
+      <th>Date / Time</th>
+      <th>Destination</th>
+      <th class="col-hide">Reply-To</th>
+      <th>Subject</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for m in messages %}
+    <tr>
+      <td class="col-sel"><input type="checkbox" class="sel" value="{{ m.id }}"></td>
+      <td class="msg-meta">{{ m.created_iso }}</td>
+      <td>{{ m.to }}</td>
+      <td class="col-hide">{{ m.reply_to }}</td>
+      <td class="msg-subj"><a href="/admin/messages/{{ m.id }}">{{ m.subject if m.subject else '(no subject)' }}</a></td>
+      <td>
+        {% if m.status == 'Holding' %}<span class="badge badge-warning">Holding</span>
+        {% elif m.status == 'Approved' %}<span class="badge badge-info">Approved</span>
+        {% elif m.status == 'Sending' %}<span class="badge badge-info">Sending</span>
+        {% elif m.status == 'Sent' %}<span class="badge badge-success">Sent</span>
+        {% elif m.status == 'Failed' %}<span class="badge badge-error">Failed</span>
+        {% else %}<span class="badge badge-disabled">{{ m.status }}</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="card" style="text-align:center;color:var(--kp4pra-muted-text);padding:2rem">
+  No messages{% if filter %} with status &ldquo;{{ filter }}&rdquo;{% endif %}.
+</div>
+{% endif %}
+
+<script>
+  function selectedIds(){
+    return Array.from(document.querySelectorAll('.sel:checked')).map(function(c){return c.value;});
+  }
+  function toggleAll(box){
+    document.querySelectorAll('.sel').forEach(function(c){ c.checked = box.checked; });
+  }
+  function showResult(ok, msg){
+    var el=document.getElementById('action-result');
+    el.style.display='block';
+    el.innerHTML='<div class="alert '+(ok?'alert-success':'alert-error')+'"><span class="alert-icon">'+(ok?'\u2713':'\u2717')+'</span><div>'+msg+'</div></div>';
+    el.scrollIntoView({behavior:'smooth'});
+  }
+  async function bulk(action){
+    var ids=selectedIds();
+    if(ids.length===0){ showResult(false,'No messages selected.'); return; }
+    var confirmFlag=false;
+    if(action==='delete'){
+      if(!confirm('Permanently delete '+ids.length+' message(s)? This cannot be undone.')) return;
+      confirmFlag=true;
+    }
+    try{
+      var r=await fetch('/api/messages/action', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:action, ids:ids, confirm:confirmFlag})
+      });
+      var data=await r.json();
+      if(data.success){
+        showResult(true, action+': '+data.done+' done'+(data.skipped?(', '+data.skipped+' skipped'):''));
+        setTimeout(function(){ location.reload(); }, 700);
+      }else{
+        showResult(false, data.message || 'Action failed.');
+      }
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+</script>
+{% endblock %}
