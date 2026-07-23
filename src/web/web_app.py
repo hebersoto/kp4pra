@@ -50,6 +50,8 @@ import auth
 import mailqueue
 import mailvalidate
 import mail_i18n
+import b2f
+import mailbuilder
 
 PRODUCT_NAME = "KP4PRA TNC"
 
@@ -408,6 +410,48 @@ async def api_messages_action(request: Request, _auth=Depends(check_auth)):
     return JSONResponse({"success": True, "action": action,
                          "done": done, "skipped": skipped,
                          "counts": _mail_counts()})
+
+
+@app.post("/api/messages/test")
+async def api_messages_test(request: Request, _auth=Depends(check_auth)):
+    """DRY-RUN delivery test for one message (spec Phase 4, step 3).
+
+    Assembles the full CMS-path B2F exchange and returns a transcript.
+    Opens no socket and transmits nothing. Does NOT change the message
+    status -- a dry run is a diagnostic, not a delivery."""
+    body = await request.json()
+    mid = body.get("id", "")
+    rec = mailqueue.get(mid)
+    if rec is None:
+        return JSONResponse({"success": False, "message": "Message not found."},
+                            status_code=404)
+
+    cfg = get_config()
+    method = cfg.get("webmail", {}).get("delivery", {}).get("method", "cms")
+    if method != "cms":
+        return JSONResponse({"success": False,
+            "message": "Only the CMS dry-run is available so far."},
+            status_code=400)
+
+    try:
+        transcript = b2f.dry_run_cms(rec, cfg, version=APP_VERSION)
+    except mailbuilder.BuildError as e:
+        return JSONResponse({"success": False,
+            "message": "Cannot build message: %s" % e}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"success": False,
+            "message": "Dry run failed: %s" % e}, status_code=500)
+
+    # Attach the latest test result to the record (status unchanged).
+    mailqueue.update(mid, last_test={
+        "at": transcript["at"], "method": transcript["method"],
+        "compressed_size": transcript["compressed_size"],
+        "uncompressed_size": transcript["uncompressed_size"],
+        "proposal_checksum": transcript["proposal_checksum"],
+    })
+
+    return JSONResponse({"success": True, "dry_run": True,
+                         "transcript": transcript})
 
 
 # ─────────────────────────────────────────────────────────────────────────────

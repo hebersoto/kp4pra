@@ -66,6 +66,10 @@ DEFAULT_CONFIG = {
     },
     "webmail": {
         "enabled": True,
+        "delivery": {
+            "dry_run": True,       # SAFETY: real sending is off by default
+            "method": "cms",       # cms | rf  (rf added in a later step)
+        },
     },
     "station": {
         "callsign": "",
