@@ -487,6 +487,7 @@
     <li><a href="/provision/android" {% if "android" in request.url.path %}class="active"{% endif %}>Android</a></li>
     <li><a href="/provision/iphone" {% if "iphone" in request.url.path %}class="active"{% endif %}>iPhone</a></li>
     <li><a href="/services" {% if request.url.path == "/services" %}class="active"{% endif %}>Services</a></li>
+    <li><a href="/admin/messages" {% if "/admin/messages" in request.url.path %}class="active"{% endif %}>Messages{% if mail_held_count() %} <span style="background:var(--kp4pra-warning);color:#3a2c00;border-radius:999px;padding:0 0.4rem;font-size:0.72rem;font-weight:700">{{ mail_held_count() }}</span>{% endif %}</a></li>
     <li><a href="/config" {% if request.url.path == "/config" %}class="active"{% endif %}>Config</a></li>
     {% if dashboard_secured() %}
     <li><a href="/admin/logout">Logout</a></li>

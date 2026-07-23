@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Message — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Message detail</div>
+  <div class="page-subtitle"><a href="/admin/messages" style="color:var(--kp4pra-muted-text)">&larr; Back to messages</a></div>
+</div>
+
+<div id="action-result" style="display:none;margin-bottom:1rem"></div>
+
+<div class="card">
+  <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem">
+    <div class="card-title" style="margin:0">Submitted {{ m.created_iso }}</div>
+    <span>
+      {% if m.status == 'Holding' %}<span class="badge badge-warning">Holding</span>
+      {% elif m.status == 'Approved' %}<span class="badge badge-info">Approved</span>
+      {% elif m.status == 'Sending' %}<span class="badge badge-info">Sending</span>
+      {% elif m.status == 'Sent' %}<span class="badge badge-success">Sent</span>
+      {% elif m.status == 'Failed' %}<span class="badge badge-error">Failed</span>
+      {% else %}<span class="badge badge-disabled">{{ m.status }}</span>{% endif %}
+    </span>
+  </div>
+
+  <table style="width:100%;font-size:0.92rem;border-collapse:collapse">
+    <tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text);width:9rem">Destination</td><td style="padding:0.35rem 0">{{ m.to }}</td></tr>
+    <tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text)">Reply-To</td><td style="padding:0.35rem 0">{{ m.reply_to }}</td></tr>
+    <tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text)">Subject</td><td style="padding:0.35rem 0">{{ m.subject if m.subject else '(no subject)' }}</td></tr>
+    <tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text)">Language</td><td style="padding:0.35rem 0">{{ 'Español' if m.lang == 'es' else 'English' }}</td></tr>
+    {% if m.route %}<tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text)">Route</td><td style="padding:0.35rem 0">{{ m.route }}</td></tr>{% endif %}
+    {% if m.error %}<tr><td style="padding:0.35rem 0;color:var(--kp4pra-error)">Last error</td><td style="padding:0.35rem 0;color:var(--kp4pra-error)">{{ m.error }}</td></tr>{% endif %}
+  </table>
+
+  <div style="margin-top:1rem">
+    <div style="color:var(--kp4pra-muted-text);font-size:0.85rem;margin-bottom:0.35rem">Message</div>
+    <pre style="white-space:pre-wrap;word-wrap:break-word;background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.85rem;font-family:inherit;font-size:0.92rem;margin:0">{{ m.body }}</pre>
+  </div>
+
+  <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.25rem">
+    <button class="btn btn-primary" onclick="act('approve')">Approve</button>
+    <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="act('reject')">Reject</button>
+    <button class="btn" style="border:1px solid var(--kp4pra-error);color:var(--kp4pra-error)" onclick="act('delete')">Delete</button>
+  </div>
+</div>
+
+<script>
+  var MID = "{{ m.id }}";
+  function showResult(ok, msg){
+    var el=document.getElementById('action-result');
+    el.style.display='block';
+    el.innerHTML='<div class="alert '+(ok?'alert-success':'alert-error')+'"><span class="alert-icon">'+(ok?'\u2713':'\u2717')+'</span><div>'+msg+'</div></div>';
+    el.scrollIntoView({behavior:'smooth'});
+  }
+  async function act(action){
+    var confirmFlag=false;
+    if(action==='delete'){
+      if(!confirm('Permanently delete this message? This cannot be undone.')) return;
+      confirmFlag=true;
+    }
+    try{
+      var r=await fetch('/api/messages/action', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:action, ids:[MID], confirm:confirmFlag})
+      });
+      var data=await r.json();
+      if(data.success){
+        if(action==='delete'){ window.location='/admin/messages'; return; }
+        showResult(true, 'Message '+action+'d.');
+        setTimeout(function(){ location.reload(); }, 600);
+      }else{
+        showResult(false, data.message || 'Action failed.');
+      }
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+</script>
+{% endblock %}

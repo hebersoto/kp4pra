@@ -56,3 +56,25 @@ autoescaping renders stored values inertly.
 ### Configuration
 webmail.enabled (default true) hides/shows the composer; missing key is
 backward compatible.
+
+## Phase 3 — Admin message management (spec section 10)
+
+Routes (authenticated): GET /admin/messages[?status=State] (list with
+filter tabs, checkboxes, bulk actions), GET /admin/messages/<id> (detail;
+bad id redirects to the list), POST /api/messages/action
+({action, ids[], confirm} -> {success, done, skipped, counts}).
+
+Actions: approve (Holding/Rejected/Failed -> Approved), reject
+(Holding/Approved/Failed -> Rejected, file KEPT), delete (removes the
+file, requires confirm:true). Messages not in an allowed source state or
+with a bad/missing id are skipped, never errored.
+
+Reject is non-destructive (audit record, re-approvable); Delete is
+destructive and gated by an explicit browser confirmation (single+bulk).
+
+Dashboard shows a Web Email Messages card ("pending to be sent" =
+Holding+Approved+Failed, plus per-state badges). Admin nav shows a
+Messages link with an amber Holding-count badge. All stored values are
+Jinja-autoescaped; message IDs validated on every lookup/delete.
+
+Approve only sets state to Approved; transmission is Phase 4.

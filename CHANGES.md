@@ -1,3 +1,21 @@
+## Web Email Interface & Admin Dashboard — Phase 3 (message management) — new in 1.4.3
+- Admin Messages section (authenticated): GET /admin/messages with status
+  filter tabs, checkboxes, and bulk actions; GET /admin/messages/<id>
+  detail view (full to/reply-to/subject/body, submitted time, status,
+  language, route/error); POST /api/messages/action.
+- Actions: approve (Holding/Rejected/Failed -> Approved), reject
+  (-> Rejected, file kept on disk as an audit record and re-approvable),
+  delete (permanently removes the file; requires explicit confirmation,
+  single and bulk). Out-of-state / missing / bad-id targets are skipped.
+- Dashboard "Web Email Messages" card: pending-to-be-sent headline
+  (Holding+Approved+Failed) plus per-state badge counts and a review link.
+- Admin nav "Messages" link with an amber Holding-count badge.
+- All stored values are Jinja-autoescaped (submitted content cannot inject
+  markup/script into the trustee browser); message IDs validated on every
+  lookup and delete.
+- Approve only queues (sets Approved); transmission is Phase 4.
+- Docs: docs/WEBMAIL.md Phase 3 section.
+
 ## Web Email Interface & Admin Dashboard — Phase 2 (public composer + queue) — new in 1.4.2
 - Public Web Email Interface at /mail: language toggle (English/Spanish,
   English default), mandatory No-Privacy + FCC Part 97 notice with explicit
