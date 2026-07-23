@@ -79,3 +79,6 @@ rms:
 # Public Web Email Interface (compose -> holding queue -> trustee review)
 webmail:
   enabled: true   # false hides the public composer; landing + admin unaffected
+  delivery:
+    dry_run: true   # SAFETY: real transmission is OFF until the trustee sets false
+    method: cms     # cms | rf  (rf path added in a later step)

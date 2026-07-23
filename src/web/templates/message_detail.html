@@ -40,7 +40,14 @@
     <button class="btn btn-primary" onclick="act('approve')">Approve</button>
     <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="act('reject')">Reject</button>
     <button class="btn" style="border:1px solid var(--kp4pra-error);color:var(--kp4pra-error)" onclick="act('delete')">Delete</button>
+    <span style="flex:1"></span>
+    <button class="btn" style="border:1px solid var(--kp4pra-primary);color:var(--kp4pra-primary)" onclick="testDelivery()">Test delivery (dry-run)</button>
   </div>
+</div>
+
+<div class="card" id="dryrun-card" style="display:none">
+  <div class="card-title"><span class="icon">🧪</span> Dry-run delivery (CMS) — nothing transmitted</div>
+  <div id="dryrun-body"></div>
 </div>
 
 <script>
@@ -51,6 +58,49 @@
     el.innerHTML='<div class="alert '+(ok?'alert-success':'alert-error')+'"><span class="alert-icon">'+(ok?'\u2713':'\u2717')+'</span><div>'+msg+'</div></div>';
     el.scrollIntoView({behavior:'smooth'});
   }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  async function testDelivery(){
+    showResult(true,'Assembling dry-run\u2026');
+    try{
+      var r=await fetch('/api/messages/test', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:MID})
+      });
+      var data=await r.json();
+      if(!data.success){ showResult(false, data.message||'Dry run failed.'); return; }
+      renderTranscript(data.transcript);
+      document.getElementById('action-result').style.display='none';
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+  function row(k,v){ return '<tr><td style="color:var(--kp4pra-muted-text);padding:0.2rem 0.75rem 0.2rem 0;white-space:nowrap">'+k+'</td><td style="padding:0.2rem 0"><code>'+esc(v)+'</code></td></tr>'; }
+  function renderTranscript(t){
+    var rows='';
+    t.transcript.forEach(function(line){
+      var dir=line[0], txt=esc(line[1]);
+      var color = dir==='-->' ? 'var(--kp4pra-primary-dark)' : (dir==='<--' ? 'var(--kp4pra-muted-text)' : 'var(--kp4pra-warning)');
+      var tag = dir==='info' ? '' : dir+' ';
+      rows += '<div style="color:'+color+'"><code>'+esc(tag)+txt+'</code></div>';
+    });
+    var notes = t.notes.map(function(n){return '<li>'+esc(n)+'</li>';}).join('');
+    var html =
+      '<table style="width:100%;font-size:0.9rem;margin-bottom:1rem">'+
+      row('From', t.from)+row('To', t.to)+row('Reply-To', t.reply_to)+row('MID', t.mid)+
+      row('Uncompressed', t.uncompressed_size+' bytes')+
+      row('Compressed', t.compressed_size+' bytes ('+Math.round(100*t.compressed_size/Math.max(1,t.uncompressed_size))+'%)')+
+      row('Message checksum', t.message_checksum)+row('Proposal checksum', t.proposal_checksum)+
+      row('Binary frame', t.binary_total_bytes+' bytes, '+t.binary_data_frames+' data frame(s)')+
+      '</table>'+
+      '<div style="color:var(--kp4pra-muted-text);font-size:0.82rem;margin-bottom:0.3rem">Simulated conversation</div>'+
+      '<div style="background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.75rem;font-size:0.82rem;line-height:1.5;overflow-x:auto">'+rows+'</div>'+
+      '<div style="color:var(--kp4pra-muted-text);font-size:0.82rem;margin:0.75rem 0 0.3rem">Binary frame (hex preview)</div>'+
+      '<pre style="white-space:pre-wrap;word-break:break-all;background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.6rem;font-size:0.78rem;margin:0">'+esc(t.binary_hex_preview)+'</pre>'+
+      '<ul style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-top:0.75rem">'+notes+'</ul>';
+    document.getElementById('dryrun-body').innerHTML=html;
+    document.getElementById('dryrun-card').style.display='block';
+    document.getElementById('dryrun-card').scrollIntoView({behavior:'smooth'});
+  }
+
   async function act(action){
     var confirmFlag=false;
     if(action==='delete'){

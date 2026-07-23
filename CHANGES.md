@@ -1,3 +1,24 @@
+## Web Email — Phase 4 step 3 (dry-run B2F sender, CMS path) — new in 1.4.4
+- src/web/mailbuilder.py: queue record -> Winlink message. From is
+  <station-callsign>@winlink.org (SSID stripped); user address in Reply-To;
+  body wrapped to <=78; refuses to build if the station callsign is unset.
+- src/web/lzhuf.py: clean-room LZHUF (LZSS + adaptive Huffman) codec with
+  Winlink length prefix and checksum. Round-trip verified (incl. 1000-input
+  fuzz and 22 KB).
+- src/web/b2f.py: B2F protocol assembly (client SID, FC proposal + F>
+  checksum, FS parsing, SOH/STX/EOT binary framing) and a DRY-RUN that
+  assembles the full CMS-path exchange without opening a socket or
+  transmitting. Unit-tested (frame/unframe round-trips, proposal checksum).
+- POST /api/messages/test {id}: authenticated dry-run for one message.
+  Returns a transcript (from/to/reply-to/MID, sizes, checksums, binary hex
+  preview, simulated conversation). Does NOT change message status.
+- "Test delivery (dry-run)" button + transcript panel in the message
+  detail view.
+- Config: webmail.delivery.dry_run (default true) and .method (cms).
+  No real transmit path exists yet; step 4 adds it, still gated by dry_run.
+- Note: SOH header content / EOT checksum scope and the LZHUF in-band
+  length prefix are confirmed against the live CMS during step 4.
+
 ## Web Email Interface & Admin Dashboard — Phase 3 (message management) — new in 1.4.3
 - Admin Messages section (authenticated): GET /admin/messages with status
   filter tabs, checkboxes, and bulk actions; GET /admin/messages/<id>
