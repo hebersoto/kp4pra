@@ -64,6 +64,9 @@ DEFAULT_CONFIG = {
         "client_ssid": "",
         "client_password": "",
     },
+    "webmail": {
+        "enabled": True,
+    },
     "station": {
         "callsign": "",
         "ssid": "",

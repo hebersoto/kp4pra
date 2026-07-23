@@ -1,3 +1,29 @@
+## Web Email Interface & Admin Dashboard — Phase 2 (public composer + queue) — new in 1.4.2
+- Public Web Email Interface at /mail: language toggle (English/Spanish,
+  English default), mandatory No-Privacy + FCC Part 97 notice with explicit
+  agreement gate (spec 7), reply-handling notice (spec 6), and a mobile-first
+  compose form with live subject/body character counters. No file input
+  (no attachments) and no HTML email by construction.
+- POST /mail/submit accepts JSON (parsed with stdlib, no python-multipart),
+  validates, and enqueues. GET /mail/sent shows the honest "held for trustee
+  review, not yet transmitted" confirmation (spec 15).
+- Address validation (src/web/mailvalidate.py): uses email-validator when
+  installed, else a conservative ASCII fallback. Internationalized
+  (RFC 6531 / non-ASCII) addresses are rejected with a clear message rather
+  than silently modified; user content is never truncated. Generated-message
+  line wrapping to <=78 chars provided for Phase 4 delivery.
+- Persistent holding queue (src/web/mailqueue.py): one atomic JSON file per
+  message under paths.data/mailq (/rw/kp4pra-tnc/data/mailq), survives reboot,
+  not tmpfs. States: Holding, Approved, Sending, Sent, Failed, Rejected.
+  Server-generated, pattern-validated message IDs prevent path traversal;
+  no public read endpoint, so users cannot read other users' messages.
+- Public double-submit CSRF token (kp4pra_mail_csrf) guards /mail/submit;
+  all public input is validated/sanitized and never reaches a shell.
+- Bilingual UI strings in src/web/mail_i18n.py (plain dicts, no i18n
+  framework). New config: webmail.enabled (default true, backward compatible).
+- requirements.txt: email-validator>=2.0 (optional; ASCII fallback if absent).
+- Docs: docs/WEBMAIL.md Phase 2 section.
+
 ## Web Email Interface & Admin Dashboard — Phase 1 (auth) — new in 1.4.0
 - Split the web UI into a public landing page (/) offering two paths:
   Web Email Interface (/mail, later phase) and Admin Dashboard (/admin).

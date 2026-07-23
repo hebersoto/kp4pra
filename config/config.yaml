@@ -75,3 +75,7 @@ rms:
   mode: "PACKET-1200"
   telnet_enabled: true   # Winlink-over-TCP access, all interfaces (0.0.0.0)
   telnet_port: 8772  # Winlink Express "Telnet Winlink" defaults to 8772
+
+# Public Web Email Interface (compose -> holding queue -> trustee review)
+webmail:
+  enabled: true   # false hides the public composer; landing + admin unaffected
