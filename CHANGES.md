@@ -1,3 +1,20 @@
+## Web Email — Phase 4 step 3.5 (LZHUF B2 framing correction) — new in 1.4.5
+- Corrected the LZHUF/B2 compressed-stream framing to match the Winlink
+  reference (la5nta/wl2k-go lzhuf, whose CRC the source attributes to
+  Airmail and Winlink 2000), byte-for-byte:
+    [CRC-16 (2 bytes, little-endian)][fileSize (4 bytes, little-endian)][LZHUF data]
+  CRC-16 is the XModem-style CRC-CCITT (poly 0x1021, init 0x0000) computed
+  over (fileSize_bytes + compressed_data) with two trailing zero bytes, as
+  in the reference crc() routine.
+- The previous stream emitted only the 4-byte length with NO CRC-16, which
+  the CMS would have rejected. Fixed before any transmission.
+- Verified: our crc16() is byte-identical to the reference over 3000 random
+  inputs; B2 round-trips, tamper (CRC) detection, and fuzz all pass; the
+  LZSS + adaptive-Huffman core constants/position tables already matched
+  the reference. New test: src/web/test_lzhuf_b2_reference.py.
+- No API/route/config changes; lzhuf.compress() output changes (2 bytes
+  longer: the CRC-16), so dry-run hex previews now show the CRC first.
+
 ## Web Email — Phase 4 step 3 (dry-run B2F sender, CMS path) — new in 1.4.4
 - src/web/mailbuilder.py: queue record -> Winlink message. From is
   <station-callsign>@winlink.org (SSID stripped); user address in Reply-To;

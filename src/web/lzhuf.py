@@ -504,27 +504,71 @@ def _lzss_decode(data: bytes, original_len: int) -> bytes:
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
+# ── Winlink B2 CRC-16 (XModem CRC-CCITT, poly 0x1021, init 0x0000) ────────────
+# Matches the reference implementation (la5nta/wl2k-go lzhuf/crc.go), which the
+# source notes is the same variant Airmail and Winlink 2000 use. The CRC is
+# computed over the bytes PLUS two trailing zero bytes (crc() appends 0,0).
+
+_CRC16_TAB = None
+
+
+def _build_crc16_tab():
+    tab = []
+    for i in range(256):
+        c = i << 8
+        for _ in range(8):
+            c = ((c << 1) ^ 0x1021) & 0xFFFF if (c & 0x8000) else ((c << 1) & 0xFFFF)
+        tab.append(c)
+    return tab
+
+
+def _crc16_update(cp, sm):
+    return (((sm << 8) & 0xFF00) ^ _CRC16_TAB[(sm >> 8) & 0xFF] ^ cp) & 0xFFFF
+
+
+def crc16(data: bytes) -> int:
+    """Winlink B2 CRC-16 over data + two trailing zero bytes."""
+    global _CRC16_TAB
+    if _CRC16_TAB is None:
+        _CRC16_TAB = _build_crc16_tab()
+    sm = 0
+    for c in data:
+        sm = _crc16_update(c, sm)
+    for c in (0, 0):
+        sm = _crc16_update(c, sm)
+    return sm
+
+
 def compute_checksum(data: bytes) -> int:
-    """Winlink B2F message checksum: two's complement of the sum of the
-    (uncompressed) bytes, mod 256."""
+    """Winlink B2F message checksum (per the FS/proposal accounting): two's
+    complement of the sum of the (uncompressed) bytes, mod 256. Distinct
+    from the CRC-16 that frames the compressed block."""
     return (-sum(data)) & 0xFF
 
 
 def compress(data: bytes) -> bytes:
-    """LZHUF-compress `data`, prefixed with the little-endian uint32
-    original length (Winlink framing)."""
+    """LZHUF-compress `data` into the Winlink B2 stream:
+        [CRC16 (2 bytes, LE)] [fileSize (4 bytes, LE)] [compressed data]
+    where CRC16 is over (fileSize_bytes + compressed_data). Matches the
+    reference (la5nta/wl2k-go) byte layout."""
     if not isinstance(data, (bytes, bytearray)):
         raise TypeError("compress expects bytes")
     body = _lzss_encode(bytes(data))
-    header = len(data).to_bytes(4, "little")
-    return header + body
+    length_bytes = len(data).to_bytes(4, "little")
+    sm = crc16(length_bytes + body)
+    return sm.to_bytes(2, "little") + length_bytes + body
 
 
 def decompress(blob: bytes) -> bytes:
-    """Inverse of compress(): read the length prefix, LZHUF-decode."""
-    if len(blob) < 4:
-        raise ValueError("LZHUF stream too short")
-    original_len = int.from_bytes(blob[:4], "little")
+    """Inverse of compress(): verify CRC-16, read the 4-byte length, decode."""
+    if len(blob) < 6:
+        raise ValueError("B2 stream too short")
+    stored_crc = int.from_bytes(blob[:2], "little")
+    length_bytes = blob[2:6]
+    body = blob[6:]
+    if crc16(length_bytes + body) != stored_crc:
+        raise ValueError("B2 CRC-16 mismatch")
+    original_len = int.from_bytes(length_bytes, "little")
     if original_len == 0:
         return b""
-    return _lzss_decode(blob[4:], original_len)
+    return _lzss_decode(body, original_len)
