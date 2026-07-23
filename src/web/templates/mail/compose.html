@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{{ t.page_title }}{% endblock %}
+
+{% block nav %}
+<nav class="nav">
+  <a class="nav-brand" href="/">
+    <span class="nav-icon">📡</span>
+    KP4PRA TNC
+  </a>
+  <ul class="nav-links">
+    <li><a href="/mail?lang=en" {% if t.lang_code == 'en' %}class="active"{% endif %}>English</a></li>
+    <li><a href="/mail?lang=es" {% if t.lang_code == 'es' %}class="active"{% endif %}>Español</a></li>
+  </ul>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 style="font-size:1.4rem">{{ t.heading }}</h1>
+</div>
+
+{% if not enabled %}
+<div class="alert alert-warning">
+  <span class="alert-icon">⚠</span><div>{{ t.disabled_notice }}</div>
+</div>
+{% else %}
+
+<!-- Step 1: Notice & agreement (spec section 7) -->
+<div class="card" id="notice-card">
+  <div class="card-title">{{ t.notice_heading }}</div>
+
+  <h3 style="font-size:1rem;margin:0.5rem 0 0.25rem">{{ t.privacy_heading }}</h3>
+  <p style="font-size:0.9rem;color:var(--kp4pra-muted-text)">{{ t.privacy_body }}</p>
+
+  <h3 style="font-size:1rem;margin:1rem 0 0.25rem">{{ t.rules_heading }}</h3>
+  <p style="font-size:0.9rem;color:var(--kp4pra-muted-text)">{{ t.rules_body }}</p>
+
+  <div class="alert alert-info" style="margin-top:1rem">
+    <span class="alert-icon">ℹ</span><div>{{ t.reply_notice }}</div>
+  </div>
+
+  <label style="display:flex;gap:0.5rem;align-items:flex-start;margin-top:1rem;cursor:pointer">
+    <input type="checkbox" id="agree-check" style="margin-top:0.3rem">
+    <span>{{ t.agree_label }}</span>
+  </label>
+  <button class="btn btn-primary" id="agree-btn" disabled
+          style="margin-top:1rem" onclick="revealForm()">
+    {{ t.agree_button }}
+  </button>
+</div>
+
+<!-- Step 2: Compose form (hidden until agreement) -->
+<div class="card" id="compose-card" style="display:none">
+  <div class="card-title">{{ t.compose_heading }}</div>
+
+  <div id="form-error" style="display:none;margin-bottom:1rem"></div>
+
+  <div class="form-group">
+    <label class="form-label" for="to">{{ t.to_label }}</label>
+    <input class="form-input" type="email" id="to" inputmode="email"
+           autocomplete="off" value="{{ prev.to | default('') }}"
+           style="width:100%">
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="reply_to">{{ t.replyto_label }}</label>
+    <input class="form-input" type="email" id="reply_to" inputmode="email"
+           autocomplete="off" value="{{ prev.reply_to | default('') }}"
+           style="width:100%">
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="subject">{{ t.subject_label }}</label>
+    <input class="form-input" type="text" id="subject" maxlength="200"
+           value="{{ prev.subject | default('') }}" style="width:100%"
+           oninput="countChars()">
+    <div class="form-hint">
+      {{ t.subject_hint }}
+      <span id="subject-count" style="float:right">0/50 {{ t.chars }}</span>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label class="form-label" for="body">{{ t.body_label }}</label>
+    <textarea class="form-input" id="body" rows="8" maxlength="8000"
+              style="width:100%;resize:vertical"
+              oninput="countChars()">{{ prev.body | default('') }}</textarea>
+    <div class="form-hint">
+      {{ t.body_hint }}
+      <span id="body-count" style="float:right">0/300 {{ t.chars }}</span>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="submit-btn" onclick="submitMessage()"
+          style="margin-top:0.5rem">{{ t.submit_button }}</button>
+</div>
+
+{% endif %}
+
+<div style="text-align:center;margin-top:1.5rem">
+  <a href="/" style="font-size:0.85rem;color:var(--kp4pra-muted-text)">← {{ t.back_home }}</a>
+</div>
+
+<script>
+  var LANG = "{{ t.lang_code }}";
+  var CSRF = "{{ csrf_token }}";
+  var STR = {
+    chars: "{{ t.chars }}",
+    agree_required: "{{ t.agree_required }}",
+    csrf_error: "{{ t.csrf_error }}",
+    queue_error: "{{ t.queue_error }}"
+  };
+
+  function cookie(n){var m=document.cookie.match('(^|;)\\s*'+n+'\\s*=\\s*([^;]+)');return m?m.pop():'';}
+
+  document.getElementById('agree-check').addEventListener('change', function(){
+    document.getElementById('agree-btn').disabled = !this.checked;
+  });
+
+  function revealForm(){
+    if(!document.getElementById('agree-check').checked){ return; }
+    document.getElementById('notice-card').style.display='none';
+    document.getElementById('compose-card').style.display='block';
+    countChars();
+    document.getElementById('to').focus();
+  }
+
+  function countChars(){
+    var s=document.getElementById('subject').value.length;
+    var b=document.getElementById('body').value.length;
+    var sc=document.getElementById('subject-count');
+    var bc=document.getElementById('body-count');
+    sc.textContent = s+'/50 '+STR.chars;
+    bc.textContent = b+'/300 '+STR.chars;
+    sc.style.color = s>50 ? 'var(--kp4pra-warning)' : 'var(--kp4pra-muted-text)';
+    bc.style.color = b>300 ? 'var(--kp4pra-warning)' : 'var(--kp4pra-muted-text)';
+  }
+
+  function showFormError(msg){
+    var el=document.getElementById('form-error');
+    el.style.display='block';
+    el.innerHTML='<div class="alert alert-error"><span class="alert-icon">✗</span><div>'+msg+'</div></div>';
+    el.scrollIntoView({behavior:'smooth'});
+  }
+
+  async function submitMessage(){
+    var btn=document.getElementById('submit-btn');
+    btn.disabled=true;
+    var payload={
+      to: document.getElementById('to').value,
+      reply_to: document.getElementById('reply_to').value,
+      subject: document.getElementById('subject').value,
+      body: document.getElementById('body').value,
+      lang: LANG,
+      csrf: cookie('kp4pra_mail_csrf')
+    };
+    try{
+      var r=await fetch('/mail/submit', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      var data=await r.json();
+      if(data.success && data.redirect){ window.location=data.redirect; return; }
+      if(data.errors){
+        var first=Object.keys(data.errors)[0];
+        showFormError(data.errors[first]);
+      }else{
+        showFormError(data.message || STR.queue_error);
+      }
+    }catch(e){
+      showFormError(STR.queue_error);
+    }
+    btn.disabled=false;
+  }
+</script>
+{% endblock %}

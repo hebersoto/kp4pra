@@ -47,6 +47,9 @@ from common.fs_manager import (
     get_volatile_service_log, check_direwolf_tcp, check_dns_sd
 )
 import auth
+import mailqueue
+import mailvalidate
+import mail_i18n
 
 PRODUCT_NAME = "KP4PRA TNC"
 
@@ -210,6 +213,94 @@ async def dashboard(request: Request, _auth=Depends(check_auth)):
         "request": request,
         "product_name": PRODUCT_NAME,
         "status": status_data,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public Web Email Interface (no Dashboard authentication)
+#
+# Submissions are validated and placed in a persistent holding queue for
+# trustee review; they are NEVER transmitted here (spec sections 4-9, 15).
+# Form input arrives as JSON and is parsed without python-multipart.
+# ─────────────────────────────────────────────────────────────────────────────
+
+MAIL_CSRF_COOKIE = "kp4pra_mail_csrf"
+
+
+def _webmail_enabled(cfg=None) -> bool:
+    cfg = cfg or get_config()
+    return bool(cfg.get("webmail", {}).get("enabled", True))
+
+
+@app.get("/mail", response_class=HTMLResponse)
+async def mail_compose(request: Request, lang: str = "en"):
+    lang = mail_i18n.normalize_lang(lang)
+    t = mail_i18n.get_strings(lang)
+    token = auth.issue_csrf()
+    resp = templates.TemplateResponse("mail/compose.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "t": t,
+        "enabled": _webmail_enabled(),
+        "csrf_token": token,
+        "prev": {},
+    })
+    # Public double-submit token: readable cookie echoed by the composer.
+    resp.set_cookie(MAIL_CSRF_COOKIE, token, max_age=3600,
+                    httponly=False, samesite="lax", path="/mail")
+    return resp
+
+
+@app.post("/mail/submit")
+async def mail_submit(request: Request):
+    cfg = get_config()
+    if not _webmail_enabled(cfg):
+        return JSONResponse({"success": False, "message": "unavailable"},
+                            status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    lang = mail_i18n.normalize_lang(body.get("lang", "en"))
+    t = mail_i18n.get_strings(lang)
+
+    # Public CSRF (double-submit) check.
+    cookie_tok = request.cookies.get(MAIL_CSRF_COOKIE, "")
+    form_tok = body.get("csrf", "")
+    if not auth.csrf_ok(cookie_tok, form_tok):
+        return JSONResponse({"success": False, "message": t["csrf_error"]},
+                            status_code=403)
+
+    ok, cleaned, errors = mailvalidate.validate_submission(
+        body.get("to"), body.get("reply_to"),
+        body.get("subject"), body.get("body"))
+
+    if not ok:
+        # Map stable error keys to localized text for each bad field.
+        localized = {field: t.get(key, t["email_invalid"])
+                     for field, key in errors.items()}
+        return JSONResponse({"success": False, "errors": localized},
+                            status_code=400)
+
+    try:
+        mailqueue.enqueue(cleaned["to"], cleaned["reply_to"],
+                          cleaned["subject"], cleaned["body"], lang)
+    except Exception:
+        return JSONResponse({"success": False, "message": t["queue_error"]},
+                            status_code=500)
+
+    return JSONResponse({"success": True, "redirect": f"/mail/sent?lang={lang}"})
+
+
+@app.get("/mail/sent", response_class=HTMLResponse)
+async def mail_sent(request: Request, lang: str = "en"):
+    lang = mail_i18n.normalize_lang(lang)
+    return templates.TemplateResponse("mail/confirm.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "t": mail_i18n.get_strings(lang),
     })
 
 

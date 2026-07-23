@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ t.confirm_heading }} — KP4PRA TNC{% endblock %}
+
+{% block nav %}
+<nav class="nav">
+  <a class="nav-brand" href="/">
+    <span class="nav-icon">📡</span>
+    KP4PRA TNC
+  </a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;margin:2rem auto;text-align:center;padding:2rem">
+  <div style="font-size:2.6rem;line-height:1">✅</div>
+  <h1 style="font-size:1.3rem;margin:0.75rem 0 0.5rem">{{ t.confirm_heading }}</h1>
+  <p style="color:var(--kp4pra-muted-text)">{{ t.confirm_body }}</p>
+  <div style="margin-top:1.5rem;display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap">
+    <a class="btn btn-primary" href="/mail?lang={{ t.lang_code }}">{{ t.compose_another }}</a>
+    <a class="btn" href="/" style="border:1px solid var(--kp4pra-border)">{{ t.back_home }}</a>
+  </div>
+</div>
+{% endblock %}
