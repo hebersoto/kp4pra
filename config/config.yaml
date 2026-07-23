@@ -39,10 +39,16 @@ station:
   sound: ''
   ssid: ''
 web:
-  auth_enabled: false
   host: 0.0.0.0
-  password: ""
   port: 8088
+  # Admin Dashboard session login. Blank = not yet secured (first-run grace:
+  # the dashboard stays open until a valid callsign is set and the trustee
+  # sets a password here, via the Config page). Stored as a salted scrypt
+  # hash, never plain text.
+  dashboard_password_hash: ""
+  # --- Legacy HTTP Basic fields (no longer used; kept for back-compat) ---
+  auth_enabled: false
+  password: ""
   username: admin
 
 # WiFi access point (field mode). The TNC can broadcast its own network

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}KP4PRA TNC{% endblock %}
+
+{% block nav %}
+<nav class="nav">
+  <a class="nav-brand" href="/">
+    <span class="nav-icon">📡</span>
+    KP4PRA TNC
+  </a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="text-align:center;margin-top:1rem">
+  <h1 style="font-size:1.6rem">KP4PRA TNC</h1>
+  <p class="page-subtitle" style="color:var(--kp4pra-muted-text)">
+    Choose an option to continue
+  </p>
+</div>
+
+<div style="display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));max-width:720px;margin:0 auto">
+
+  <a href="/mail" style="text-decoration:none;color:inherit">
+    <div class="card" style="text-align:center;padding:2rem 1.25rem;height:100%">
+      <div style="font-size:2.4rem;line-height:1">✉️</div>
+      <h2 style="margin:0.75rem 0 0.4rem;font-size:1.2rem;color:var(--kp4pra-primary-dark)">
+        Web Email Interface
+      </h2>
+      <p style="color:var(--kp4pra-muted-text);font-size:0.92rem">
+        Send a message through Winlink. No account required.
+      </p>
+    </div>
+  </a>
+
+  <a href="/admin" style="text-decoration:none;color:inherit">
+    <div class="card" style="text-align:center;padding:2rem 1.25rem;height:100%">
+      <div style="font-size:2.4rem;line-height:1">🛠️</div>
+      <h2 style="margin:0.75rem 0 0.4rem;font-size:1.2rem;color:var(--kp4pra-primary-dark)">
+        Admin Dashboard
+      </h2>
+      <p style="color:var(--kp4pra-muted-text);font-size:0.92rem">
+        Station configuration, services, and message review.
+      </p>
+    </div>
+  </a>
+
+</div>
+{% endblock %}

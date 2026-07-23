@@ -1,3 +1,32 @@
+## Web Email Interface & Admin Dashboard — Phase 1 (auth) — new in 1.4.0
+- Split the web UI into a public landing page (/) offering two paths:
+  Web Email Interface (/mail, later phase) and Admin Dashboard (/admin).
+  The former dashboard moved from / to /admin. Existing admin pages and
+  APIs keep their URLs.
+- Admin Dashboard session authentication (src/web/auth.py), standard
+  library only:
+  * Password stored as a salted scrypt hash in web.dashboard_password_hash
+    (never plain text). Legacy web.auth_enabled/username/password retained
+    for back-compat but unused.
+  * HMAC-SHA256 signed, expiring session cookie (kp4pra_session, HttpOnly).
+    Signing key persisted at <paths.data>/session.key (0600), with an
+    ephemeral fallback when the path is not writable.
+  * CSRF double-submit token (kp4pra_csrf cookie echoed as X-CSRF-Token),
+    verified by middleware on unsafe methods once the dashboard is secured.
+    A fetch wrapper in base.html attaches it automatically, so existing
+    admin JS is unchanged.
+- First-run grace: auth is enforced ONLY after a Dashboard password is set.
+  Fresh boards (no valid station callsign) stay open so the trustee can do
+  initial configuration, then set a password in a new "Dashboard Security"
+  section on the Config page.
+- Login/logout: GET/POST /admin/login, GET /admin/logout. Form bodies are
+  parsed with stdlib urllib.parse to avoid a python-multipart dependency.
+- FIX (open item #2): added the missing station block to
+  config.py DEFAULT_CONFIG so first-run callsign gating works on installs
+  without a station section.
+- Docs: docs/WEBMAIL.md. Config key web.dashboard_password_hash defaults to
+  "" (blank = not yet secured); missing key is backward compatible.
+
 ## RMS Gateway (src/rms/) — new in 1.3.0
 - Native Python Winlink RMS gateway: Dire Wolf KISS TCP -> AX.25 connected
   mode -> authenticated CMS stream. RF Winlink clients (Winlink Express,

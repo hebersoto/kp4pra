@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Admin Login - KP4PRA TNC{% endblock %}
+
+{% block nav %}
+<nav class="nav">
+  <a class="nav-brand" href="/">
+    <span class="nav-icon">📡</span>
+    KP4PRA TNC
+  </a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:420px;margin:2rem auto;padding:2rem">
+  <h1 style="font-size:1.3rem;margin-bottom:0.25rem">Admin Dashboard</h1>
+  <p style="color:var(--kp4pra-muted-text);font-size:0.9rem;margin-bottom:1.25rem">
+    Enter the dashboard password to continue.
+  </p>
+
+  {% if error %}
+  <div class="alert alert-error" style="margin-bottom:1rem">
+    <span class="alert-icon">✗</span>
+    <div>Incorrect password.</div>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/admin/login">
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="form-group">
+      <label class="form-label" for="password">Password</label>
+      <input class="form-input" type="password" id="password" name="password"
+             autocomplete="current-password" autofocus required
+             style="width:100%">
+    </div>
+    <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem">
+      Log In
+    </button>
+  </form>
+
+  <p style="text-align:center;margin-top:1rem">
+    <a href="/" style="font-size:0.85rem;color:var(--kp4pra-muted-text)">← Back to home</a>
+  </p>
+</div>
+{% endblock %}

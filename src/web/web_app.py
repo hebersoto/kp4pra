@@ -23,8 +23,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-# Add parent to path for imports when running directly
+# Add parent (src) and this dir (src/web) to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common.config import load_config
 from common.config_writer import save_config, validate_config_updates
@@ -45,6 +46,7 @@ from common.fs_manager import (
     restart_service, stop_service, get_service_status,
     get_volatile_service_log, check_direwolf_tcp, check_dns_sd
 )
+import auth
 
 PRODUCT_NAME = "KP4PRA TNC"
 
@@ -63,6 +65,8 @@ def _read_version():
 
 APP_VERSION = _read_version()
 templates.env.globals["app_version"] = APP_VERSION
+templates.env.globals["dashboard_secured"] = auth.dashboard_password_set
+templates.env.globals["station_callsign_valid"] = auth.callsign_valid
 
 
 
@@ -76,32 +80,75 @@ def get_config():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Optional HTTP Basic Authentication
+# Admin Dashboard session authentication
+#
+# Auth is enforced ONLY once a dashboard password has been configured
+# (auth.auth_required). Before that, the dashboard is open so the trustee
+# can perform initial station configuration and set a password. The public
+# Web Email Interface (/mail*) is never gated here.
 # ─────────────────────────────────────────────────────────────────────────────
 
-security = HTTPBasic(auto_error=False)
+class NeedsLogin(Exception):
+    def __init__(self, next_path: str):
+        self.next_path = next_path
 
-def check_auth(credentials: Optional[HTTPBasicCredentials] = Depends(security)):
+
+@app.exception_handler(NeedsLogin)
+async def _needs_login_handler(request: Request, exc: NeedsLogin):
+    return RedirectResponse(url=f"/admin/login?next={exc.next_path}", status_code=303)
+
+
+def require_auth(request: Request):
+    """FastAPI dependency: allow the request through if the dashboard is
+    not yet secured, or if a valid session cookie is present. Otherwise
+    redirect page requests to the login form and 401 API requests."""
     cfg = get_config()
-    if not cfg["web"].get("auth_enabled", False):
+    if not auth.auth_required(cfg):
         return True
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    expected_user = cfg["web"].get("username", "admin")
-    expected_pass = cfg["web"].get("password", "")
-    ok_user = secrets.compare_digest(credentials.username, expected_user)
-    ok_pass = secrets.compare_digest(credentials.password, expected_pass)
-    if not (ok_user and ok_pass):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return True
+    token = request.cookies.get(auth.SESSION_COOKIE, "")
+    if auth.session_valid(token):
+        return True
+    path = request.url.path
+    if path.startswith("/api/"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Authentication required")
+    raise NeedsLogin(path)
+
+
+def _set_session_cookies(resp):
+    resp.set_cookie(auth.SESSION_COOKIE, auth.issue_session(),
+                    max_age=auth.SESSION_TTL, httponly=True,
+                    samesite="lax", path="/")
+    resp.set_cookie(auth.CSRF_COOKIE, auth.issue_csrf(),
+                    max_age=auth.SESSION_TTL, httponly=False,
+                    samesite="lax", path="/")
+
+
+def _clear_session_cookies(resp):
+    resp.delete_cookie(auth.SESSION_COOKIE, path="/")
+    resp.delete_cookie(auth.CSRF_COOKIE, path="/")
+
+
+@app.middleware("http")
+async def csrf_middleware(request: Request, call_next):
+    """Enforce the CSRF double-submit token on unsafe methods once the
+    dashboard is secured. The login form and the public mail interface
+    are exempt (they have no session yet / are handled separately)."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        path = request.url.path
+        exempt = path == "/admin/login" or path.startswith("/mail")
+        if not exempt and auth.auth_required(get_config()):
+            cookie = request.cookies.get(auth.CSRF_COOKIE, "")
+            header = request.headers.get("X-CSRF-Token", "")
+            if not auth.csrf_ok(cookie, header):
+                return JSONResponse({"success": False,
+                                     "message": "CSRF validation failed"},
+                                    status_code=403)
+    return await call_next(request)
+
+
+# Backwards-compatible alias: existing route signatures use check_auth.
+check_auth = require_auth
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -148,6 +195,15 @@ def get_live_status() -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
+async def landing(request: Request):
+    # Public landing page: Web Email Interface vs Admin Dashboard.
+    return templates.TemplateResponse("landing.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+    })
+
+
+@app.get("/admin", response_class=HTMLResponse)
 async def dashboard(request: Request, _auth=Depends(check_auth)):
     status_data = get_live_status()
     return templates.TemplateResponse("dashboard.html", {
@@ -155,6 +211,95 @@ async def dashboard(request: Request, _auth=Depends(check_auth)):
         "product_name": PRODUCT_NAME,
         "status": status_data,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin Dashboard login / logout
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def login_page(request: Request, next: str = "/admin"):
+    if not auth.dashboard_password_set(get_config()):
+        return RedirectResponse(url="/admin", status_code=303)
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "next": auth.safe_next(next),
+        "error": False,
+    })
+
+
+@app.post("/admin/login")
+async def login_submit(request: Request):
+    from urllib.parse import parse_qs
+    raw = (await request.body()).decode("utf-8", "replace")
+    data = parse_qs(raw, keep_blank_values=True)
+    password = (data.get("password") or [""])[0]
+    next = (data.get("next") or ["/admin"])[0]
+    cfg = get_config()
+    stored = cfg["web"].get("dashboard_password_hash", "")
+    if not stored or not auth.verify_password(password, stored):
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "product_name": PRODUCT_NAME,
+            "next": auth.safe_next(next),
+            "error": True,
+        }, status_code=status.HTTP_401_UNAUTHORIZED)
+    resp = RedirectResponse(url=auth.safe_next(next), status_code=303)
+    _set_session_cookies(resp)
+    return resp
+
+
+@app.get("/admin/logout")
+async def logout(request: Request):
+    resp = RedirectResponse(url="/", status_code=303)
+    _clear_session_cookies(resp)
+    return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin Dashboard password (set / change)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/dashboard/password")
+async def api_dashboard_password(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    new_pw = body.get("new_password", "")
+    current_pw = body.get("current_password", "")
+    cfg = get_config()
+
+    if not auth.callsign_valid(cfg):
+        return JSONResponse({"success": False,
+            "message": "Configure a valid station callsign and save before "
+                       "setting a Dashboard password."}, status_code=400)
+
+    if auth.dashboard_password_set(cfg):
+        stored = cfg["web"]["dashboard_password_hash"]
+        if not auth.verify_password(current_pw, stored):
+            return JSONResponse({"success": False,
+                "message": "Current password is incorrect."}, status_code=403)
+
+    ok, msg = auth.validate_new_password(new_pw)
+    if not ok:
+        return JSONResponse({"success": False, "message": msg}, status_code=400)
+
+    fs = get_filesystem_status()
+    if not fs["rw_partition_writable"]:
+        return JSONResponse({"success": False,
+            "message": "Configuration path is not writable. Check "
+                       "/rw/kp4pra-tnc/ mount."}, status_code=503)
+
+    save_ok, save_msg = save_config(
+        {"web": {"dashboard_password_hash": auth.hash_password(new_pw)}})
+    if not save_ok:
+        return JSONResponse({"success": False, "message": save_msg},
+                            status_code=500)
+
+    global _config
+    _config = None
+    return JSONResponse({"success": True,
+        "message": "Dashboard password saved. Authentication is now required "
+                   "for the Admin Dashboard."})
 
 
 @app.get("/bluetooth", response_class=HTMLResponse)

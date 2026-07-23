@@ -33,9 +33,12 @@ DEFAULT_CONFIG = {
     "web": {
         "host": "0.0.0.0",
         "port": 8088,
-        "auth_enabled": False,
-        "username": "admin",
-        "password": "",
+        "auth_enabled": False,   # legacy HTTP Basic (unused; kept for back-compat)
+        "username": "admin",     # legacy (unused)
+        "password": "",          # legacy (unused)
+        # Admin Dashboard session login. Empty = not yet secured (first-run
+        # grace: dashboard is open so the trustee can do initial config).
+        "dashboard_password_hash": "",
     },
     "bluetooth": {
         "auto_discoverable": False,
@@ -60,6 +63,20 @@ DEFAULT_CONFIG = {
         "mode_at_boot": "client",
         "client_ssid": "",
         "client_password": "",
+    },
+    "station": {
+        "callsign": "",
+        "ssid": "",
+        "aliasssid": "",
+        "calias": "CDIGI",
+        "clock": "",
+        "mygrid": "",
+        "lat": 0.0,
+        "lon": 0.0,
+        "ptt": "CM108",
+        "ptt_param": "",
+        "sound": "",
+        "morse_id_enabled": True,
     },
     "rms": {
         "enabled": False,
