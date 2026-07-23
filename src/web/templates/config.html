@@ -20,6 +20,56 @@
 </div>
 {% endif %}
 
+<!-- Dashboard Security -->
+<div class="card">
+  <div class="card-title"><span class="icon">🔒</span> Dashboard Security</div>
+  {% set _secured = config.web.dashboard_password_hash | default('') | trim %}
+  {% set _cs = (config.station.callsign | default('')) | trim | upper %}
+  {% set _cs_ok = _cs and _cs != 'N0CALL' %}
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    {% if _secured %}
+      The Admin Dashboard is password-protected. Enter your current password to change it.
+    {% elif _cs_ok %}
+      Set a Dashboard password to require login for all administrative pages
+      and APIs. The public Web Email Interface stays open.
+    {% else %}
+      Configure a valid station callsign (below) and save before setting a
+      Dashboard password.
+    {% endif %}
+  </p>
+
+  <div id="pw-fields" {% if not _cs_ok %}style="opacity:0.5;pointer-events:none"{% endif %}>
+    {% if _secured %}
+    <div class="form-group">
+      <label class="form-label" for="pw-current">Current password</label>
+      <input class="form-input" type="password" id="pw-current"
+             autocomplete="current-password" style="max-width:340px">
+    </div>
+    {% endif %}
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label" for="pw-new">
+          {% if _secured %}New password{% else %}Dashboard password{% endif %}
+        </label>
+        <input class="form-input" type="password" id="pw-new"
+               autocomplete="new-password" style="max-width:340px">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="pw-confirm">Confirm password</label>
+        <input class="form-input" type="password" id="pw-confirm"
+               autocomplete="new-password" style="max-width:340px">
+      </div>
+    </div>
+    <div class="form-hint" style="margin-bottom:0.75rem">
+      At least 8 characters. Stored only as a salted scrypt hash — never in plain text.
+    </div>
+    <button class="btn btn-primary" onclick="saveDashboardPassword()">
+      {% if _secured %}Change Password{% else %}Set Password{% endif %}
+    </button>
+    <div id="pw-result" style="display:none;margin-top:1rem"></div>
+  </div>
+</div>
+
 <!-- Station -->
 <div class="card">
   <div class="card-title"><span class="icon">📻</span> Station Information</div>
@@ -613,6 +663,42 @@ function showSaveResult(success, msg) {
   const icon = success === null ? 'ℹ' : (success ? '✓' : '✗');
   el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
   el.scrollIntoView({behavior:'smooth'});
+}
+
+function showPwResult(success, msg) {
+  const el = document.getElementById('pw-result');
+  el.style.display = 'block';
+  const cls = success === null ? 'alert-info' : (success ? 'alert-success' : 'alert-error');
+  const icon = success === null ? 'ℹ' : (success ? '✓' : '✗');
+  el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
+}
+
+async function saveDashboardPassword() {
+  const cur = document.getElementById('pw-current');
+  const nw = document.getElementById('pw-new').value;
+  const cf = document.getElementById('pw-confirm').value;
+  if (nw.length < 8) { showPwResult(false, 'Password must be at least 8 characters.'); return; }
+  if (nw !== cf)     { showPwResult(false, 'Passwords do not match.'); return; }
+  showPwResult(null, 'Saving…');
+  try {
+    const r = await fetch('/api/dashboard/password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        current_password: cur ? cur.value : '',
+        new_password: nw
+      })
+    });
+    const data = await r.json();
+    showPwResult(data.success, data.message);
+    if (data.success) {
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-confirm').value = '';
+      if (cur) cur.value = '';
+    }
+  } catch(e) {
+    showPwResult(false, 'Error: ' + e);
+  }
 }
 </script>
 {% endblock %}
