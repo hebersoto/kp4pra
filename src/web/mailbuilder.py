@@ -84,27 +84,69 @@ def build_message(rec: dict, cfg: dict, mid: str = None) -> dict:
     reply_to = (rec.get("reply_to") or "").strip()
 
     subject = (rec.get("subject") or "").replace("\n", " ").strip()
-    body = mailvalidate.wrap_body(rec.get("body") or "")
     mid = mid or generate_mid()
     date = _winlink_date(rec.get("created"))
 
-    # RFC822-style header block followed by the wrapped body. Winlink
-    # message bodies are plain text; headers use CRLF line endings.
+    # Winlink routes to internet email via an "SMTP:" prefix on the address.
+    # A bare callsign (no "@") is a Winlink address and takes no prefix.
+    def _winlink_addr(addr):
+        a = addr.strip()
+        if "@" in a and not a.upper().startswith("SMTP:"):
+            return "SMTP:" + a
+        return a
+
+    call = from_addr.split("@", 1)[0]          # bare station callsign
+    to_field = _winlink_addr(to_addr)
+
+    # Winlink overwrites the Reply-To header with the sending station's
+    # address, so prepend a send-only disclaimer and the user's reply
+    # address to the body, which survive the Winlink -> internet gateway.
+    # Added here at build time, so they do NOT count toward the user's
+    # body character limit (enforced at submission).
+    lang = (rec.get("lang") or "en").lower()
+    if lang.startswith("es"):
+        disclaimer = ("La interfaz publica no ofrece servicio de correo "
+                      "entrante; los destinatarios deben responder "
+                      "directamente a la direccion de correo personal que "
+                      "se muestra en el mensaje.")
+        reply_label = "Para responder, escriba a: %s"
+    else:
+        disclaimer = ("The public interface does not provide incoming email "
+                      "service; recipients must reply directly to the "
+                      "personal email address shown in the message.")
+        reply_label = "To reply, write to: %s"
+
+    parts = [disclaimer]
+    if reply_to:
+        parts.append(reply_label % reply_to)
+    parts.append(rec.get("body") or "")
+    composed_body = "\n\n".join(parts)
+    body = mailvalidate.wrap_body(composed_body)
+
+    # Body as placed in the message: wrapped body + a terminating CRLF.
+    # The Winlink "Body:" header counts these bytes INCLUDING that CRLF
+    # (verified against a known-good client: body "test 73\r\n" -> Body: 9).
+    body_block = body.replace("\n", "\r\n") + "\r\n"
+    body_count = len(body_block.encode("utf-8"))
+
+    # Header block mirrors a known-good Winlink client (pat): bare-callsign
+    # From, alphabetically ordered headers, standard content headers.
     headers = [
         ("Mid", mid),
+        ("Body", str(body_count)),
+        ("Content-Transfer-Encoding", "8bit"),
+        ("Content-Type", "text/plain; charset=ISO-8859-1"),
         ("Date", date),
-        ("From", from_addr),
-        ("To", to_addr),
+        ("From", call),
+        ("Mbo", call),
     ]
-    if reply_to:
-        headers.append(("Reply-To", reply_to))
     if subject:
         headers.append(("Subject", subject))
-    headers.append(("Mbo", from_addr.split("@", 1)[0]))
-    headers.append(("Body", str(len(body.encode("utf-8")))))
+    headers.append(("To", to_field))
+    headers.append(("Type", "Private"))
 
     header_text = "\r\n".join("%s: %s" % (k, v) for k, v in headers)
-    text = header_text + "\r\n\r\n" + body.replace("\n", "\r\n") + "\r\n"
+    text = header_text + "\r\n\r\n" + body_block
 
     return {
         "mid": mid,

@@ -108,21 +108,22 @@ def parse_fs(line: str) -> list:
     return out
 
 
-def frame_binary(mid: str, compressed: bytes) -> dict:
-    """Frame one compressed message body for B2 binary transfer.
-
-    Layout (STX data framing + EOT checksum are spec-confident; the SOH
-    header content is best-effort and confirmed live in step 4):
-      SOH <len> <header bytes>
-      STX <len> <data chunk>   (repeated; chunk <= 250 bytes)
-      ...
-      EOT <checksum>           (2's complement of the compressed bytes)
-    """
-    header = mid.encode("ascii") + b"\x00" + b"0"   # title, NUL, offset "0"
+def frame_binary(title, compressed):
+    """B2 binary transfer framing, matching paclink-unix putcompressed():
+      SOH <len> <title> NUL <offset> NUL   (len = len(title)+len(offset)+2)
+      STX <len> <data chunk>               (chunk <= 250)
+      EOT <checksum>                       (-sum(compressed) & 0xFF)
+    title = message Subject; offset = "0" for a full send."""
+    t = (title or "No subject").encode("ascii", "replace")[:80]
+    offset = b"0"
+    hdr_len = len(t) + len(offset) + 2
     out = bytearray()
     out.append(SOH)
-    out.append(len(header) & 0xFF)
-    out += header
+    out.append(hdr_len & 0xFF)
+    out += t
+    out.append(0x00)
+    out += offset
+    out.append(0x00)
     i = 0
     n_data = 0
     while i < len(compressed):
@@ -136,7 +137,7 @@ def frame_binary(mid: str, compressed: bytes) -> dict:
     out.append(EOT)
     out.append(checksum)
     return {"bytes": bytes(out), "checksum": checksum,
-            "data_frames": n_data, "header_len": len(header)}
+            "data_frames": n_data, "header_len": hdr_len}
 
 
 def unframe_binary(framed: bytes) -> bytes:
@@ -185,7 +186,7 @@ def dry_run_cms(record: dict, cfg: dict, version: str = "1.0") -> dict:
     msg_cksum = lzhuf.compute_checksum(raw)
 
     prop = build_proposals([(msg, len(compressed))])
-    frame = frame_binary(msg["mid"], compressed)
+    frame = frame_binary(msg["subject"], compressed)
 
     our_sid = client_sid(version)
     # Simulated CMS side (illustrative; the real values come from the live
