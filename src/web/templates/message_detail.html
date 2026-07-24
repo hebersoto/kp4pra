@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header">
   <div class="page-title">Message detail</div>
-  <div class="page-subtitle"><a href="/admin/messages" style="color:var(--kp4pra-muted-text)">&larr; Back to messages</a></div>
+  <div class="page-subtitle"><a href="/admin/messages" style="color:var(--kp4pra-muted-text)">← Back to messages</a></div>
 </div>
 
 <div id="action-result" style="display:none;margin-bottom:1rem"></div>
@@ -43,6 +43,19 @@
     <span style="flex:1"></span>
     <button class="btn" style="border:1px solid var(--kp4pra-primary);color:var(--kp4pra-primary)" onclick="testDelivery()">Test delivery (dry-run)</button>
   </div>
+  {% if not dry_run %}
+  <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--kp4pra-border)">
+    <span style="align-self:center;font-size:0.82rem;color:var(--kp4pra-warning)">⚡ Live CMS (dry-run is OFF):</span>
+    <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="probe('station')">Probe (station)</button>
+    <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="probe('gateway')">Probe (gateway)</button>
+    <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="probe('both')">Probe both</button>
+    <button class="btn btn-primary" onclick="sendNow('station')">Send now</button>
+  </div>
+  {% else %}
+  <div style="margin-top:0.75rem;font-size:0.8rem;color:var(--kp4pra-muted-text)">
+    Live CMS probe/send are disabled while <code>webmail.delivery.dry_run</code> is true.
+  </div>
+  {% endif %}
 </div>
 
 <div class="card" id="dryrun-card" style="display:none">
@@ -55,13 +68,13 @@
   function showResult(ok, msg){
     var el=document.getElementById('action-result');
     el.style.display='block';
-    el.innerHTML='<div class="alert '+(ok?'alert-success':'alert-error')+'"><span class="alert-icon">'+(ok?'\u2713':'\u2717')+'</span><div>'+msg+'</div></div>';
+    el.innerHTML='<div class="alert '+(ok?'alert-success':'alert-error')+'"><span class="alert-icon">'+(ok?'✓':'✗')+'</span><div>'+msg+'</div></div>';
     el.scrollIntoView({behavior:'smooth'});
   }
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   async function testDelivery(){
-    showResult(true,'Assembling dry-run\u2026');
+    showResult(true,'Assembling dry-run…');
     try{
       var r=await fetch('/api/messages/test', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -99,6 +112,65 @@
     document.getElementById('dryrun-body').innerHTML=html;
     document.getElementById('dryrun-card').style.display='block';
     document.getElementById('dryrun-card').scrollIntoView({behavior:'smooth'});
+  }
+
+  function renderLive(title, r){
+    var card=document.getElementById('dryrun-card');
+    var bodyEl=document.getElementById('dryrun-body');
+    document.querySelector('#dryrun-card .card-title').innerHTML='<span class="icon">📡</span> '+esc(title);
+    var rows='';
+    (r.transcript||[]).forEach(function(line){
+      var dir=line[0], txt=esc(line[1]);
+      var color = dir==='-->' ? 'var(--kp4pra-primary-dark)' : (dir==='error' ? 'var(--kp4pra-error)' : (dir==='<--' ? 'var(--kp4pra-muted-text)' : 'var(--kp4pra-warning)'));
+      rows += '<div style="color:'+color+'"><code>'+esc((dir==='info'||dir==='error')?'':dir+' ')+txt+'</code></div>';
+    });
+    var summary='';
+    if(r.identity) summary+=row('Identity', r.identity);
+    if('accepted' in r) summary+=row('CMS accepted proposal', r.accepted? 'YES (FS '+esc(r.fs||'')+')' : 'no ('+esc(r.fs||'')+')');
+    if(r.final_status) summary+=row('Result', r.final_status);
+    if(r.error) summary+=row('Error', r.error);
+    bodyEl.innerHTML='<table style="width:100%;font-size:0.9rem;margin-bottom:1rem">'+summary+'</table>'+
+      '<div style="color:var(--kp4pra-muted-text);font-size:0.82rem;margin-bottom:0.3rem">Session log</div>'+
+      '<div style="background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.75rem;font-size:0.8rem;line-height:1.5;overflow-x:auto">'+rows+'</div>';
+    card.style.display='block';
+    card.scrollIntoView({behavior:'smooth'});
+  }
+
+  async function probe(identity){
+    showResult(true,'Connecting to CMS ('+identity+')… this can take a moment.');
+    try{
+      var r=await fetch('/api/messages/probe', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:MID, identity:identity})
+      });
+      var data=await r.json();
+      if(!data.success){ showResult(false, data.message||'Probe failed.'); return; }
+      document.getElementById('action-result').style.display='none';
+      if(data.both){
+        renderLive('Probe (station)', data.both.station);
+        // append gateway result below
+        var extra=document.createElement('div'); extra.style.marginTop='1rem';
+        document.getElementById('dryrun-body').appendChild(extra);
+      } else {
+        renderLive('Probe ('+identity+')', data.result);
+      }
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+
+  async function sendNow(identity){
+    if(!confirm('Send this message for real via CMS now? It will be transmitted to Winlink.')) return;
+    showResult(true,'Sending via CMS ('+identity+')… this can take a moment.');
+    try{
+      var r=await fetch('/api/messages/send', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:MID, identity:identity, confirm:true})
+      });
+      var data=await r.json();
+      if(!data.success && data.message){ showResult(false, data.message); return; }
+      document.getElementById('action-result').style.display='none';
+      renderLive('Send ('+identity+')', data.result||{});
+      if(data.sent){ setTimeout(function(){ location.reload(); }, 1500); }
+    }catch(e){ showResult(false,'Error: '+e); }
   }
 
   async function act(action){

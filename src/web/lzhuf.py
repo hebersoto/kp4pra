@@ -25,7 +25,7 @@ standard LZHUF constants used by the Winlink/FBB variant.
 """
 
 # ── LZSS parameters ──────────────────────────────────────────────────────────
-N = 4096            # ring buffer size
+N = 2048            # ring buffer size (matches paclink-unix/Winlink lzhuf_1)
 F = 60              # upper limit for match length
 THRESHOLD = 2       # encode string into position/length if length > THRESHOLD
 NIL = N             # index for root of binary search trees
@@ -147,12 +147,11 @@ def _decode_position(br):
     # field; read the remaining low bits from the stream.
     i = br.get_byte()
     c = d_code[i] << 6
-    used = d_len[i]
-    have = 8 - used
-    low = i & ((1 << have) - 1)
-    for _ in range(6 - have):
-        low = (low << 1) | br.get_bit()
-    return c | (low & 0x3F)
+    j = d_len[i] - 2
+    while j > 0:
+        i = ((i << 1) + br.get_bit()) & 0xFFFF
+        j -= 1
+    return c | (i & 0x3F)
 
 
 # ── Bit I/O ──────────────────────────────────────────────────────────────────
@@ -282,8 +281,9 @@ class _Huff:
             k = self.freq[c]
             # If order is disturbed, exchange nodes.
             l = c + 1
-            if l < len(self.freq) and k > self.freq[l]:
-                while l + 1 <= T and k > self.freq[l + 1]:
+            if k > self.freq[l]:
+                l += 1
+                while k > self.freq[l]:
                     l += 1
                 l -= 1
                 self.freq[c] = self.freq[l]
@@ -376,11 +376,16 @@ def _lzss_encode(data: bytes) -> bytes:
                 if cmp != 0:
                     break
                 i += 1
-            if i > match_length:
-                match_position = p
-                match_length = i
-                if match_length >= F:
-                    break
+            if i > THRESHOLD:
+                if i > match_length:
+                    match_position = ((r - p) & (N - 1)) - 1
+                    match_length = i
+                    if match_length >= F:
+                        break
+                if i == match_length:
+                    c = ((r - p) & (N - 1)) - 1
+                    if c < match_position:
+                        match_position = c
         dad[r] = dad[p]
         lson[r] = lson[p]
         rson[r] = rson[p]
@@ -445,7 +450,7 @@ def _lzss_encode(data: bytes) -> bytes:
             huff.encode_char(text_buf[r], bw)
         else:
             huff.encode_char(255 - THRESHOLD + match_length, bw)
-            _encode_position(bw, (r - match_position - 1) & (N - 1))
+            _encode_position(bw, match_position)
         last_match_length = match_length
         i = 0
         while i < last_match_length and src_pos < len(src):

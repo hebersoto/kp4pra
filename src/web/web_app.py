@@ -52,6 +52,7 @@ import mailvalidate
 import mail_i18n
 import b2f
 import mailbuilder
+import b2fsend
 
 PRODUCT_NAME = "KP4PRA TNC"
 
@@ -356,10 +357,14 @@ async def message_detail(request: Request, mid: str,
     rec = mailqueue.get(mid)
     if rec is None:
         return RedirectResponse(url="/admin/messages", status_code=303)
+    cfg = get_config()
+    delivery = cfg.get("webmail", {}).get("delivery", {})
     return templates.TemplateResponse("message_detail.html", {
         "request": request,
         "product_name": PRODUCT_NAME,
         "m": rec,
+        "dry_run": bool(delivery.get("dry_run", True)),
+        "delivery_method": delivery.get("method", "cms"),
     })
 
 
@@ -452,6 +457,72 @@ async def api_messages_test(request: Request, _auth=Depends(check_auth)):
 
     return JSONResponse({"success": True, "dry_run": True,
                          "transcript": transcript})
+
+
+@app.post("/api/messages/probe")
+async def api_messages_probe(request: Request, _auth=Depends(check_auth)):
+    """LIVE probe: connect to CMS, exchange SID, send the proposal, read
+    the real FS, then abort BEFORE any body. Requires dry_run=false.
+    body: {id, identity: station|gateway|both}."""
+    body = await request.json()
+    rec = mailqueue.get(body.get("id", ""))
+    if rec is None:
+        return JSONResponse({"success": False, "message": "Message not found."},
+                            status_code=404)
+    cfg = get_config()
+    identity = body.get("identity", "station")
+    try:
+        if identity == "both":
+            results = await b2fsend.probe_both(rec, cfg, version=APP_VERSION)
+            return JSONResponse({"success": True, "probe": True, "both": results})
+        res = await b2fsend.probe(rec, cfg, identity=identity,
+                                  version=APP_VERSION)
+        return JSONResponse({"success": True, "probe": True, "result": res})
+    except b2fsend.DeliveryError as e:
+        return JSONResponse({"success": False, "message": str(e)},
+                            status_code=400)
+    except mailbuilder.BuildError as e:
+        return JSONResponse({"success": False,
+                             "message": "Cannot build message: %s" % e},
+                            status_code=400)
+    except Exception as e:
+        return JSONResponse({"success": False,
+                             "message": "Probe failed: %s" % e},
+                            status_code=500)
+
+
+@app.post("/api/messages/send")
+async def api_messages_send(request: Request, _auth=Depends(check_auth)):
+    """LIVE send: full delivery of one message via CMS. Requires
+    dry_run=false and confirm=true. body: {id, identity, confirm}."""
+    body = await request.json()
+    if not body.get("confirm"):
+        return JSONResponse({"success": False, "need_confirm": True,
+                             "message": "Confirmation required to send."},
+                            status_code=400)
+    rec = mailqueue.get(body.get("id", ""))
+    if rec is None:
+        return JSONResponse({"success": False, "message": "Message not found."},
+                            status_code=404)
+    cfg = get_config()
+    identity = body.get("identity", "station")
+    try:
+        res = await b2fsend.send(rec, cfg, identity=identity,
+                                 version=APP_VERSION)
+        return JSONResponse({"success": res.get("ok", False),
+                             "sent": res.get("final_status") == "Sent",
+                             "result": res})
+    except b2fsend.DeliveryError as e:
+        return JSONResponse({"success": False, "message": str(e)},
+                            status_code=400)
+    except mailbuilder.BuildError as e:
+        return JSONResponse({"success": False,
+                             "message": "Cannot build message: %s" % e},
+                            status_code=400)
+    except Exception as e:
+        return JSONResponse({"success": False,
+                             "message": "Send failed: %s" % e},
+                            status_code=500)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
