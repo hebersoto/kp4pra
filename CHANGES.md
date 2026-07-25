@@ -417,3 +417,17 @@ Changes:
   The documented public AP default is allowlisted so normal commits are not
   blocked. Hooks are not tracked by git, so install once per clone with
   `bash scripts/install-hooks.sh`.
+
+## v1.3.2 - 2026-07-25
+
+Fixes (fresh-install, found on a clean Orange Pi / Debian 13):
+- install.sh venv prerequisite check now tests `python3 -c "import
+  ensurepip"` instead of `python3 -m venv --help`. The old probe passed
+  even when the python3.X-venv package (which provides ensurepip) was
+  missing, so the install failed later at venv creation instead of dying
+  early with a clear message.
+- install.sh now copies kp4pra-tnc-rms.service (and the morse-id
+  service/timer) in the unit-install step. The enable step referenced the
+  RMS unit but the copy step never installed it, causing "Unit
+  kp4pra-tnc-rms.service does not exist" on fresh installs. Also enables
+  the morse-id timer.
