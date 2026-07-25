@@ -50,7 +50,7 @@ python3 --version >/dev/null 2>&1 || die "Python 3 not found. Install: apt insta
 bluetoothctl --version >/dev/null 2>&1 || die "bluetoothctl not found. Install: apt install bluez bluez-tools"
 
 sdptool --help >/dev/null 2>&1 || warn "sdptool not found - install bluez-tools (required for RFCOMM SDP registration)"
-python3 -m venv --help >/dev/null 2>&1 || die "python3-venv not available. Install: apt install python3-venv (or python3.X-venv for your version)"
+python3 -c "import ensurepip" >/dev/null 2>&1 || die "python3-venv (with ensurepip) not available. Install: apt install python3-venv  (or python3.X-venv for your Python version, e.g. python3.13-venv)"
 command -v bt-agent >/dev/null 2>&1 || warn "bt-agent not found - install bluez-tools (required for Just Works pairing agent)"
 command -v nmcli >/dev/null 2>&1 || warn "NetworkManager (nmcli) not found - WiFi hotspot mode requires it: apt install network-manager"
 
@@ -156,6 +156,9 @@ cp "$PROJECT_DIR/systemd/kp4pra-tnc-agent.service"    /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-bt-perms.service"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-wifi-mode.service"   /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-web-redirect.service" /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-tnc-rms.service"      /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-morse-id.service"    /etc/systemd/system/ 2>/dev/null || true
+cp "$PROJECT_DIR/systemd/kp4pra-morse-id.timer"      /etc/systemd/system/ 2>/dev/null || true
 
 log "Installing helper scripts to /usr/local/bin"
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-rw"   /usr/local/bin/
@@ -256,6 +259,7 @@ systemctl enable kp4pra-tnc-agent.service
 systemctl enable kp4pra-bt-perms.service
 systemctl enable kp4pra-wifi-mode.service
 systemctl enable kp4pra-web-redirect.service
+systemctl enable kp4pra-morse-id.timer 2>/dev/null || true
 
 # Seed the wifi: section into configs that predate the hotspot feature
 if [ -f "$CONFIG_DIR/config.yaml" ] && ! grep -q "^wifi:" "$CONFIG_DIR/config.yaml"; then
