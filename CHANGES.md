@@ -469,3 +469,12 @@ Changes:
   next to the title on every page, read from the VERSION file via the
   existing app_version template global. (The footer already showed it; a
   redeploy also fixes boards that were serving a stale 'vdev' placeholder.)
+
+## v1.3.5 - 2026-07-26
+
+Changes:
+- Added scripts/cleanup-direwolf-source.sh to reclaim ~180MB by removing the
+  Dire Wolf source/build tree, which is not needed once the binary is
+  installed to /usr/local/bin. Guarded: refuses unless the installed binary
+  exists and direwolf.service runs it from outside the source tree; prompts
+  before deleting. Stage 2 points users to it.
