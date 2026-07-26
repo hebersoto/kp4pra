@@ -83,4 +83,6 @@ echo "[stage2] Enable and start"
 systemctl daemon-reload
 systemctl enable kp4pra-adevice.service direwolf.service
 systemctl restart kp4pra-adevice.service direwolf.service kp4pra-tnc-web.service
+echo "[stage2] Dire Wolf source no longer needed once the binary is installed."
+echo "[stage2] Reclaim ~180MB with: bash scripts/cleanup-direwolf-source.sh"
 echo "[stage2] Done. Verify: systemctl is-active direwolf.service"
