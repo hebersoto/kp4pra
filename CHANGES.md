@@ -431,3 +431,25 @@ Fixes (fresh-install, found on a clean Orange Pi / Debian 13):
   RMS unit but the copy step never installed it, causing "Unit
   kp4pra-tnc-rms.service does not exist" on fresh installs. Also enables
   the morse-id timer.
+
+## v1.3.3 - 2026-07-25
+
+Changes:
+- install.sh now auto-installs its prerequisite packages up front on
+  Debian/Ubuntu (python3, python3-venv, python3-pip, bluez, bluez-tools,
+  network-manager) before the dependency checks run, so a fresh image
+  installs cleanly on the first attempt instead of failing on a missing
+  python3-venv or warning about missing NetworkManager. Idempotent; the
+  existing checks remain as a safety net. Non-Debian systems get a warning
+  listing the packages to install manually.
+
+## v1.3.3 - 2026-07-25
+
+Changes:
+- install.sh now auto-installs its prerequisite packages up front on
+  Debian/Ubuntu (python3, python3-venv, python3-pip, bluez, bluez-tools,
+  network-manager) before the dependency checks run, so a fresh image
+  installs cleanly on the first attempt instead of failing on a missing
+  python3-venv or warning about missing NetworkManager. Idempotent; the
+  existing checks remain as a safety net. Non-Debian systems get a warning
+  listing the packages to install manually.
