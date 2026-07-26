@@ -98,6 +98,7 @@ fi
 step "Installing application to $APP_DIR"
 mkdir -p "$APP_DIR"
 cp -r "$PROJECT_DIR/src" "$APP_DIR/"
+cp "$PROJECT_DIR/VERSION" "$APP_DIR/VERSION"   # web UI reads this for app_version
 chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 chmod -R 755 "$APP_DIR"
 
