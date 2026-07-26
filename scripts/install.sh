@@ -45,6 +45,23 @@ log "Starting KP4PRA TNC installation..."
 
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash $0"
 
+# ── Auto-install prerequisite packages (Debian/Ubuntu) ───────────────────────
+# On a fresh image these are usually missing; install them up front so the
+# checks below pass on the first run. Idempotent: apt skips what's present.
+PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager"
+if command -v apt-get >/dev/null 2>&1; then
+    step "Installing prerequisite packages: $PREREQS"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq || warn "apt-get update failed - continuing with existing package lists"
+    if apt-get install -y $PREREQS; then
+        log "Prerequisite packages installed"
+    else
+        warn "apt-get install of prerequisites failed - the checks below will report what is missing"
+    fi
+else
+    warn "apt-get not found (non-Debian system) - ensure these are installed manually: $PREREQS"
+fi
+
 python3 --version >/dev/null 2>&1 || die "Python 3 not found. Install: apt install python3 python3-pip python3-venv"
 
 bluetoothctl --version >/dev/null 2>&1 || die "bluetoothctl not found. Install: apt install bluez bluez-tools"
