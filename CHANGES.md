@@ -453,3 +453,11 @@ Changes:
   python3-venv or warning about missing NetworkManager. Idempotent; the
   existing checks remain as a safety net. Non-Debian systems get a warning
   listing the packages to install manually.
+
+## v1.3.4 - 2026-07-26
+
+Changes:
+- Web UI header now shows the installed version (e.g. "KP4PRA TNC v1.3.4")
+  next to the title on every page, read from the VERSION file via the
+  existing app_version template global. (The footer already showed it; a
+  redeploy also fixes boards that were serving a stale 'vdev' placeholder.)
