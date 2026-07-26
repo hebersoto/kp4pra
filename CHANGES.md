@@ -478,3 +478,11 @@ Changes:
   installed to /usr/local/bin. Guarded: refuses unless the installed binary
   exists and direwolf.service runs it from outside the source tree; prompts
   before deleting. Stage 2 points users to it.
+
+## v1.3.6 - 2026-07-26
+
+Fixes:
+- install.sh now copies the VERSION file to /opt/kp4pra-tnc. The install step
+  copied only src/, so fresh installs had no VERSION in /opt and the web UI
+  showed "dev" instead of the installed version. Fresh installs now show the
+  correct version.
