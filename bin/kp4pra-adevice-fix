@@ -5,6 +5,25 @@
 # across reboots / USB re-enumeration), and PREFER the name-based
 # plughw:<name>,N over the number-based plughw:<num>,N, since the card
 # NUMBER shifts with enumeration order while the name is stable.
+
+# I2S GATE: if the configured ADEVICE is an on-header I2S card (e.g.
+# DRA-Pi-Zero -> audioinjectorpi), the user deliberately selected it in the
+# web UI. Do NOT wait 45s for USB and do NOT rewrite the conf back to a
+# CM108 card. Log the skip so a debug session sees why nothing happened.
+I2S_CARDS="audioinjectorpi"
+conf_file=$(realpath /home/kp4pra/direwolf.conf 2>/dev/null)
+if [ -f "$conf_file" ]; then
+    current_adevice=$(awk 'BEGIN{IGNORECASE=1} /^[[:space:]]*ADEVICE[[:space:]]+/ && $0 !~ /^#/ { print $2 }' "$conf_file")
+    for i2s in $I2S_CARDS; do
+        case "$current_adevice" in
+            *"$i2s"*)
+                echo "I2S card '$i2s' configured (ADEVICE $current_adevice); skipping USB self-heal."
+                exit 0
+                ;;
+        esac
+    done
+fi
+
 # Wait (bounded) for the USB sound card to enumerate before detecting.
 # On cold boot the DigiRig/CM108 can take 20-40s to appear; without this
 # the self-heal finds nothing and Direwolf starts with no audio device.
@@ -26,7 +45,6 @@ target_adevice=$(cm108 2>/dev/null | awk '
 }
 END { if (name_form != "") print name_form; else print num_form }')
 [ -z "$target_adevice" ] && { echo "No CM108 hidraw0/ADEVICE mapping found."; exit 0; }
-conf_file=$(realpath /home/kp4pra/direwolf.conf 2>/dev/null)
 [ -f "$conf_file" ] || { echo "Config file not found: $conf_file"; exit 0; }
 current_adevice=$(awk 'BEGIN{IGNORECASE=1} /^[[:space:]]*ADEVICE[[:space:]]+/ && $0 !~ /^#/ { print $2 }' "$conf_file")
 echo "Current ADEVICE: ${current_adevice:-[not found]}  Target: $target_adevice"

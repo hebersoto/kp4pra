@@ -1,0 +1,44 @@
+#!/bin/bash
+# KP4PRA TNC - Blue Bluetooth LED (DRA-Pi-Zero, GPIO 5 / header pin 29).
+# LED is active-high (verified: GPIO5=low -> off, high -> on). At power-on the
+# pin floats HIGH so the LED is stuck on; this daemon drives it and holds it,
+# lighting it only while a BT device is actually CONNECTED (BLE iPhone or
+# RFCOMM Android - both appear in `bluetoothctl devices Connected`).
+#
+# libgpiod, not sysfs (kernel 6.x sysfs GPIO is unreliable / can lock a line).
+# gpioset holds the line only while it runs, so we keep ONE gpioset alive and
+# restart it when the desired level changes. Runs as kp4pra-tnc (gpio group).
+
+CHIP=gpiochip0
+LINE=5
+POLL=3
+
+hold_pid=""
+current=""   # "" unknown, "0" off, "1" on
+
+set_level() {
+    local want="$1"
+    [ "$want" = "$current" ] && return
+    [ -n "$hold_pid" ] && kill "$hold_pid" 2>/dev/null
+    # -t0 = hold until killed; background it and keep the pid
+    gpioset -c "$CHIP" -t0 "${LINE}=${want}" &
+    hold_pid=$!
+    current="$want"
+}
+
+cleanup() { [ -n "$hold_pid" ] && kill "$hold_pid" 2>/dev/null; exit 0; }
+trap cleanup INT TERM
+
+# Drive LOW immediately so the floating-high LED goes dark at startup.
+set_level 0
+
+any_connected() {
+    # Reuse the same source of truth as bluez_manager.get_connected_devices().
+    # A connected device line looks like: "Device AA:BB:.. Name"
+    bluetoothctl devices Connected 2>/dev/null | grep -q '^Device '
+}
+
+while true; do
+    if any_connected; then set_level 1; else set_level 0; fi
+    sleep "$POLL"
+done

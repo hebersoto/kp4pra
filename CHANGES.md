@@ -1,3 +1,35 @@
+## DRA-Pi-Zero support + multi-card + LEDs — new in 1.3.7
+
+- Masters Communications DRA-Pi-Zero (I2S WM8731) support: opt-in
+  scripts/setup-dra-pi-zero.sh (overlay + mixer + gpio group), auto-
+  detected in the web UI as "DRA-Pi-Zero (I2S)" with GPIOD PTT pre-filled.
+  Validated on RF: RX decode, TX, digipeated round trip.
+- PTT via GPIOD (libgpiod), not legacy sysfs. Kernel 6.x sysfs GPIO is
+  unreliable - line numbering moved (BCM12 -> sysfs 524) and a crash can
+  leave the line locked. GPIOD form: PTT GPIOD gpiochip0 12. Requires
+  direwolf built with libgpiod-dev (added to INSTALL build deps + PREREQS;
+  setup script warns if the binary lacks it).
+- LEDs: red PTT (relay, automatic), green DCD carrier-detect (GPIO 16,
+  DCD GPIOD gpiochip0 16), blue BT-connected (GPIO 5, new
+  kp4pra-tnc-bt-led service polling `bluetoothctl devices Connected`).
+  LEDs are on/off only - GPIO cannot dim from software.
+- ADEVICE self-heal now skips the 45s USB wait and conf rewrite when an
+  I2S card (audioinjectorpi) is configured, so a plugged-in USB card can't
+  steal the DRA config. USB path unchanged.
+- config.py DEFAULT_CONFIG gains the station block (closes a long-standing
+  gap where a save from defaults could drop station fields).
+- Onboard analog audio (dtparam=audio=off) now set by the main installer
+  for all users (dedicated sound card is always used). CAVEAT: validated
+  only on the DRA board this cycle, not yet on a CM108-only board - it
+  should be harmless (USB card is separate) but is noted as a follow-up.
+- Web UI: PTT dropdown gains GPIOD; Detect now applies the PTT suggestion
+  to the pre-selected card (was only wired to onchange).
+- Fix: /run/kp4pra-tnc runtime-dir deletion on RMS stop (see separate
+  commit; pre-existing v1.3.6 bug).
+
+NOTE: BLE still uses the pre-existing raw-HCI advertising fallback for the
+2026-06 kernel MGMT regression (see below); unrelated to this release.
+
 ## RMS Gateway (src/rms/) — new in 1.3.0
 - Native Python Winlink RMS gateway: Dire Wolf KISS TCP -> AX.25 connected
   mode -> authenticated CMS stream. RF Winlink clients (Winlink Express,

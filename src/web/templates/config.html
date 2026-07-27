@@ -76,6 +76,7 @@
         <option value="RTS" {% if current_ptt == 'RTS' %}selected{% endif %}>Serial RTS</option>
         <option value="DTR" {% if current_ptt == 'DTR' %}selected{% endif %}>Serial DTR</option>
         <option value="GPIO" {% if current_ptt == 'GPIO' %}selected{% endif %}>GPIO Pin</option>
+        <option value="GPIOD" {% if current_ptt == 'GPIOD' %}selected{% endif %}>GPIOD (libgpiod, kernel 6.x)</option>
         <option value="RIG" {% if current_ptt == 'RIG' %}selected{% endif %}>Hamlib RIG</option>
         <option value="NONE" {% if current_ptt == 'NONE' %}selected{% endif %}>None</option>
       </select>
@@ -86,7 +87,7 @@
       <input class="form-input" id="st-ptt-param"
              value="{{ config.station.ptt_param if config.station is defined and config.station.ptt_param is defined else '' }}"
              placeholder="(GPIO pin or serial device)">
-      <div class="form-hint">GPIO: pin number (default 25). Serial RTS/DTR: device path (default /dev/ttyUSB0). Otherwise leave blank.</div>
+      <div class="form-hint">GPIO: pin number (default 25). GPIOD: chip and line, e.g. "gpiochip0 12" (DRA-Pi-Zero). Serial RTS/DTR: device path (default /dev/ttyUSB0). Otherwise leave blank.</div>
     </div>
     <div class="form-group">
       <label class="form-label" for="st-clock">Clock Source Station</label>
@@ -447,6 +448,7 @@ async function detectSoundCards() {
     detectedCards = data.cards;
     sel.onchange = applyPttSuggestion;
     sel.value = saved && ([...sel.options].some(o => o.value === saved)) ? saved : data.cards[0].label;
+    applyPttSuggestion();  // programmatic .value set does not fire onchange
     hint.textContent = `Detected ${data.cards.length} device(s).` +
       (data.cm108_adevice ? ` CM108 PTT mapped to ${data.cm108_adevice}.` : '');
   } catch(e) {

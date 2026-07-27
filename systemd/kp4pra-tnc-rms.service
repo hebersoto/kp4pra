@@ -16,6 +16,11 @@ ExecStart=/opt/kp4pra-tnc/venv/bin/python -m rms.gateway
 Restart=on-failure
 RestartSec=5
 RuntimeDirectory=kp4pra-tnc
+# Shared with web/ble/rfcomm (ReadWritePaths + tmpfiles.d): do NOT let
+# systemd delete /run/kp4pra-tnc when THIS unit stops, or the other
+# services fail with 226/NAMESPACE on any later (re)start.
+RuntimeDirectoryPreserve=yes
+RuntimeDirectoryMode=0750
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

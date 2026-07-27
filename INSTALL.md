@@ -37,12 +37,21 @@ install whichever apt suggests if venv creation fails.
 
 ## 3. Build Dire Wolf (with CM108 PTT support)
 ```bash
-sudo apt install -y cmake libasound2-dev libudev-dev libhamlib-dev gpsd libgps-dev
+sudo apt install -y cmake libasound2-dev libudev-dev libhamlib-dev gpsd libgps-dev libgpiod-dev
 cd ~ && git clone https://github.com/wb2osz/direwolf.git
 cd direwolf && mkdir build && cd build
 cmake .. && make -j2 && sudo make install
 ```
 Verify: `direwolf --help` and `cm108` (lists CM108 HID→ADEVICE mapping).
+The `--help` banner must list `libgpiod` in optional support - the
+DRA-Pi-Zero's GPIOD PTT needs it, and on kernel 6.x legacy sysfs GPIO
+is unreliable. If it's missing, install libgpiod-dev and rebuild.
+
+**DRA-Pi-Zero users only** (I2S board): after install, run
+`sudo bash scripts/setup-dra-pi-zero.sh`, reboot, then run it once more
+to apply the WM8731 mixer. It enables the I2S overlay, disables onboard
+audio, sets mixer levels, and adds the service user to the gpio group.
+USB (CM108) users skip this entirely. See docs/DRA_PI_ZERO.md.
 The initial direwolf.conf is created automatically by the installer
 (a minimal config is seeded on /rw with a symlink at
 /home/kp4pra/direwolf.conf). Configure your station via the web UI
