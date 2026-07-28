@@ -68,7 +68,17 @@ DEFAULT_CONFIG = {
         "enabled": True,
         "delivery": {
             "dry_run": True,       # SAFETY: real sending is off by default
-            "method": "cms",       # cms | rf  (rf added in a later step)
+            "method": "cms",       # cms | rf  (default route when auto-pick is off)
+            "auto_route": True,    # prefer cms when internet is reachable, else rf
+            "rf": {
+                "remote_rms": "",      # remote RMS gateway callsign (required for rf)
+                "digipeaters": [],     # 0-2 digipeater callsigns, in path order
+                "block_size": 250,     # B2F chunk size (<=255; 125 for paclen-128)
+                "mycall": "",          # our TX callsign (defaults to station.callsign)
+                "restart_listener": True,  # restart kp4pra-tnc-rms after each rf send
+                "connect_retries": 3,  # SABM attempts before giving up
+                "ack_timeout": 10,     # seconds to wait for UA / I-frame ack
+            },
         },
     },
     "station": {

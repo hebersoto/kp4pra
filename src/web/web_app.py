@@ -53,6 +53,7 @@ import mail_i18n
 import b2f
 import mailbuilder
 import b2fsend
+import rfsend
 
 PRODUCT_NAME = "KP4PRA TNC"
 
@@ -341,6 +342,8 @@ async def messages_list(request: Request, status: str = None,
                         _auth=Depends(check_auth)):
     flt = status if status in mailqueue.STATES else None
     msgs = mailqueue.list_messages(flt)
+    _cfg = get_config()
+    _dry = bool(_cfg.get("webmail", {}).get("delivery", {}).get("dry_run", True))
     return templates.TemplateResponse("messages.html", {
         "request": request,
         "product_name": PRODUCT_NAME,
@@ -348,6 +351,7 @@ async def messages_list(request: Request, status: str = None,
         "counts": _mail_counts(),
         "filter": flt,
         "states": list(mailqueue.STATES),
+        "dry_run": _dry,
     })
 
 
@@ -461,17 +465,22 @@ async def api_messages_test(request: Request, _auth=Depends(check_auth)):
 
 @app.post("/api/messages/probe")
 async def api_messages_probe(request: Request, _auth=Depends(check_auth)):
-    """LIVE probe: connect to CMS, exchange SID, send the proposal, read
-    the real FS, then abort BEFORE any body. Requires dry_run=false.
-    body: {id, identity: station|gateway|both}."""
+    """LIVE probe: connect, exchange SID, send the proposal, read the real FS,
+    then abort BEFORE any body. Requires dry_run=false.
+    body: {id, identity: station|gateway|both, route: cms|rf|auto}."""
     body = await request.json()
     rec = mailqueue.get(body.get("id", ""))
     if rec is None:
         return JSONResponse({"success": False, "message": "Message not found."},
                             status_code=404)
     cfg = get_config()
+    route = _resolve_route(body.get("route", "cms"), cfg)
     identity = body.get("identity", "station")
     try:
+        if route == "rf":
+            res = await rfsend.probe(rec, cfg, version=APP_VERSION)
+            return JSONResponse({"success": True, "probe": True,
+                                 "route": "rf", "result": res})
         if identity == "both":
             results = await b2fsend.probe_both(rec, cfg, version=APP_VERSION)
             return JSONResponse({"success": True, "probe": True, "both": results})
@@ -491,10 +500,36 @@ async def api_messages_probe(request: Request, _auth=Depends(check_auth)):
                             status_code=500)
 
 
+def _internet_up(host="1.1.1.1", port=53, timeout=1.5):
+    """Cheap reachability check for auto route selection."""
+    import socket
+    try:
+        s = socket.create_connection((host, port), timeout=timeout)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+
+def _resolve_route(requested, cfg):
+    """Map requested route ('cms'|'tcp-ip'|'rf'|'auto'|'') to 'cms' or 'rf'.
+    'auto' (or blank with auto_route on) prefers cms when internet is up."""
+    d = cfg.get("webmail", {}).get("delivery", {}) or {}
+    req = (requested or "").strip().lower()
+    if req in ("cms", "tcp", "tcpip", "tcp-ip"):
+        return "cms"
+    if req == "rf":
+        return "rf"
+    if req == "auto" or (req == "" and d.get("auto_route", True)):
+        return "cms" if _internet_up() else "rf"
+    return "rf" if d.get("method") == "rf" else "cms"
+
+
 @app.post("/api/messages/send")
 async def api_messages_send(request: Request, _auth=Depends(check_auth)):
-    """LIVE send: full delivery of one message via CMS. Requires
-    dry_run=false and confirm=true. body: {id, identity, confirm}."""
+    """LIVE send: full delivery of one message. Requires dry_run=false and
+    confirm=true. body: {id, identity, confirm, route}. route is
+    'cms' | 'tcp-ip' | 'rf' | 'auto' (default 'auto')."""
     body = await request.json()
     if not body.get("confirm"):
         return JSONResponse({"success": False, "need_confirm": True,
@@ -505,24 +540,85 @@ async def api_messages_send(request: Request, _auth=Depends(check_auth)):
         return JSONResponse({"success": False, "message": "Message not found."},
                             status_code=404)
     cfg = get_config()
+    route = _resolve_route(body.get("route", "auto"), cfg)
     identity = body.get("identity", "station")
     try:
-        res = await b2fsend.send(rec, cfg, identity=identity,
-                                 version=APP_VERSION)
+        if route == "rf":
+            res = await rfsend.send(rec, cfg, version=APP_VERSION)
+        else:
+            res = await b2fsend.send(rec, cfg, identity=identity,
+                                     version=APP_VERSION)
         return JSONResponse({"success": res.get("ok", False),
                              "sent": res.get("final_status") == "Sent",
+                             "route": route,
                              "result": res})
     except b2fsend.DeliveryError as e:
-        return JSONResponse({"success": False, "message": str(e)},
-                            status_code=400)
+        return JSONResponse({"success": False, "route": route,
+                             "message": str(e)}, status_code=400)
     except mailbuilder.BuildError as e:
         return JSONResponse({"success": False,
                              "message": "Cannot build message: %s" % e},
                             status_code=400)
     except Exception as e:
-        return JSONResponse({"success": False,
+        return JSONResponse({"success": False, "route": route,
                              "message": "Send failed: %s" % e},
                             status_code=500)
+
+
+_BULK_SEND_MAX = 25
+
+
+@app.post("/api/messages/send_bulk")
+async def api_messages_send_bulk(request: Request, _auth=Depends(check_auth)):
+    """LIVE bulk send: deliver several approved messages sequentially over one
+    route. body: {ids:[...], route, confirm}. Returns per-message results.
+    Each message is sent independently; one failure does not abort the rest."""
+    body = await request.json()
+    if not body.get("confirm"):
+        return JSONResponse({"success": False, "need_confirm": True,
+                             "message": "Confirmation required to send."},
+                            status_code=400)
+    ids = body.get("ids") or []
+    if not ids:
+        return JSONResponse({"success": False, "message": "No messages selected."},
+                            status_code=400)
+    if len(ids) > _BULK_SEND_MAX:
+        return JSONResponse({"success": False,
+                             "message": "Too many selected (max %d per batch)."
+                             % _BULK_SEND_MAX}, status_code=400)
+    cfg = get_config()
+    route = _resolve_route(body.get("route", "auto"), cfg)
+    identity = body.get("identity", "station")
+
+    results = []
+    sent_count = 0
+    for mid in ids:
+        rec = mailqueue.get(mid)
+        if rec is None:
+            results.append({"id": mid, "sent": False, "error": "not found"})
+            continue
+        if rec.get("status") not in ("Approved", "Failed"):
+            results.append({"id": mid, "sent": False,
+                            "error": "status %s (not Approved)" % rec.get("status")})
+            continue
+        try:
+            if route == "rf":
+                res = await rfsend.send(rec, cfg, version=APP_VERSION)
+            else:
+                res = await b2fsend.send(rec, cfg, identity=identity,
+                                         version=APP_VERSION)
+            ok = res.get("final_status") == "Sent"
+            sent_count += 1 if ok else 0
+            results.append({"id": mid, "sent": ok,
+                            "status": res.get("final_status"),
+                            "error": res.get("error")})
+        except Exception as e:
+            results.append({"id": mid, "sent": False,
+                            "error": "%s: %s" % (type(e).__name__, e)})
+
+    return JSONResponse({"success": True, "route": route,
+                         "sent": sent_count, "total": len(ids),
+                         "results": results})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -531,6 +627,7 @@ async def api_messages_send(request: Request, _auth=Depends(check_auth)):
 
 @app.get("/admin/login", response_class=HTMLResponse)
 async def login_page(request: Request, next: str = "/admin"):
+    # If no password is configured yet, there is nothing to log into.
     if not auth.dashboard_password_set(get_config()):
         return RedirectResponse(url="/admin", status_code=303)
     return templates.TemplateResponse("login.html", {
@@ -585,6 +682,7 @@ async def api_dashboard_password(request: Request, _auth=Depends(check_auth)):
             "message": "Configure a valid station callsign and save before "
                        "setting a Dashboard password."}, status_code=400)
 
+    # Changing an existing password requires the current one.
     if auth.dashboard_password_set(cfg):
         stored = cfg["web"]["dashboard_password_hash"]
         if not auth.verify_password(current_pw, stored):

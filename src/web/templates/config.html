@@ -237,6 +237,59 @@
   </div>
 </div>
 
+<!-- RF Webmail Delivery -->
+<div class="card">
+  <div class="card-title"><span class="icon">📡</span> RF Webmail Delivery</div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    Outbound delivery of approved webmail to a remote Winlink RMS over RF (used
+    when the internet is unavailable, or when RF is chosen for a message). The
+    inbound RMS listener is paused automatically during an RF send.
+  </p>
+  {% set _rf = config.webmail.delivery.rf %}
+  {% set _rf_digis = _rf.digipeaters if _rf.digipeaters else [] %}
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="rf-remote">Remote RMS Callsign</label>
+      <input class="form-input" id="rf-remote" maxlength="9" value="{{ _rf.remote_rms }}" placeholder="e.g. W1AW-10">
+      <div class="form-hint">The destination RMS gateway. CALLSIGN or CALLSIGN-SSID.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-mycall">TX Callsign (optional)</label>
+      <input class="form-input" id="rf-mycall" maxlength="9" value="{{ _rf.mycall }}" placeholder="(defaults to station callsign)">
+      <div class="form-hint">Leave blank to transmit as the Station callsign.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-digi1">Digipeater 1 (optional)</label>
+      <input class="form-input" id="rf-digi1" maxlength="9" value="{{ _rf_digis[0] if _rf_digis|length > 0 else '' }}" placeholder="(none)">
+      <div class="form-hint">First hop, if the RMS is not directly reachable.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-digi2">Digipeater 2 (optional)</label>
+      <input class="form-input" id="rf-digi2" maxlength="9" value="{{ _rf_digis[1] if _rf_digis|length > 1 else '' }}" placeholder="(none)">
+      <div class="form-hint">Second hop. At most two digipeaters are supported.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-block">Block Size (bytes)</label>
+      <input class="form-input" id="rf-block" type="number" min="1" max="255" value="{{ _rf.block_size }}" placeholder="250">
+      <div class="form-hint">B2F chunk size per I-frame. 250 for paclen-256; 125 for paclen-128.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-restart">Restart listener after send</label>
+      <select class="form-select" id="rf-restart">
+        <option value="true" {% if _rf.restart_listener %}selected{% endif %}>Yes (return to RMS listening)</option>
+        <option value="false" {% if not _rf.restart_listener %}selected{% endif %}>No (stay stopped — field op)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-auto">Auto route selection</label>
+      <select class="form-select" id="rf-auto">
+        <option value="true" {% if config.webmail.delivery.auto_route %}selected{% endif %}>Prefer TCP/IP when online, else RF</option>
+        <option value="false" {% if not config.webmail.delivery.auto_route %}selected{% endif %}>Manual (trustee picks each time)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
 <!-- BLE -->
 <div class="card">
   <div class="card-title"><span class="icon">📡</span> BLE KISS Bridge</div>
@@ -586,6 +639,21 @@ function collectConfig() {
       cms_call: callWithSsid('rms-callsign', 'rms-ssid'),
       frequency_hz: parseInt(document.getElementById('rms-frequency').value),
       mode: document.getElementById('rms-mode').value,
+    },
+    webmail: {
+      delivery: {
+        auto_route: document.getElementById('rf-auto').value === 'true',
+        rf: {
+          remote_rms: document.getElementById('rf-remote').value.trim().toUpperCase(),
+          mycall: document.getElementById('rf-mycall').value.trim().toUpperCase(),
+          digipeaters: [
+            document.getElementById('rf-digi1').value.trim().toUpperCase(),
+            document.getElementById('rf-digi2').value.trim().toUpperCase(),
+          ].filter(function(x){ return x; }),
+          block_size: parseInt(document.getElementById('rf-block').value) || 250,
+          restart_listener: document.getElementById('rf-restart').value === 'true',
+        },
+      },
     },
     ble: {
       device_name: document.getElementById('ble-name').value.trim(),

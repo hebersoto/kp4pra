@@ -10,7 +10,7 @@
   }
   .msg-table th { font-size:0.78rem; text-transform:uppercase;
     letter-spacing:0.03em; color:var(--kp4pra-muted-text); }
-  .msg-table tbody tr:hover { background:var(--kp4pra-surface); }
+  .msg-table tr:hover, .msg-table tbody tr:hover { background:var(--kp4pra-surface); }
   .msg-table .col-sel { width:2rem; }
   .msg-subj a { color:var(--kp4pra-primary-dark); text-decoration:none; font-weight:600; }
   .msg-subj a:hover { text-decoration:underline; }
@@ -23,7 +23,9 @@
   }
   .filter-tabs a.active { background:var(--kp4pra-primary); color:#fff; }
   .bulk-bar { display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
-  @media (max-width:640px){ .msg-table .col-hide { display:none; } }
+  @media (max-width:640px){
+    .msg-table .col-hide { display:none; }
+  }
 </style>
 {% endblock %}
 
@@ -51,6 +53,17 @@
   <button class="btn btn-primary" onclick="bulk('approve')">Approve selected</button>
   <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="bulk('reject')">Reject selected</button>
   <button class="btn" style="border:1px solid var(--kp4pra-error);color:var(--kp4pra-error)" onclick="bulk('delete')">Delete selected</button>
+  {% if not dry_run %}
+  <span style="width:1px;height:1.4rem;background:var(--kp4pra-border);margin:0 0.2rem"></span>
+  <label style="font-size:0.82rem;display:flex;gap:0.3rem;align-items:center">Route:
+    <select id="bulkRoute" style="padding:0.2rem 0.4rem;border:1px solid var(--kp4pra-border);border-radius:4px;background:var(--kp4pra-bg);color:var(--kp4pra-text)">
+      <option value="auto" selected>Auto</option>
+      <option value="cms">TCP/IP</option>
+      <option value="rf">RF</option>
+    </select>
+  </label>
+  <button class="btn" style="border:1px solid var(--kp4pra-warning);color:var(--kp4pra-warning)" onclick="bulkSend()">⚡ Send selected</button>
+  {% endif %}
 </div>
 
 <div class="card" style="padding:0.25rem 0.5rem">
@@ -88,7 +101,7 @@
 </div>
 {% else %}
 <div class="card" style="text-align:center;color:var(--kp4pra-muted-text);padding:2rem">
-  No messages{% if filter %} with status &ldquo;{{ filter }}&rdquo;{% endif %}.
+  No messages{% if filter %} with status “{{ filter }}”{% endif %}.
 </div>
 {% endif %}
 
@@ -102,7 +115,7 @@
   function showResult(ok, msg){
     var el=document.getElementById('action-result');
     el.style.display='block';
-    el.innerHTML='<div class="alert '+(ok?'alert-success':'alert-error')+'"><span class="alert-icon">'+(ok?'\u2713':'\u2717')+'</span><div>'+msg+'</div></div>';
+    el.innerHTML='<div class="alert '+(ok?'alert-success':'alert-error')+'"><span class="alert-icon">'+(ok?'✓':'✗')+'</span><div>'+msg+'</div></div>';
     el.scrollIntoView({behavior:'smooth'});
   }
   async function bulk(action){
@@ -125,6 +138,27 @@
       }else{
         showResult(false, data.message || 'Action failed.');
       }
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+  async function bulkSend(){
+    var ids=selectedIds();
+    if(ids.length===0){ showResult(false,'No messages selected.'); return; }
+    var route=(document.getElementById('bulkRoute')||{}).value||'auto';
+    var rlabel=route==='rf'?'RF':(route==='cms'?'TCP/IP':'Auto');
+    if(!confirm('Send '+ids.length+' selected message(s) for real via '+rlabel+'? They will be transmitted one by one.')) return;
+    showResult(true,'Sending '+ids.length+' message(s) via '+rlabel+'… this can take a while.');
+    try{
+      var r=await fetch('/api/messages/send_bulk', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ids:ids, route:route, confirm:true})
+      });
+      var data=await r.json();
+      if(!data.success){ showResult(false, data.message || 'Bulk send failed.'); return; }
+      var lines=(data.results||[]).map(function(x){
+        return (x.sent?'✓':'✗')+' '+x.id+(x.error?(' — '+x.error):'');
+      }).join('<br>');
+      showResult(data.sent>0, 'Sent '+data.sent+' of '+data.total+' via '+(data.route||route)+':<br>'+lines);
+      setTimeout(function(){ location.reload(); }, 2000);
     }catch(e){ showResult(false,'Error: '+e); }
   }
 </script>

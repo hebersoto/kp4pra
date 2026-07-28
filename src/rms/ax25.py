@@ -57,15 +57,28 @@ def split_frame(frame:bytes)->Tuple[str,str,List[str],int,int,bytes]:
         pid=frame[i]; i+=1
     return addrs[0],addrs[1],addrs[2:],ctrl,pid,frame[i:]
 
-def make_frame(dest:str,src:str,ctrl:int,payload:bytes=b'',pid:int=-1,response:bool=False)->bytes:
+def make_frame(dest:str,src:str,ctrl:int,payload:bytes=b'',pid:int=-1,response:bool=False,digis=None)->bytes:
     # AX.25 command/response convention: for a COMMAND frame, the dest
     # address C-bit=1 and src C-bit=0. For a RESPONSE frame (required for
     # UA/DM replying to a Poll SABM/DISC, and conventional for RR sent as
     # an ack rather than a poll), it is inverted: dest C-bit=0, src C-bit=1.
     # response=False (default) preserves prior behavior exactly.
+    #
+    # digis: optional ordered list of digipeater callsigns to route through
+    # (the frame is repeated by digis[0], then digis[1], ...). The address
+    # field is [dest][src][digi1][digi2]...; the LAST address carries the
+    # HDLC extension bit (last=True). For a freshly transmitted frame no digi
+    # has repeated it yet, so each digi's H-bit (has-been-repeated) is 0;
+    # encode_call with command=False leaves that SSID bit clear.
+    digis = [d for d in (digis or []) if d and d.strip()]
     out=bytearray()
     out+=encode_call(dest,last=False,command=not response)
-    out+=encode_call(src,last=True,command=response)
+    if digis:
+        out+=encode_call(src,last=False,command=response)
+        for k,d in enumerate(digis):
+            out+=encode_call(d,last=(k==len(digis)-1),command=False)
+    else:
+        out+=encode_call(src,last=True,command=response)
     out.append(ctrl)
     if pid>=0: out.append(pid)
     out+=payload; return bytes(out)

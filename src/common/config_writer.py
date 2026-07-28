@@ -184,6 +184,45 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
         if "mode" in rms and rms["mode"] not in ("PACKET-1200", "PACKET-9600"):
             errors.append("rms.mode must be PACKET-1200 or PACKET-9600")
 
+    if "webmail" in updates:
+        wm = updates["webmail"] or {}
+        deliv = wm.get("delivery", {}) or {}
+        rf = deliv.get("rf", {}) or {}
+        import re as _re
+        _CALL = _re.compile(r"^[A-Z0-9]{3,7}(-\d{1,2})?$")
+        if "remote_rms" in rf and rf["remote_rms"]:
+            if not _CALL.match(str(rf["remote_rms"]).upper()):
+                errors.append("webmail.delivery.rf.remote_rms must be CALLSIGN or CALLSIGN-SSID")
+        if "mycall" in rf and rf["mycall"]:
+            if not _CALL.match(str(rf["mycall"]).upper()):
+                errors.append("webmail.delivery.rf.mycall must be CALLSIGN or CALLSIGN-SSID")
+        if "digipeaters" in rf:
+            digis = rf["digipeaters"]
+            if not isinstance(digis, list):
+                errors.append("webmail.delivery.rf.digipeaters must be a list")
+            else:
+                nonempty = [d for d in digis if str(d).strip()]
+                if len(nonempty) > 2:
+                    errors.append("webmail.delivery.rf.digipeaters: at most 2 allowed")
+                for d in nonempty:
+                    if not _CALL.match(str(d).upper()):
+                        errors.append("webmail.delivery.rf.digipeaters: %r is not a valid callsign" % d)
+        if "block_size" in rf:
+            try:
+                b = int(rf["block_size"])
+                if not 1 <= b <= 255:
+                    errors.append("webmail.delivery.rf.block_size must be 1-255")
+            except (TypeError, ValueError):
+                errors.append("webmail.delivery.rf.block_size must be an integer")
+        for k in ("connect_retries", "ack_timeout"):
+            if k in rf:
+                try:
+                    v = int(rf[k])
+                    if v < 1 or v > 120:
+                        errors.append("webmail.delivery.rf.%s must be 1-120" % k)
+                except (TypeError, ValueError):
+                    errors.append("webmail.delivery.rf.%s must be an integer" % k)
+
     if errors:
         return False, "; ".join(errors)
     return True, ""
