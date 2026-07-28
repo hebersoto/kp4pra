@@ -1,3 +1,12 @@
+## 1.3.9 (planned) — DRA-Pi-Zero web setup — PENDING HARDWARE VALIDATION
+
+Work committed on branch `feature/dra-web-setup` (not merged). Adds a web UI
+button to set up the DRA-Pi-Zero (config.txt overlay + auto-mixer on boot),
+with narrow sudoers and safe no-op on non-DRA boards. Validated only on a
+USB board with no DRA present. MERGE GATE: must first pass on a DRA-Pi-Zero
+board — clean boot with the overlay, codec enumerates, mixer auto-applies,
+RX/TX + GPIOD PTT. See the branch commit body for the full checklist.
+
 ## DRA-Pi-Zero support + multi-card + LEDs — new in 1.3.7
 
 - Masters Communications DRA-Pi-Zero (I2S WM8731) support: opt-in
