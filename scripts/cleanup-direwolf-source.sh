@@ -5,9 +5,21 @@
 # This script NEVER touches the installed binary or the running service.
 set -euo pipefail
 
-SRC="${1:-$HOME/direwolf}"
-SRC="${SRC%/}"                       # strip any trailing slash
 BIN="$(command -v direwolf || echo /usr/local/bin/direwolf)"
+
+# Parse args: -y/--yes sets non-interactive; the first NON-flag arg (if any)
+# is an explicit source path. Default source is $HOME/direwolf.
+ASSUME_YES=0
+SRC=""
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes) ASSUME_YES=1 ;;
+        -*)       ;;                       # ignore unknown flags
+        *)        [ -z "$SRC" ] && SRC="$arg" ;;   # first non-flag = source
+    esac
+done
+[ -z "$SRC" ] && SRC="$HOME/direwolf"
+SRC="${SRC%/}"                             # strip any trailing slash
 
 echo "KP4PRA TNC - Dire Wolf source cleanup"
 echo
@@ -48,11 +60,15 @@ fi
 size="$(du -sh "$SRC" 2>/dev/null | cut -f1)"
 echo
 echo "About to remove Dire Wolf source tree: $SRC  ($size)"
-read -r -p "Proceed? [y/N] " ans
-case "$ans" in
-    [yY]|[yY][eE][sS]) ;;
-    *) echo "Cancelled. Nothing removed."; exit 0 ;;
-esac
+if [ "$ASSUME_YES" -eq 1 ]; then
+    echo "Proceeding (--yes)."
+else
+    read -r -p "Proceed? [y/N] " ans
+    case "$ans" in
+        [yY]|[yY][eE][sS]) ;;
+        *) echo "Cancelled. Nothing removed."; exit 0 ;;
+    esac
+fi
 
 rm -rf "$SRC"
 echo "Removed $SRC (reclaimed ~$size). Dire Wolf continues to run from $BIN."
