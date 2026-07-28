@@ -134,6 +134,9 @@
   </p>
   <button class="btn btn-secondary" onclick="setupDRA()" id="btn-dra-setup">Set up DRA-Pi-Zero</button>
   <div class="form-hint" id="dra-setup-result" style="margin-top:0.4rem"></div>
+  <button class="btn btn-secondary" onclick="rebootTNC()" id="btn-reboot"
+          style="margin-top:0.5rem">🔄 Reboot Now</button>
+  <div class="form-hint" id="reboot-result" style="margin-top:0.4rem"></div>
 </div>
 
 <!-- Direwolf -->
@@ -644,6 +647,24 @@ async function refreshDRAStatus() {
   } catch(e) {
     document.getElementById('dra-status').textContent = 'Status check failed: ' + e;
   }
+}
+async function rebootTNC() {
+  if (!confirm('Reboot the TNC now?\n\nRF operation and this web interface ' +
+      'will be unavailable for about a minute while it restarts.')) return;
+  const btn = document.getElementById('btn-reboot');
+  const out = document.getElementById('reboot-result');
+  btn.disabled = true; btn.textContent = 'Rebooting\u2026';
+  try {
+    const r = await fetch('/api/system/reboot', {method:'POST'});
+    const d = await r.json();
+    out.textContent = d.message || (d.success ? 'Rebooting\u2026' : 'Failed.');
+    if (d.success) out.textContent += ' This page will stop responding; ' +
+      'reload in ~60s.';
+  } catch(e) {
+    // A dropped connection here is EXPECTED - the box is going down.
+    out.textContent = 'Reboot triggered (connection closed). Reload in ~60s.';
+  }
+  // leave the button disabled; the box is rebooting
 }
 async function setupDRA() {
   if (!confirm('This edits /boot config.txt and requires a REBOOT.\n\n' +

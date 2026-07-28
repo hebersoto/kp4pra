@@ -593,6 +593,22 @@ async def api_dra_status(_auth=Depends(check_auth)):
     })
 
 
+@app.post("/api/system/reboot")
+async def api_system_reboot(_auth=Depends(check_auth)):
+    """Reboot the TNC. Backgrounds a short-delayed reboot so this HTTP response
+    flushes to the browser before the network drops. Narrow sudoers: kp4pra-tnc
+    may run only /sbin/reboot."""
+    import subprocess
+    try:
+        subprocess.Popen(
+            ["/bin/sh", "-c", "sleep 2 && sudo -n /sbin/reboot"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return JSONResponse({"success": True,
+            "message": "Rebooting now. The TNC will be back in about a minute."})
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
 @app.post("/api/dra/setup")
 async def api_dra_setup(_auth=Depends(check_auth)):
     """Phase 1 of DRA-Pi-Zero setup: write the I2S overlay + audio-off lines to
