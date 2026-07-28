@@ -518,3 +518,12 @@ Fixes:
   copied only src/, so fresh installs had no VERSION in /opt and the web UI
   showed "dev" instead of the installed version. Fresh installs now show the
   correct version.
+
+## v1.3.8 - 2026-07-27
+
+Changes:
+- Stage 2 (install-direwolf-integration.sh) now automatically removes the Dire
+  Wolf source/build tree after install (guarded, non-interactive), reclaiming
+  ~180MB on fresh installs. cleanup-direwolf-source.sh gained a --yes mode; a
+  flag-parsing bug that mistook --yes for a source path is fixed. Guards
+  unchanged; cleanup is warn-and-continue so it never fails an install.
