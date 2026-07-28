@@ -403,7 +403,7 @@ async def send(record, cfg, version="1.0"):
         password = cfg.get("rms", {}).get("cms_password", "")
         b2f_result = await b2fsend._run_b2f(
             stream, msg, compressed, log, send_body=True,
-            version=version, password=password)
+            version=version, password=password, cfg=cfg)
         result["delivered"] = bool(b2f_result.get("delivered"))
         result["accepted"] = b2f_result.get("accepted")
         result["fs"] = b2f_result.get("fs")
@@ -473,7 +473,7 @@ async def probe(record, cfg, version="1.0"):
         password = cfg.get("rms", {}).get("cms_password", "")
         b2f_result = await b2fsend._run_b2f(
             stream, msg, compressed, log, send_body=False,
-            version=version, password=password)
+            version=version, password=password, cfg=cfg)
         result["accepted"] = b2f_result.get("accepted")
         result["fs"] = b2f_result.get("fs")
     except Exception as e:

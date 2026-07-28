@@ -70,6 +70,16 @@ DEFAULT_CONFIG = {
             "dry_run": True,       # SAFETY: real sending is off by default
             "method": "cms",       # cms | rf  (default route when auto-pick is off)
             "auto_route": True,    # prefer cms when internet is reachable, else rf
+            "sid": {
+                # Client identification line sent to CMS/RMS, e.g.
+                # [KP4PRA-1.4.7dev-B2FHM$]. client_name and capabilities
+                # default to KP4PRA / B2FHM$; version blank = use VERSION file.
+                # Swap client_name to the Winlink-assigned identifier on
+                # approval. Do NOT set this to another vendor's client name.
+                "client_name": "KP4PRA",
+                "version": "",
+                "capabilities": "B2FHM$",
+            },
             "rf": {
                 "remote_rms": "",      # remote RMS gateway callsign (required for rf)
                 "digipeaters": [],     # 0-2 digipeater callsigns, in path order

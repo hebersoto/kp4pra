@@ -100,7 +100,7 @@ def _short(data, limit=200):
 
 
 async def _run_b2f(cms, msg, compressed, log, send_body, version="1.0",
-                   password=""):
+                   password="", cfg=None):
     """Drive the B2F conversation after login. Returns a result dict.
     If send_body is False, aborts with FQ after reading FS (probe)."""
     result = {"logged_in": True, "fs": None, "accepted": None,
@@ -117,10 +117,13 @@ async def _run_b2f(cms, msg, compressed, log, send_body, version="1.0",
         elif line.startswith(b";PQ:"):
             pq_challenge = line.decode("latin1", "ignore")[4:].strip()
 
-    # Client sends SID FIRST, THEN ;PR:, THEN proposals (per captured CMS
-    # exchange NTSGW/AC0KQ and the B2F spec), as one burst.
+    # Per the B2F spec and captured CMS exchanges (e.g. NTSGW/AC0KQ), the
+    # client sends its SID FIRST, THEN answers the ;PQ: challenge with
+    # ;PR:, THEN the proposals -- all after the CMS SID/;PQ:/prompt. CMS
+    # does not re-prompt between these, so we send them as one burst.
     prop = b2f.build_proposals([(msg, len(compressed))])
-    our_sid = b2f.client_sid(version)
+    our_sid = b2f.client_sid(version, cfg)
+
     parts = [our_sid + "\r"]
     log(("-->", our_sid))
     if pq_challenge:
@@ -197,7 +200,7 @@ async def _connect_and_run(record, cfg, remote_call, gateway_call,
         log(("info", "login OK"))
         res = await asyncio.wait_for(
             _run_b2f(cms, msg, compressed, log, send_body, version=version,
-                     password=password),
+                     password=password, cfg=cfg),
             timeout=OVERALL_TIMEOUT)
     except (DeliveryError, asyncio.TimeoutError, OSError, ConnectionError) as e:
         log(("error", "%s: %s" % (type(e).__name__, e)))

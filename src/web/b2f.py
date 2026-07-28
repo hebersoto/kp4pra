@@ -33,12 +33,29 @@ EOT = 0x04
 
 # Our advertised capabilities: B=basic ASCII, 2=B2 binary, F=FBB (LZHUF),
 # H, M identifiers; trailing $ = FBB checksum support.
-CAPABILITIES = "B2FHM$"
+CAPABILITIES = "B2FHM$"       # default B2F capability flags
+CLIENT_NAME = "KP4PRA"        # default client identifier
 
 
-def client_sid(version: str = "1.0") -> str:
-    """Our system identification line, e.g. [KP4PRA-1.4.4-B2FHM$]."""
-    return "[KP4PRA-%s-%s]" % (version, CAPABILITIES)
+def client_sid(version: str = "1.0", cfg: dict = None) -> str:
+    """Our system identification line, e.g. [KP4PRA-1.4.7-B2FHM$].
+
+    The client name, an optional version override, and the capability flags
+    can all be set under webmail.delivery.sid in config so the SID can be
+    tuned per environment (e.g. a dev version string) and later swapped to a
+    Winlink-assigned identifier on approval, without code changes. Anything
+    not set in config falls back to the defaults / the passed-in version.
+    """
+    name = CLIENT_NAME
+    caps = CAPABILITIES
+    if cfg:
+        sid = (cfg.get("webmail", {}).get("delivery", {}) or {}).get("sid", {}) or {}
+        name = (sid.get("client_name") or name).strip()
+        caps = (sid.get("capabilities") or caps).strip()
+        ver_override = (sid.get("version") or "").strip()
+        if ver_override:
+            version = ver_override
+    return "[%s-%s-%s]" % (name, version, caps)
 
 
 def parse_sid(line: str) -> dict:
@@ -108,15 +125,21 @@ def parse_fs(line: str) -> list:
     return out
 
 
-def frame_binary(title, compressed):
-    """B2 binary transfer framing, matching paclink-unix putcompressed():
-      SOH <len> <title> NUL <offset> NUL   (len = len(title)+len(offset)+2)
-      STX <len> <data chunk>               (chunk <= 250)
-      EOT <checksum>                       (-sum(compressed) & 0xFF)
-    title = message Subject; offset = "0" for a full send."""
+def frame_binary(title: str, compressed: bytes) -> dict:
+    """Frame one compressed message body for B2 binary transfer, matching
+    paclink-unix putcompressed() byte-for-byte:
+
+      SOH <len> <title> NUL <offset> NUL     (len = len(title)+len(offset)+2)
+      STX <len> <data chunk>                 (repeated; chunk <= 250 bytes)
+      ...
+      EOT <checksum>                         (-sum(compressed) & 0xFF)
+
+    `title` is the message Subject (the reference uses the Subject, or
+    "No subject" if empty); `offset` is always "0" for a full send.
+    """
     t = (title or "No subject").encode("ascii", "replace")[:80]
     offset = b"0"
-    hdr_len = len(t) + len(offset) + 2
+    hdr_len = len(t) + len(offset) + 2      # +2 for the two NUL bytes
     out = bytearray()
     out.append(SOH)
     out.append(hdr_len & 0xFF)
@@ -188,7 +211,7 @@ def dry_run_cms(record: dict, cfg: dict, version: str = "1.0") -> dict:
     prop = build_proposals([(msg, len(compressed))])
     frame = frame_binary(msg["subject"], compressed)
 
-    our_sid = client_sid(version)
+    our_sid = client_sid(version, cfg)
     # Simulated CMS side (illustrative; the real values come from the live
     # server in step 4). Marked clearly as simulated in the transcript.
     cms_sid = "[WL2K-5.0-B2FWIHJM$]"
