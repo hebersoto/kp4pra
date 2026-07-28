@@ -574,6 +574,71 @@ async def api_soundcards(_auth=Depends(check_auth)):
     })
 
 
+@app.get("/api/dra/status")
+async def api_dra_status(_auth=Depends(check_auth)):
+    """Report whether the DRA-Pi-Zero I2S codec is present. Used by the Config
+    page after a reboot to tell the user if the overlay brought the card up."""
+    import subprocess
+    present = False
+    try:
+        r = subprocess.run(["aplay", "-l"], capture_output=True, timeout=10)
+        present = b"audioinjectorpi" in r.stdout
+    except Exception:
+        present = False
+    cfg = load_config()
+    adevice = (cfg.get("station", {}).get("sound") or "")
+    return JSONResponse({
+        "dra_present": present,
+        "adevice_is_dra": "audioinjector" in adevice.lower(),
+    })
+
+
+@app.post("/api/system/reboot")
+async def api_system_reboot(_auth=Depends(check_auth)):
+    """Reboot the TNC. Backgrounds a short-delayed reboot so this HTTP response
+    flushes to the browser before the network drops. Narrow sudoers: kp4pra-tnc
+    may run only /sbin/reboot."""
+    import subprocess
+    try:
+        subprocess.Popen(
+            ["/bin/sh", "-c", "sleep 2 && sudo -n /sbin/reboot"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return JSONResponse({"success": True,
+            "message": "Rebooting now. The TNC will be back in about a minute."})
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
+@app.post("/api/dra/setup")
+async def api_dra_setup(_auth=Depends(check_auth)):
+    """Phase 1 of DRA-Pi-Zero setup: write the I2S overlay + audio-off lines to
+    config.txt (root, via narrow sudoers), backed up and reversible. Does NOT
+    touch the mixer or ADEVICE. A reboot is required; the mixer then applies
+    automatically on boot via kp4pra-dra-mixer.service. If no DRA is present
+    after reboot the existing sound config is unchanged."""
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["sudo", "-n", "/usr/local/bin/setup-dra-pi-zero.sh", "--config-only"],
+            capture_output=True, timeout=30)
+        out = r.stdout.decode(errors="replace").strip()
+        err = r.stderr.decode(errors="replace").strip()
+        if r.returncode == 0:
+            return JSONResponse({
+                "success": True,
+                "reboot_required": True,
+                "output": out,
+                "message": ("DRA config written. Reboot to load the I2S overlay; "
+                            "the mixer will be applied automatically on boot. If "
+                            "the DRA is not detected after reboot, your existing "
+                            "sound configuration is unchanged."),
+            })
+        return JSONResponse({"success": False,
+            "message": err or out or "DRA setup failed"}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
 @app.post("/api/direwolf/preview")
 async def api_direwolf_preview(request: Request, _auth=Depends(check_auth)):
     body = await request.json()

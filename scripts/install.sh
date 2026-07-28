@@ -169,6 +169,7 @@ cp "$PROJECT_DIR/systemd/kp4pra-tnc.target"          /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-rfcomm.service"  /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-ble.service"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-bt-led.service"  /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-dra-mixer.service"   /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-web.service"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/var-lib-bluetooth.mount"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-agent.service"    /etc/systemd/system/
@@ -188,6 +189,7 @@ install -m 755 "$PROJECT_DIR/bin/kp4pra-legacy-adv"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-wifi-mode"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-web-redirect" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-bt-led"       /usr/local/bin/
+install -m 755 "$PROJECT_DIR/scripts/setup-dra-pi-zero.sh" /usr/local/bin/
 
 log "Creating capability-bearing HCI tool copies for the legacy-adv fallback"
 # File capabilities on private copies: works regardless of unit hardening,
@@ -244,6 +246,13 @@ visudo -c -f /etc/sudoers.d/kp4pra-tnc || {
     rm /etc/sudoers.d/kp4pra-tnc
     die "Fix sudoers file and retry."
 }
+cp "$PROJECT_DIR/sudoers.d/kp4pra-tnc-dra" /etc/sudoers.d/kp4pra-tnc-dra
+chmod 0440 /etc/sudoers.d/kp4pra-tnc-dra
+visudo -c -f /etc/sudoers.d/kp4pra-tnc-dra || {
+    err "DRA sudoers validation failed! Removing invalid file."
+    rm /etc/sudoers.d/kp4pra-tnc-dra
+    die "Fix DRA sudoers file and retry."
+}
 log "Sudoers rules installed and validated"
 
 # ── Avahi DNS-SD ─────────────────────────────────────────────────────────────
@@ -276,6 +285,7 @@ systemctl enable kp4pra-tnc.target
 systemctl enable kp4pra-tnc-rfcomm.service
 systemctl enable kp4pra-tnc-ble.service
 systemctl enable kp4pra-tnc-bt-led.service
+systemctl enable kp4pra-dra-mixer.service
 systemctl enable kp4pra-tnc-web.service
 systemctl enable kp4pra-tnc-agent.service
 systemctl enable kp4pra-bt-perms.service

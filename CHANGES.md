@@ -1,3 +1,22 @@
+## DRA-Pi-Zero web setup + Reboot button — new in 1.3.9
+
+- Web UI DRA-Pi-Zero setup (Config page card): one button writes the I2S
+  overlay + onboard/HDMI audio-off to config.txt (backed up first), then the
+  mixer applies automatically on the next boot via kp4pra-dra-mixer.service.
+  Two endpoints: POST /api/dra/setup (narrow sudoers, --config-only only) and
+  GET /api/dra/status. Status card shows detected / not-detected.
+- setup-dra-pi-zero.sh refactored: --config-only / --mixer-only / (full).
+  Adds HDMI-audio-off (vc4-kms-v3d,noaudio) and a one-time config.txt backup.
+- kp4pra-dra-mixer.service: oneshot, applies the WM8731 mixer on boot if the
+  codec is present; no-ops safely on non-DRA boards (enabled on all boards).
+- Reboot Now button + POST /api/system/reboot (narrow sudoers: /sbin/reboot).
+  Confirm dialog; response flushes before the box goes down.
+- Validated on a Raspberry Pi 3B+ with a DRA-Pi-Zero installed: web setup ->
+  reboot -> overlay loads -> mixer auto-applies -> RX decode, TX, GPIOD PTT,
+  green DCD + blue BT LEDs. Reboot button: confirm -> clean reboot -> DRA
+  operational. Safety paths (no-op on non-DRA, config backup/restore, narrow
+  sudoers scope) validated earlier on a USB-only board.
+
 ## DRA-Pi-Zero support + multi-card + LEDs — new in 1.3.7
 
 - Masters Communications DRA-Pi-Zero (I2S WM8731) support: opt-in

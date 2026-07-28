@@ -1,0 +1,5 @@
+# KP4PRA TNC - allow the web service user to run DRA config setup only.
+# Narrowly scoped: only this script, only --config-only, no password.
+# Phase-2 mixer runs as a root systemd oneshot, so it needs no sudoers entry.
+kp4pra-tnc ALL=(root) NOPASSWD: /usr/local/bin/setup-dra-pi-zero.sh --config-only
+kp4pra-tnc ALL=(root) NOPASSWD: /sbin/reboot
