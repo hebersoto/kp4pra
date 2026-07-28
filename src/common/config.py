@@ -12,6 +12,23 @@ PRODUCT_NAME = "KP4PRA TNC"
 
 DEFAULT_CONFIG = {
     "product_name": PRODUCT_NAME,
+    # Station block: mirrors config/config.yaml exactly (fields AND types).
+    # Long-standing gap: this was absent while the template had it, so a
+    # save/generate starting from DEFAULT_CONFIG could drop station fields.
+    "station": {
+        "callsign": "N0CALL",
+        "ssid": "",
+        "mygrid": "",
+        "lat": 0.0,
+        "lon": 0.0,
+        "sound": "",
+        "ptt": "CM108",
+        "ptt_param": "",
+        "clock": "",
+        "calias": "CDIGI",
+        "aliasssid": "",
+        "morse_id_enabled": True,
+    },
     "direwolf": {
         "host": "127.0.0.1",
         "port": 8001,

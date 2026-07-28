@@ -45,12 +45,29 @@ log "Starting KP4PRA TNC installation..."
 
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash $0"
 
+# ── Auto-install prerequisite packages (Debian/Ubuntu) ───────────────────────
+# On a fresh image these are usually missing; install them up front so the
+# checks below pass on the first run. Idempotent: apt skips what's present.
+PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager libgpiod-dev"
+if command -v apt-get >/dev/null 2>&1; then
+    step "Installing prerequisite packages: $PREREQS"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq || warn "apt-get update failed - continuing with existing package lists"
+    if apt-get install -y $PREREQS; then
+        log "Prerequisite packages installed"
+    else
+        warn "apt-get install of prerequisites failed - the checks below will report what is missing"
+    fi
+else
+    warn "apt-get not found (non-Debian system) - ensure these are installed manually: $PREREQS"
+fi
+
 python3 --version >/dev/null 2>&1 || die "Python 3 not found. Install: apt install python3 python3-pip python3-venv"
 
 bluetoothctl --version >/dev/null 2>&1 || die "bluetoothctl not found. Install: apt install bluez bluez-tools"
 
 sdptool --help >/dev/null 2>&1 || warn "sdptool not found - install bluez-tools (required for RFCOMM SDP registration)"
-python3 -m venv --help >/dev/null 2>&1 || die "python3-venv not available. Install: apt install python3-venv (or python3.X-venv for your version)"
+python3 -c "import ensurepip" >/dev/null 2>&1 || die "python3-venv (with ensurepip) not available. Install: apt install python3-venv  (or python3.X-venv for your Python version, e.g. python3.13-venv)"
 command -v bt-agent >/dev/null 2>&1 || warn "bt-agent not found - install bluez-tools (required for Just Works pairing agent)"
 command -v nmcli >/dev/null 2>&1 || warn "NetworkManager (nmcli) not found - WiFi hotspot mode requires it: apt install network-manager"
 
@@ -81,6 +98,7 @@ fi
 step "Installing application to $APP_DIR"
 mkdir -p "$APP_DIR"
 cp -r "$PROJECT_DIR/src" "$APP_DIR/"
+cp "$PROJECT_DIR/VERSION" "$APP_DIR/VERSION"   # web UI reads this for app_version
 chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 chmod -R 755 "$APP_DIR"
 
@@ -150,20 +168,26 @@ step "Installing systemd service units"
 cp "$PROJECT_DIR/systemd/kp4pra-tnc.target"          /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-rfcomm.service"  /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-ble.service"     /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-tnc-bt-led.service"  /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-web.service"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/var-lib-bluetooth.mount"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-agent.service"    /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-bt-perms.service"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-wifi-mode.service"   /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-web-redirect.service" /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-tnc-rms.service"      /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-morse-id.service"    /etc/systemd/system/ 2>/dev/null || true
+cp "$PROJECT_DIR/systemd/kp4pra-morse-id.timer"      /etc/systemd/system/ 2>/dev/null || true
 
 log "Installing helper scripts to /usr/local/bin"
+usermod -aG gpio kp4pra-tnc 2>/dev/null || true  # blue BT LED on GPIO 5
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-rw"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-ro"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-fix-bt-perms" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-legacy-adv"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-wifi-mode"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-web-redirect" /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-bt-led"       /usr/local/bin/
 
 log "Creating capability-bearing HCI tool copies for the legacy-adv fallback"
 # File capabilities on private copies: works regardless of unit hardening,
@@ -251,11 +275,13 @@ systemctl enable kp4pra-tnc-rms.service
 systemctl enable kp4pra-tnc.target
 systemctl enable kp4pra-tnc-rfcomm.service
 systemctl enable kp4pra-tnc-ble.service
+systemctl enable kp4pra-tnc-bt-led.service
 systemctl enable kp4pra-tnc-web.service
 systemctl enable kp4pra-tnc-agent.service
 systemctl enable kp4pra-bt-perms.service
 systemctl enable kp4pra-wifi-mode.service
 systemctl enable kp4pra-web-redirect.service
+systemctl enable kp4pra-morse-id.timer 2>/dev/null || true
 
 # Seed the wifi: section into configs that predate the hotspot feature
 if [ -f "$CONFIG_DIR/config.yaml" ] && ! grep -q "^wifi:" "$CONFIG_DIR/config.yaml"; then
@@ -302,6 +328,32 @@ log "journald configured for volatile storage"
 # ── Final status ─────────────────────────────────────────────────────────────
 
 # ── Stage 2: Dire Wolf integration (chained automatically) ──────────────────
+# --- Disable onboard analog audio (v1.3.7) ---------------------------------
+# The TNC uses a dedicated sound card (USB CM108-class or the I2S DRA-Pi-Zero),
+# never the Pi's built-in analog audio. Turning it off avoids it grabbing an
+# ALSA card slot. This is ONLY dtparam=audio=off - the I2S overlay is NOT set
+# here; that stays in the opt-in scripts/setup-dra-pi-zero.sh for DRA boards.
+# Idempotent and reversible (comments the line rather than deleting it).
+disable_onboard_audio() {
+    local cfg=""
+    if   [ -f /boot/firmware/config.txt ]; then cfg=/boot/firmware/config.txt
+    elif [ -f /boot/config.txt ];          then cfg=/boot/config.txt
+    else warn "config.txt not found - skipping onboard-audio-off"; return 0; fi
+
+    if grep -qE '^[[:space:]]*dtparam=audio=off' "$cfg"; then
+        echo "[install] onboard audio already disabled in $cfg"
+        return 0
+    fi
+    if grep -qE '^[[:space:]]*dtparam=audio=on' "$cfg"; then
+        sed -i 's/^[[:space:]]*dtparam=audio=on/dtparam=audio=off/' "$cfg"
+        echo "[install] set dtparam=audio=off in $cfg (was on) - reboot to apply"
+    else
+        printf '\n# KP4PRA TNC: dedicated sound card, onboard analog audio off\ndtparam=audio=off\n' >> "$cfg"
+        echo "[install] appended dtparam=audio=off to $cfg - reboot to apply"
+    fi
+}
+disable_onboard_audio
+
 if [ -x "$PROJECT_DIR/scripts/install-direwolf-integration.sh" ]; then
     log "Running stage 2 (Dire Wolf integration)..."
     if bash "$PROJECT_DIR/scripts/install-direwolf-integration.sh"; then

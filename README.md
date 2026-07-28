@@ -145,6 +145,10 @@ Radios / audio:
 - CM108 USB sound dongle with HID PTT
 - AIOC (All-In-One-Cable) - validated ADEVICE plughw:AllInOneCable,0
 - DigiRig Lite
+- Masters Communications DRA-Pi-Zero (I2S WM8731 codec on the 40-pin
+  header; GPIOD relay PTT on GPIO 12; red PTT / green DCD / blue BT-
+  connected LEDs). Opt-in: scripts/setup-dra-pi-zero.sh. Requires a
+  direwolf built with libgpiod. Validated on RF (RX+TX, digipeated).
 - Yaesu FT-991A (USB audio codec + CP210x serial pair, PTT via RTS)
 
 Clients:

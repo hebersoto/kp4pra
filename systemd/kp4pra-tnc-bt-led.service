@@ -1,0 +1,15 @@
+[Unit]
+Description=KP4PRA TNC - Blue Bluetooth LED (DRA-Pi-Zero GPIO 5, on when a device is connected)
+After=bluetooth.target kp4pra-tnc-ble.service kp4pra-tnc-rfcomm.service
+PartOf=kp4pra-tnc.target
+
+[Service]
+Type=simple
+User=kp4pra-tnc
+SupplementaryGroups=gpio bluetooth
+ExecStart=/usr/local/bin/kp4pra-bt-led
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=kp4pra-tnc.target

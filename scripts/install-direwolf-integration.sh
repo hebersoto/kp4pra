@@ -83,4 +83,12 @@ echo "[stage2] Enable and start"
 systemctl daemon-reload
 systemctl enable kp4pra-adevice.service direwolf.service
 systemctl restart kp4pra-adevice.service direwolf.service kp4pra-tnc-web.service
+echo "[stage2] Removing Dire Wolf source tree (binary is installed; source no longer needed)"
+# Guarded auto-cleanup: the script only deletes if the binary is installed and
+# the service does not run from the source. Never fail the install over this.
+if bash "$PROJECT_DIR/scripts/cleanup-direwolf-source.sh" --yes; then
+    :
+else
+    echo "[stage2] Source cleanup skipped (guard not satisfied) - sources left in place."
+fi
 echo "[stage2] Done. Verify: systemctl is-active direwolf.service"

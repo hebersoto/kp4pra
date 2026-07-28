@@ -108,6 +108,37 @@
   without a station section.
 - Docs: docs/WEBMAIL.md. Config key web.dashboard_password_hash defaults to
   "" (blank = not yet secured); missing key is backward compatible.
+## DRA-Pi-Zero support + multi-card + LEDs — new in 1.3.7
+
+- Masters Communications DRA-Pi-Zero (I2S WM8731) support: opt-in
+  scripts/setup-dra-pi-zero.sh (overlay + mixer + gpio group), auto-
+  detected in the web UI as "DRA-Pi-Zero (I2S)" with GPIOD PTT pre-filled.
+  Validated on RF: RX decode, TX, digipeated round trip.
+- PTT via GPIOD (libgpiod), not legacy sysfs. Kernel 6.x sysfs GPIO is
+  unreliable - line numbering moved (BCM12 -> sysfs 524) and a crash can
+  leave the line locked. GPIOD form: PTT GPIOD gpiochip0 12. Requires
+  direwolf built with libgpiod-dev (added to INSTALL build deps + PREREQS;
+  setup script warns if the binary lacks it).
+- LEDs: red PTT (relay, automatic), green DCD carrier-detect (GPIO 16,
+  DCD GPIOD gpiochip0 16), blue BT-connected (GPIO 5, new
+  kp4pra-tnc-bt-led service polling `bluetoothctl devices Connected`).
+  LEDs are on/off only - GPIO cannot dim from software.
+- ADEVICE self-heal now skips the 45s USB wait and conf rewrite when an
+  I2S card (audioinjectorpi) is configured, so a plugged-in USB card can't
+  steal the DRA config. USB path unchanged.
+- config.py DEFAULT_CONFIG gains the station block (closes a long-standing
+  gap where a save from defaults could drop station fields).
+- Onboard analog audio (dtparam=audio=off) now set by the main installer
+  for all users (dedicated sound card is always used). CAVEAT: validated
+  only on the DRA board this cycle, not yet on a CM108-only board - it
+  should be harmless (USB card is separate) but is noted as a follow-up.
+- Web UI: PTT dropdown gains GPIOD; Detect now applies the PTT suggestion
+  to the pre-selected card (was only wired to onchange).
+- Fix: /run/kp4pra-tnc runtime-dir deletion on RMS stop (see separate
+  commit; pre-existing v1.3.6 bug).
+
+NOTE: BLE still uses the pre-existing raw-HCI advertising fallback for the
+2026-06 kernel MGMT regression (see below); unrelated to this release.
 
 ## RMS Gateway (src/rms/) — new in 1.3.0
 - Native Python Winlink RMS gateway: Dire Wolf KISS TCP -> AX.25 connected
@@ -528,3 +559,81 @@ Changes:
   The documented public AP default is allowlisted so normal commits are not
   blocked. Hooks are not tracked by git, so install once per clone with
   `bash scripts/install-hooks.sh`.
+
+## v1.3.2 - 2026-07-25
+
+Fixes (fresh-install, found on a clean Orange Pi / Debian 13):
+- install.sh venv prerequisite check now tests `python3 -c "import
+  ensurepip"` instead of `python3 -m venv --help`. The old probe passed
+  even when the python3.X-venv package (which provides ensurepip) was
+  missing, so the install failed later at venv creation instead of dying
+  early with a clear message.
+- install.sh now copies kp4pra-tnc-rms.service (and the morse-id
+  service/timer) in the unit-install step. The enable step referenced the
+  RMS unit but the copy step never installed it, causing "Unit
+  kp4pra-tnc-rms.service does not exist" on fresh installs. Also enables
+  the morse-id timer.
+
+## v1.3.3 - 2026-07-25
+
+Changes:
+- install.sh now auto-installs its prerequisite packages up front on
+  Debian/Ubuntu (python3, python3-venv, python3-pip, bluez, bluez-tools,
+  network-manager) before the dependency checks run, so a fresh image
+  installs cleanly on the first attempt instead of failing on a missing
+  python3-venv or warning about missing NetworkManager. Idempotent; the
+  existing checks remain as a safety net. Non-Debian systems get a warning
+  listing the packages to install manually.
+
+## v1.3.3 - 2026-07-25
+
+Changes:
+- install.sh now auto-installs its prerequisite packages up front on
+  Debian/Ubuntu (python3, python3-venv, python3-pip, bluez, bluez-tools,
+  network-manager) before the dependency checks run, so a fresh image
+  installs cleanly on the first attempt instead of failing on a missing
+  python3-venv or warning about missing NetworkManager. Idempotent; the
+  existing checks remain as a safety net. Non-Debian systems get a warning
+  listing the packages to install manually.
+
+## v1.3.4 - 2026-07-26
+
+Changes:
+- Web UI header now shows the installed version (e.g. "KP4PRA TNC v1.3.4")
+  next to the title on every page, read from the VERSION file via the
+  existing app_version template global. (The footer already showed it; a
+  redeploy also fixes boards that were serving a stale 'vdev' placeholder.)
+
+## v1.3.4 - 2026-07-26
+
+Changes:
+- Web UI header now shows the installed version (e.g. "KP4PRA TNC v1.3.4")
+  next to the title on every page, read from the VERSION file via the
+  existing app_version template global. (The footer already showed it; a
+  redeploy also fixes boards that were serving a stale 'vdev' placeholder.)
+
+## v1.3.5 - 2026-07-26
+
+Changes:
+- Added scripts/cleanup-direwolf-source.sh to reclaim ~180MB by removing the
+  Dire Wolf source/build tree, which is not needed once the binary is
+  installed to /usr/local/bin. Guarded: refuses unless the installed binary
+  exists and direwolf.service runs it from outside the source tree; prompts
+  before deleting. Stage 2 points users to it.
+
+## v1.3.6 - 2026-07-26
+
+Fixes:
+- install.sh now copies the VERSION file to /opt/kp4pra-tnc. The install step
+  copied only src/, so fresh installs had no VERSION in /opt and the web UI
+  showed "dev" instead of the installed version. Fresh installs now show the
+  correct version.
+
+## v1.3.8 - 2026-07-27
+
+Changes:
+- Stage 2 (install-direwolf-integration.sh) now automatically removes the Dire
+  Wolf source/build tree after install (guarded, non-interactive), reclaiming
+  ~180MB on fresh installs. cleanup-direwolf-source.sh gained a --yes mode; a
+  flag-parsing bug that mistook --yes for a source path is fixed. Guards
+  unchanged; cleanup is warn-and-continue so it never fails an install.
