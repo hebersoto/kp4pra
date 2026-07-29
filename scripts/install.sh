@@ -177,6 +177,7 @@ cp "$PROJECT_DIR/systemd/kp4pra-bt-perms.service"     /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-wifi-mode.service"   /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-web-redirect.service" /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-tnc-rms.service"      /etc/systemd/system/
+cp "$PROJECT_DIR/systemd/kp4pra-tnc-aprs-clock.service" /etc/systemd/system/
 cp "$PROJECT_DIR/systemd/kp4pra-morse-id.service"    /etc/systemd/system/ 2>/dev/null || true
 cp "$PROJECT_DIR/systemd/kp4pra-morse-id.timer"      /etc/systemd/system/ 2>/dev/null || true
 
@@ -189,6 +190,7 @@ install -m 755 "$PROJECT_DIR/bin/kp4pra-legacy-adv"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-wifi-mode"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-web-redirect" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-bt-led"       /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-aprs-clock"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/scripts/setup-dra-pi-zero.sh" /usr/local/bin/
 
 log "Creating capability-bearing HCI tool copies for the legacy-adv fallback"
@@ -253,6 +255,13 @@ visudo -c -f /etc/sudoers.d/kp4pra-tnc-dra || {
     rm /etc/sudoers.d/kp4pra-tnc-dra
     die "Fix DRA sudoers file and retry."
 }
+cp "$PROJECT_DIR/sudoers.d/kp4pra-tnc-clock" /etc/sudoers.d/kp4pra-tnc-clock
+chmod 0440 /etc/sudoers.d/kp4pra-tnc-clock
+visudo -c -f /etc/sudoers.d/kp4pra-tnc-clock || {
+    err "APRS clock sudoers validation failed! Removing invalid file."
+    rm /etc/sudoers.d/kp4pra-tnc-clock
+    die "Fix APRS clock sudoers file and retry."
+}
 log "Sudoers rules installed and validated"
 
 # ── Avahi DNS-SD ─────────────────────────────────────────────────────────────
@@ -281,6 +290,7 @@ fi
 
 step "Enabling KP4PRA TNC services"
 systemctl enable kp4pra-tnc-rms.service
+systemctl enable kp4pra-tnc-aprs-clock.service
 systemctl enable kp4pra-tnc.target
 systemctl enable kp4pra-tnc-rfcomm.service
 systemctl enable kp4pra-tnc-ble.service
@@ -319,6 +329,7 @@ usermod -aG bluetooth "$SERVICE_USER" 2>/dev/null || true
 systemctl start kp4pra-tnc-rfcomm.service || warn "RFCOMM bridge start failed (may need Bluetooth adapter)"
 systemctl start kp4pra-tnc-ble.service    || warn "BLE bridge start failed (may need Bluetooth adapter)"
 systemctl start kp4pra-tnc-web.service    || warn "Web interface start failed"
+systemctl start kp4pra-tnc-aprs-clock.service || warn "APRS clock fallback start failed"
 
 # ── journald: ensure volatile-only ─────────────────────────────────────────
 

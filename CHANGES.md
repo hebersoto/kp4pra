@@ -1,3 +1,19 @@
+## APRS clock fallback — new in 1.3.10
+- Added a receive-only Dire Wolf AGW listener using the existing
+  `station.clock` source callsign and `direwolf.host` configuration.
+- Uses AGW port 8000 instead of consuming another KISS client slot; existing
+  RMS, BLE, RFCOMM, and external KISS clients remain on the configured KISS
+  port (normally 8001).
+- NTP remains primary. APRS engages only after three consecutive
+  unsynchronized checks and NTP is checked again immediately before a step.
+- Supports timestamped position/object reports using DDHHMMz, HHMMSSh, and
+  DDHHMM/; ignores all other stations and untimestamped packets.
+- Uses only APRS time-of-day and retains the board date. APRS cannot provide a
+  reliable year/date, so this corrects drift, not a grossly wrong date.
+- Steps only above 120 seconds, handles midnight wraparound, and enforces a
+  five-minute cooldown. Added a date-set-only sudoers rule, systemd unit,
+  installer wiring, documentation, and automated tests.
+- Hardware validation remains required before merge and tag.
 ## DRA-Pi-Zero web setup + Reboot button — new in 1.3.9
 
 - Web UI DRA-Pi-Zero setup (Config page card): one button writes the I2S
