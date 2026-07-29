@@ -562,3 +562,12 @@ Changes:
   ~180MB on fresh installs. cleanup-direwolf-source.sh gained a --yes mode; a
   flag-parsing bug that mistook --yes for a source path is fixed. Guards
   unchanged; cleanup is warn-and-continue so it never fails an install.
+
+## v1.3.11 - 2026-07-28
+
+Docs:
+- README now documents the APRS clock fallback (shipped in 1.3.10): a feature
+  section describing the receive-only AGW-8000 listener, NTP-primary behavior,
+  the Config-page Clock Source Station field, and the narrow sudoers grant,
+  pointing to docs/APRS_CLOCK.md. Moved from the roadmap "Next" list to
+  "Working".
