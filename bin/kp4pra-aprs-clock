@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Installed entry point for the KP4PRA APRS clock fallback."""
+from aprs_clock import main
+
+raise SystemExit(main())
