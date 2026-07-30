@@ -50,7 +50,7 @@
         <div class="step-title">Scan for your Android phone</div>
         <div class="step-desc">Use the scan below to find your phone. Results are not saved to disk.</div>
         <div style="margin-top:0.6rem">
-          <button class="btn btn-secondary btn-sm" id="btn-scan" onclick="startScan()">🔍 Scan (10s)</button>
+          <button class="btn btn-secondary btn-sm" id="btn-scan" onclick="startScan()">🔍 Scan (30s)</button>
         </div>
         <div id="scan-status" style="margin-top:0.5rem;font-size:0.82rem;color:var(--kp4pra-muted-text)"></div>
         <div id="scan-results" style="margin-top:0.5rem"></div>
@@ -59,18 +59,21 @@
     <div class="step">
       <div class="step-num">4</div>
       <div class="step-content">
-        <div class="step-title">Pair the Android phone</div>
+        <div class="step-title">Pair from your phone, then Trust it here</div>
         <div class="step-desc">
-          Select your phone from the scan results above and click Pair, <strong>or</strong>
-          enter the MAC address manually below.
-          The system will remount storage, save the pairing, and reboot.
+          On your Android phone: <strong>Settings &rarr; Bluetooth &rarr; Pair new
+          device &rarr; tap KP4PRA</strong>. It pairs with no PIN (Just Works). Then
+          Scan above, select your phone (or enter its MAC), and click
+          <strong>Trust &amp; Authorize</strong> to grant it access. Trusting is an
+          explicit step so only devices you approve can use the TNC. The system saves
+          the authorization and reboots if needed.
         </div>
         <div style="margin-top:0.75rem">
           <label class="form-label">Android Phone MAC Address</label>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
             <input class="form-input" id="manual-mac" placeholder="AA:BB:CC:DD:EE:FF"
                    style="max-width:220px;font-family:monospace">
-            <button class="btn btn-primary" onclick="confirmPair()">Pair &amp; Trust Device</button>
+            <button class="btn btn-primary" onclick="confirmPair()">Trust &amp; Authorize</button>
           </div>
           <div class="form-hint">Found after scanning above, or in Android Bluetooth settings.</div>
         </div>
@@ -189,7 +192,7 @@ async function startScan() {
   const resultsEl = document.getElementById('scan-results');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner" style="border-top-color:var(--kp4pra-primary);border-color:var(--kp4pra-border)"></span> Scanning…';
-  statusEl.textContent = 'Scanning for 10 seconds…';
+  statusEl.textContent = 'Scanning for 30 seconds…';
   resultsEl.innerHTML = '';
   try {
     const r = await post('/api/bt/scan', {});
@@ -210,13 +213,13 @@ async function startScan() {
       });
       resultsEl.appendChild(ul);
     } else {
-      statusEl.textContent = 'No devices found. Ensure your phone has Bluetooth visible.';
+      statusEl.textContent = 'No devices found. Make sure you paired from your phone first, then Scan again.';
     }
   } catch(e) {
     statusEl.textContent = 'Scan error: ' + e;
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '🔍 Scan (10s)';
+    btn.innerHTML = '🔍 Scan (30s)';
   }
 }
 
@@ -244,9 +247,10 @@ async function doPair() {
   closeModal();
   showResult(null, 'Pairing in progress — this may take up to 30 seconds. Do not navigate away.');
   try {
-    // First pair, then trust in sequence
-    const r1 = await post('/api/bt/pair', {address: targetAddress, confirmed: true});
-    if (!r1.success) { showResult(false, 'Pair failed: ' + r1.message); return; }
+    // The phone pairs itself (Just Works). Here the operator explicitly
+    // TRUSTS the already-paired device to authorize it (security gate).
+    const r1 = await post('/api/bt/trust', {address: targetAddress, confirmed: true});
+    if (!r1.success) { showResult(false, 'Trust failed: ' + r1.message); return; }
     showResult(true, r1.message);
   } catch(e) {
     showResult(false, 'Error: ' + e);

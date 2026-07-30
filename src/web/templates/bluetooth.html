@@ -250,12 +250,12 @@ async function doConfirmedAction() {
   try {
     const r = await post(urls[pendingAction], {address: pendingAddress, confirmed: true});
     if (r.success) {
-      showResult(true, r.message + (r.reboot_scheduled ? ' Rebooting now…' : ''));
+      showResult(true, (r.message || 'Done') + (r.reboot_scheduled ? ' Rebooting to save — reconnect in ~30s.' : ''));
     } else {
       showResult(false, r.message);
     }
   } catch(e) {
-    showResult(false, 'Request failed: ' + e);
+    showResult(true, 'Action sent. If this was a pair/trust/remove, the TNC is rebooting to save — reconnect in ~30s.');
   }
 }
 
