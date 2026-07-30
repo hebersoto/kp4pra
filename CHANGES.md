@@ -571,3 +571,20 @@ Docs:
   the Config-page Clock Source Station field, and the narrow sudoers grant,
   pointing to docs/APRS_CLOCK.md. Moved from the roadmap "Next" list to
   "Working".
+
+## v1.3.12 - 2026-07-30
+
+Fixes (Bluetooth provisioning):
+- Pairing agent now reliably starts at boot. Requires=bluetooth.service was
+  changed to Wants=, and Restart=always/RestartSec=2 added, because a
+  boot-time race silently dropped the agent's start job, leaving pairing
+  broken (devices got "software needed" / failed) until a manual start. This
+  was the root cause of intermittent pairing.
+- Android provisioning page now trusts an already-paired device via
+  /api/bt/trust instead of pairing-by-MAC via /api/bt/pair. The phone pairs
+  itself (Just Works); pairing-by-MAC failed on an already-paired device and
+  skipped the trust step. Trust remains an explicit operator action.
+- Device scan extended from 10s to 30s; Step 4 reworded to the
+  pair-from-phone-then-trust flow.
+- Bluetooth page shows a "rebooting to save" message instead of "undefined"
+  when a permanent action reboots mid-response.
