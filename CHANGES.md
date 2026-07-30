@@ -588,3 +588,13 @@ Fixes (Bluetooth provisioning):
   pair-from-phone-then-trust flow.
 - Bluetooth page shows a "rebooting to save" message instead of "undefined"
   when a permanent action reboots mid-response.
+
+## v1.3.13 - 2026-07-30
+
+Docs:
+- Added Raspberry Pi 3 Model A+ (Raspberry Pi OS Lite 64-bit, Debian 13
+  trixie) to the Hardware validated list, with the v1.3.12 Bluetooth
+  provisioning-reliability validation (boot-reliable pairing agent;
+  pair-from-phone then Trust-and-Authorize flow).
+- Status/roadmap "Working" updated to reflect the provisioning-reliability
+  fixes.
