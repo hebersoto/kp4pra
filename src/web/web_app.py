@@ -278,7 +278,7 @@ async def api_bt_scan(_auth=Depends(check_auth)):
     Start a Bluetooth scan. Results are runtime-only, not saved to disk.
     """
     write_status("scan", {"scanning": True, "devices": []})
-    devices = await scan_devices(duration=10)
+    devices = await scan_devices(duration=30)
     # Store scan results in runtime status only (disappears after reboot)
     write_status("scan", {"scanning": False, "devices": devices})
     return JSONResponse({"success": True, "devices": devices})

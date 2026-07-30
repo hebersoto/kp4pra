@@ -1,17 +1,17 @@
 [Unit]
 Description=KP4PRA TNC - Bluetooth NoInputNoOutput Pairing Agent (Just Works)
 After=bluetooth.service
-Requires=bluetooth.service
+Wants=bluetooth.service
 PartOf=kp4pra-tnc.target
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/bt-agent --capability=NoInputNoOutput
-Restart=on-failure
+Restart=always
 # bt-agent ignores SIGTERM when D-Bus is torn down first (reboot race),
 # hanging shutdown for the 90s default. It is stateless - kill fast.
 TimeoutStopSec=5
-RestartSec=5
+RestartSec=2
 
 [Install]
 WantedBy=multi-user.target kp4pra-tnc.target
