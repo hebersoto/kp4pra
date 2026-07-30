@@ -1,0 +1,15 @@
+[Unit]
+Description=KP4PRA TNC - Apply WM8731 mixer for DRA-Pi-Zero (I2S) if present
+# Must run before direwolf opens the device, alongside the ADEVICE fix.
+Before=direwolf.service
+After=sound.target
+# Only meaningful on a board with the DRA overlay; the script itself no-ops
+# safely (exit 0) when the audioinjector codec is not present, so it is
+# harmless to have enabled on USB-only boards.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/setup-dra-pi-zero.sh --mixer-only
+
+[Install]
+WantedBy=multi-user.target

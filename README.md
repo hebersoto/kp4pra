@@ -77,6 +77,27 @@ or other third-party Winlink software required.
   exchanges against production CMS. See [CHANGES.md](CHANGES.md) for
   the AX.25 protocol fixes found and resolved during testing.
 
+## APRS Clock Fallback
+
+When NTP is unavailable (for example a field deployment with no internet),
+the TNC can keep its clock roughly correct from received APRS traffic. NTP
+remains the primary time source at all times.
+
+- **Receive-only**: a listener on Dire Wolf's AGW port (8000) reads timestamped
+  APRS position/object reports from a configured source station. It never
+  transmits and does not consume a KISS client slot, so RMS, BLE, RFCOMM, and
+  external KISS clients are unaffected.
+- **NTP stays primary**: APRS only engages after several consecutive
+  unsynchronized checks, and NTP is re-checked immediately before any step.
+- **Time-of-day only**: APRS provides no reliable year, so the board date is
+  retained; this corrects drift, not a grossly wrong date.
+- **Config page**: set the Clock Source Station (exact call-SSID, e.g. KP3M-5)
+  in the web UI; blank disables the feature.
+- **Strictly allowlisted privilege**: the service may run only `/bin/date
+  --set` via sudo — nothing else.
+
+See docs/APRS_CLOCK.md for supported timestamp formats and details.
+
 ## Appliance design principles
 
 - **Read-only root** in production; all persistent state on a small
@@ -126,6 +147,12 @@ Boards:
   legacy raw-HCI advertising fallback (current Pi kernels carry the
   June-2026 MGMT regression); iPhone traffic and Android provisioning
   confirmed.
+- **Raspberry Pi 3 Model A+ Rev 1.1** (BCM43455, 512MB) — Raspberry Pi OS
+  Lite 64-bit, Debian 13 trixie (13.6), kernel 6.x, Python 3.13. Full
+  automated install validated on a genuinely fresh image; Bluetooth
+  pairing/provisioning validated end to end including the boot-reliable
+  pairing agent and the pair-from-phone then Trust-and-Authorize flow
+  (v1.3.12). AIOC and AudioInjector I2S audio exercised on this unit.
 - **Raspberry Pi Zero 2 W Rev 1.0** (quad-core, 512MB) — Raspberry Pi OS
   Lite 32-bit, Debian 13 trixie, kernel 6.18.34-v7 (affected by the MGMT
   regression; legacy raw-HCI fallback active). Fully validated: automated
@@ -158,11 +185,12 @@ Clients:
 ## Status / roadmap
 
 Working: both Bluetooth paths bidirectional, web provisioning end to
-end, Dire Wolf generation/control/traffic view, Winlink RMS gateway
-(RF and Telnet/Network Post Office access), live-tested against
-production CMS.
-Next: production hardening (zram + read-only root switch), Clock Source
-Station stage.
+end (boot-reliable pairing agent; pair-from-phone then explicit
+Trust-and-Authorize), Dire Wolf generation/control/traffic view, Winlink
+RMS gateway (RF and Telnet/Network Post Office access), live-tested against
+production CMS. APRS clock fallback (syncs time from received APRS packets
+when NTP is unavailable).
+Next: production hardening (zram + read-only root switch).
 
 ## License
 

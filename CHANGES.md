@@ -108,6 +108,41 @@
   without a station section.
 - Docs: docs/WEBMAIL.md. Config key web.dashboard_password_hash defaults to
   "" (blank = not yet secured); missing key is backward compatible.
+## APRS clock fallback — new in 1.3.10
+- Added a receive-only Dire Wolf AGW listener using the existing
+  `station.clock` source callsign and `direwolf.host` configuration.
+- Uses AGW port 8000 instead of consuming another KISS client slot; existing
+  RMS, BLE, RFCOMM, and external KISS clients remain on the configured KISS
+  port (normally 8001).
+- NTP remains primary. APRS engages only after three consecutive
+  unsynchronized checks and NTP is checked again immediately before a step.
+- Supports timestamped position/object reports using DDHHMMz, HHMMSSh, and
+  DDHHMM/; ignores all other stations and untimestamped packets.
+- Uses only APRS time-of-day and retains the board date. APRS cannot provide a
+  reliable year/date, so this corrects drift, not a grossly wrong date.
+- Steps only above 120 seconds, handles midnight wraparound, and enforces a
+  five-minute cooldown. Added a date-set-only sudoers rule, systemd unit,
+  installer wiring, documentation, and automated tests.
+- Hardware validation remains required before merge and tag.
+## DRA-Pi-Zero web setup + Reboot button — new in 1.3.9
+
+- Web UI DRA-Pi-Zero setup (Config page card): one button writes the I2S
+  overlay + onboard/HDMI audio-off to config.txt (backed up first), then the
+  mixer applies automatically on the next boot via kp4pra-dra-mixer.service.
+  Two endpoints: POST /api/dra/setup (narrow sudoers, --config-only only) and
+  GET /api/dra/status. Status card shows detected / not-detected.
+- setup-dra-pi-zero.sh refactored: --config-only / --mixer-only / (full).
+  Adds HDMI-audio-off (vc4-kms-v3d,noaudio) and a one-time config.txt backup.
+- kp4pra-dra-mixer.service: oneshot, applies the WM8731 mixer on boot if the
+  codec is present; no-ops safely on non-DRA boards (enabled on all boards).
+- Reboot Now button + POST /api/system/reboot (narrow sudoers: /sbin/reboot).
+  Confirm dialog; response flushes before the box goes down.
+- Validated on a Raspberry Pi 3B+ with a DRA-Pi-Zero installed: web setup ->
+  reboot -> overlay loads -> mixer auto-applies -> RX decode, TX, GPIOD PTT,
+  green DCD + blue BT LEDs. Reboot button: confirm -> clean reboot -> DRA
+  operational. Safety paths (no-op on non-DRA, config backup/restore, narrow
+  sudoers scope) validated earlier on a USB-only board.
+
 ## DRA-Pi-Zero support + multi-card + LEDs — new in 1.3.7
 
 - Masters Communications DRA-Pi-Zero (I2S WM8731) support: opt-in
@@ -637,3 +672,39 @@ Changes:
   ~180MB on fresh installs. cleanup-direwolf-source.sh gained a --yes mode; a
   flag-parsing bug that mistook --yes for a source path is fixed. Guards
   unchanged; cleanup is warn-and-continue so it never fails an install.
+
+## v1.3.11 - 2026-07-28
+
+Docs:
+- README now documents the APRS clock fallback (shipped in 1.3.10): a feature
+  section describing the receive-only AGW-8000 listener, NTP-primary behavior,
+  the Config-page Clock Source Station field, and the narrow sudoers grant,
+  pointing to docs/APRS_CLOCK.md. Moved from the roadmap "Next" list to
+  "Working".
+
+## v1.3.12 - 2026-07-30
+
+Fixes (Bluetooth provisioning):
+- Pairing agent now reliably starts at boot. Requires=bluetooth.service was
+  changed to Wants=, and Restart=always/RestartSec=2 added, because a
+  boot-time race silently dropped the agent's start job, leaving pairing
+  broken (devices got "software needed" / failed) until a manual start. This
+  was the root cause of intermittent pairing.
+- Android provisioning page now trusts an already-paired device via
+  /api/bt/trust instead of pairing-by-MAC via /api/bt/pair. The phone pairs
+  itself (Just Works); pairing-by-MAC failed on an already-paired device and
+  skipped the trust step. Trust remains an explicit operator action.
+- Device scan extended from 10s to 30s; Step 4 reworded to the
+  pair-from-phone-then-trust flow.
+- Bluetooth page shows a "rebooting to save" message instead of "undefined"
+  when a permanent action reboots mid-response.
+
+## v1.3.13 - 2026-07-30
+
+Docs:
+- Added Raspberry Pi 3 Model A+ (Raspberry Pi OS Lite 64-bit, Debian 13
+  trixie) to the Hardware validated list, with the v1.3.12 Bluetooth
+  provisioning-reliability validation (boot-reliable pairing agent;
+  pair-from-phone then Trust-and-Authorize flow).
+- Status/roadmap "Working" updated to reflect the provisioning-reliability
+  fixes.

@@ -1,0 +1,26 @@
+[Unit]
+Description=KP4PRA TNC APRS Clock Fallback
+After=direwolf.service
+Wants=direwolf.service
+
+[Service]
+Type=simple
+User=kp4pra-tnc
+Group=kp4pra-tnc
+Environment=PYTHONPATH=/opt/kp4pra-tnc/src
+Environment=KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml
+ExecStart=/opt/kp4pra-tnc/venv/bin/python /usr/local/bin/kp4pra-aprs-clock
+Restart=on-failure
+RestartSec=10
+RuntimeDirectory=kp4pra-tnc
+RuntimeDirectoryPreserve=yes
+RuntimeDirectoryMode=0750
+# NoNewPrivileges cannot be enabled: this unit uses one narrowly allowlisted
+# sudo command to set time. Do not add ProtectKernel* options, which can imply
+# NoNewPrivileges and silently block the clock-set action.
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/run/kp4pra-tnc
+
+[Install]
+WantedBy=multi-user.target kp4pra-tnc.target

@@ -7,7 +7,31 @@ using Dire Wolf's GPIOD (libgpiod) interface. NOTE: Dire Wolf MUST be built
 with libgpiod-dev present, or GPIOD PTT crash-loops on kernel 6.x (legacy
 sysfs GPIO is unreliable and can leave the line locked).
 
-## Setup
+## Setup (web UI — recommended)
+
+The Config page has a **DRA-Pi-Zero (I²S) Setup** card. It shows whether a
+DRA is currently detected, and a **Set up DRA-Pi-Zero** button that runs a
+guarded two-phase setup:
+
+1. Click **Set up DRA-Pi-Zero** and confirm. This writes the I2S overlay,
+   `dtparam=audio=off`, and HDMI-audio-off (`vc4-kms-v3d,noaudio`) to
+   config.txt. **config.txt is backed up first to `config.txt.kp4pra.bak`.**
+   The mixer and ADEVICE are NOT touched yet.
+2. **Reboot** when ready. On boot, `kp4pra-dra-mixer.service` detects the
+   codec and applies the WM8731 mixer automatically (no second manual run).
+3. After reboot, the Config card shows "DRA-Pi-Zero detected". Then Detect
+   sound cards, select "DRA-Pi-Zero (I2S)", and Apply (PTT pre-fills to
+   GPIOD gpiochip0 12).
+
+Safety: if no DRA is present after the reboot, the mixer service no-ops and
+your existing sound configuration is unchanged. The web app can only run the
+config step (narrow sudoers: `--config-only` only), never arbitrary commands.
+
+**If the board will not boot after the config change** (worst case for any
+config.txt edit): restore the backup from another machine or a recovery boot:
+`cp /boot/firmware/config.txt.kp4pra.bak /boot/firmware/config.txt`.
+
+## Setup (manual script — alternative)
 
 1. Run the opt-in script (NOT part of the standard installer):
 

@@ -172,6 +172,23 @@
   </div>
 </div>
 
+<!-- DRA-Pi-Zero I2S setup -->
+<div class="card">
+  <div class="card-title"><span class="icon">🎛️</span> DRA-Pi-Zero (I²S) Setup</div>
+  <div class="form-hint" id="dra-status">Checking for DRA-Pi-Zero…</div>
+  <p style="margin:0.5rem 0; font-size:0.9rem">
+    For the Masters Communications DRA-Pi-Zero I²S board only. This writes the
+    I²S overlay to config.txt (backed up first), disables onboard and HDMI
+    audio, and <strong>requires a reboot</strong>. The audio mixer is applied
+    automatically on the next boot. USB sound-card users do not need this.
+  </p>
+  <button class="btn btn-secondary" onclick="setupDRA()" id="btn-dra-setup">Set up DRA-Pi-Zero</button>
+  <div class="form-hint" id="dra-setup-result" style="margin-top:0.4rem"></div>
+  <button class="btn btn-secondary" onclick="rebootTNC()" id="btn-reboot"
+          style="margin-top:0.5rem">🔄 Reboot Now</button>
+  <div class="form-hint" id="reboot-result" style="margin-top:0.4rem"></div>
+</div>
+
 <!-- Direwolf -->
 <div class="card">
   <div class="card-title"><span class="icon">🐺</span> Direwolf KISS TCP</div>
@@ -770,5 +787,54 @@ async function saveDashboardPassword() {
     showPwResult(false, 'Error: ' + e);
   }
 }
+async function refreshDRAStatus() {
+  try {
+    const r = await fetch('/api/dra/status');
+    const d = await r.json();
+    const el = document.getElementById('dra-status');
+    if (d.dra_present) {
+      el.textContent = '✅ DRA-Pi-Zero detected (audioinjectorpi present).';
+    } else {
+      el.textContent = 'ℹ️ No DRA-Pi-Zero detected — USB or no I²S board. Run setup only if a DRA-Pi-Zero is installed.';
+    }
+  } catch(e) {
+    document.getElementById('dra-status').textContent = 'Status check failed: ' + e;
+  }
+}
+async function rebootTNC() {
+  if (!confirm('Reboot the TNC now?\n\nRF operation and this web interface ' +
+      'will be unavailable for about a minute while it restarts.')) return;
+  const btn = document.getElementById('btn-reboot');
+  const out = document.getElementById('reboot-result');
+  btn.disabled = true; btn.textContent = 'Rebooting\u2026';
+  try {
+    const r = await fetch('/api/system/reboot', {method:'POST'});
+    const d = await r.json();
+    out.textContent = d.message || (d.success ? 'Rebooting\u2026' : 'Failed.');
+    if (d.success) out.textContent += ' This page will stop responding; ' +
+      'reload in ~60s.';
+  } catch(e) {
+    // A dropped connection here is EXPECTED - the box is going down.
+    out.textContent = 'Reboot triggered (connection closed). Reload in ~60s.';
+  }
+  // leave the button disabled; the box is rebooting
+}
+async function setupDRA() {
+  if (!confirm('This edits /boot config.txt and requires a REBOOT.\n\n' +
+      'The DRA mixer applies automatically on next boot. If no DRA is present ' +
+      'after reboot, your existing sound config is unchanged.\n\nProceed?')) return;
+  const btn = document.getElementById('btn-dra-setup');
+  const out = document.getElementById('dra-setup-result');
+  btn.disabled = true; btn.textContent = 'Setting up…';
+  try {
+    const r = await fetch('/api/dra/setup', {method:'POST'});
+    const d = await r.json();
+    out.textContent = (d.message || (d.success ? 'Done.' : 'Failed.')) +
+      (d.success ? ' ⚠️ Reboot required now.' : '');
+  } catch(e) { out.textContent = 'Setup failed: ' + e; }
+  finally { btn.disabled = false; btn.textContent = 'Set up DRA-Pi-Zero'; }
+}
+refreshDRAStatus();
+
 </script>
 {% endblock %}
