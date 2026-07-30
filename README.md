@@ -147,6 +147,12 @@ Boards:
   legacy raw-HCI advertising fallback (current Pi kernels carry the
   June-2026 MGMT regression); iPhone traffic and Android provisioning
   confirmed.
+- **Raspberry Pi 3 Model A+ Rev 1.1** (BCM43455, 512MB) — Raspberry Pi OS
+  Lite 64-bit, Debian 13 trixie (13.6), kernel 6.x, Python 3.13. Full
+  automated install validated on a genuinely fresh image; Bluetooth
+  pairing/provisioning validated end to end including the boot-reliable
+  pairing agent and the pair-from-phone then Trust-and-Authorize flow
+  (v1.3.12). AIOC and AudioInjector I2S audio exercised on this unit.
 - **Raspberry Pi Zero 2 W Rev 1.0** (quad-core, 512MB) — Raspberry Pi OS
   Lite 32-bit, Debian 13 trixie, kernel 6.18.34-v7 (affected by the MGMT
   regression; legacy raw-HCI fallback active). Fully validated: automated
@@ -179,8 +185,9 @@ Clients:
 ## Status / roadmap
 
 Working: both Bluetooth paths bidirectional, web provisioning end to
-end, Dire Wolf generation/control/traffic view, Winlink RMS gateway
-(RF and Telnet/Network Post Office access), live-tested against
+end (boot-reliable pairing agent; pair-from-phone then explicit
+Trust-and-Authorize), Dire Wolf generation/control/traffic view, Winlink
+RMS gateway (RF and Telnet/Network Post Office access), live-tested against
 production CMS. APRS clock fallback (syncs time from received APRS packets
 when NTP is unavailable).
 Next: production hardening (zram + read-only root switch).
