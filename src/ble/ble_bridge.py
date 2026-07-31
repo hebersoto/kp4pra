@@ -145,16 +145,21 @@ class BLEKISSBridge:
                 self._dw_sock = socket.create_connection(
                     (self.dw_host, self.dw_port), timeout=5.0
                 )
-                self._dw_sock.settimeout(None)  # clear connect timeout for recv/send
+                self._dw_sock.settimeout(1.0)  # interruptible recv (honors _running)
                 self._log(f"Connected to Direwolf {self.dw_host}:{self.dw_port}")
                 self._status()
 
                 loop = asyncio.get_event_loop()
                 # Run blocking recv in executor
                 while self._running:
-                    data = await loop.run_in_executor(
-                        None, self._dw_sock.recv, READ_CHUNK
-                    )
+                    try:
+                        data = await loop.run_in_executor(
+                            None, self._dw_sock.recv, READ_CHUNK
+                        )
+                    except socket.timeout:
+                        continue  # no data this interval; re-check _running
+                    except OSError:
+                        break
                     if not data:
                         break
                     # Chunk data to BLE MTU size and queue for notification
@@ -168,6 +173,10 @@ class BLEKISSBridge:
                 self._log(f"Direwolf connection lost: {e}")
             finally:
                 if self._dw_sock:
+                    try:
+                        self._dw_sock.shutdown(socket.SHUT_RDWR)
+                    except Exception:
+                        pass
                     try:
                         self._dw_sock.close()
                     except Exception:
@@ -540,7 +549,7 @@ async def run_ble_bridge(config: dict):
             dw_sock = None
             try:
                 dw_sock = socket.create_connection((dw_host, dw_port), timeout=5.0)
-                dw_sock.settimeout(None)  # clear connect timeout for recv/send
+                dw_sock.settimeout(1.0)  # interruptible recv
                 log(f"Connected to Direwolf {dw_host}:{dw_port}")
                 loop = asyncio.get_event_loop()
 
