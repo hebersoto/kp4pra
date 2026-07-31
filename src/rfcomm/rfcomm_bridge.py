@@ -40,6 +40,9 @@ class RFCOMMBridge:
         self.dw_port = config["direwolf"]["port"]
         self.bt_name = config["rfcomm"]["device_name"]
         self.channel = config["rfcomm"].get("channel", 1)
+        self._stop_event = None
+        self._dw_holder = None
+        self._dw_lock = None
         self.verbose = config["debug"].get("verbose_stdout", False)
         self._running = False
         self._client_sock = None
@@ -111,16 +114,19 @@ class RFCOMMBridge:
         stop_event = threading.Event()
         dw_lock = threading.Lock()
         dw_sock_holder = [None]
+        self._stop_event = stop_event
+        self._dw_holder = dw_sock_holder
+        self._dw_lock = dw_lock
 
-        # Blocking reads on the RFCOMM side, no artificial timeout
-        client_sock.settimeout(None)
+        # 1s timeout so recv() is interruptible and stop_event is honored
+        client_sock.settimeout(1.0)
 
         def connect_dw():
             """(Re)connect to Direwolf. Returns socket or None if stopping."""
             while not stop_event.is_set():
                 try:
                     s = socket.create_connection((self.dw_host, self.dw_port), timeout=5.0)
-                    s.settimeout(None)  # CRITICAL: clear connect timeout for recv/send
+                    s.settimeout(1.0)  # 1s timeout so recv() is interruptible
                     print(f"[KP4PRA TNC] Connected to Direwolf {self.dw_host}:{self.dw_port}", flush=True)
                     return s
                 except Exception as e:
@@ -137,7 +143,12 @@ class RFCOMMBridge:
             """RFCOMM -> Direwolf. RFCOMM disconnect ends the session."""
             try:
                 while not stop_event.is_set():
-                    data = client_sock.recv(READ_CHUNK)
+                    try:
+                        data = client_sock.recv(READ_CHUNK)
+                    except socket.timeout:
+                        continue  # no data this interval; re-check stop_event
+                    except OSError:
+                        break  # socket closed under us
                     if not data:
                         break  # RFCOMM client disconnected
                     while not stop_event.is_set():
@@ -167,8 +178,12 @@ class RFCOMMBridge:
                     continue
                 try:
                     data = s.recv(READ_CHUNK)
-                except Exception as e:
+                except socket.timeout:
+                    continue  # no data this interval; re-check stop_event
+                except Exception:
                     data = b""
+                if not data and stop_event.is_set():
+                    break
                 if not data:
                     # Direwolf closed or errored - reconnect, keep RFCOMM alive
                     print("[KP4PRA TNC] Direwolf connection lost, reconnecting...", flush=True)
@@ -206,6 +221,21 @@ class RFCOMMBridge:
     def stop(self, *args):
         print("[KP4PRA TNC] RFCOMM stopping...", flush=True)
         self._running = False
+        # Unblock any in-flight session: signal stop and close the DW socket
+        try:
+            if getattr(self, '_stop_event', None):
+                self._stop_event.set()
+        except Exception:
+            pass
+        try:
+            holder = getattr(self, '_dw_holder', None)
+            if holder and holder[0]:
+                try: holder[0].shutdown(socket.SHUT_RDWR)
+                except Exception: pass
+                try: holder[0].close()
+                except Exception: pass
+        except Exception:
+            pass
         self._cleanup()
 
     def _cleanup(self):
