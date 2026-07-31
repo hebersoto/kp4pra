@@ -598,3 +598,17 @@ Docs:
   pair-from-phone then Trust-and-Authorize flow).
 - Status/roadmap "Working" updated to reflect the provisioning-reliability
   fixes.
+
+## v1.3.14 - 2026-07-30
+
+Fixes (KISS bridge reliability):
+- RFCOMM and BLE bridges no longer leak the Dire Wolf KISS socket on client
+  disconnect. Both used a blocking recv() with no timeout, so when the phone
+  disconnected the reader hung and the 8001 socket lingered in CLOSE-WAIT,
+  consuming one of Dire Wolf's limited KISS client slots. Accumulated stale
+  slots made a second WoAD/Winlink RMS session fail until the bridge was
+  restarted (which itself sometimes timed out because the hung thread would
+  not exit). Now: 1s socket timeouts make recv interruptible, teardown
+  shutdown()+close()s the socket, and RFCOMM stop() closes the in-flight
+  socket to unblock the reader. Verified with repeated back-to-back
+  WoAD->Bluetooth->RF RMS sessions.
