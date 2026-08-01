@@ -144,7 +144,9 @@ Boards:
 - **Raspberry Pi 3 Model B+** (CYW43455, BT 4.2) — Raspberry Pi OS Lite
   32-bit Bookworm, Python 3.11, BlueZ 5.66, kernel 6.12.9x. Full automated
   install validated (chained stage 2, port-80 redirect). BLE works via the
-  legacy raw-HCI advertising fallback (current Pi kernels carry the
+  legacy raw-HCI advertising fallback, which is re-asserted automatically
+  every 20s while idle because the controller silently stops it on each
+  connection accept and on classic-BT activity (current Pi kernels carry the
   June-2026 MGMT regression); iPhone traffic and Android provisioning
   confirmed.
 - **Raspberry Pi 3 Model A+ Rev 1.1** (BCM43455, 512MB) — Raspberry Pi OS
@@ -189,7 +191,9 @@ end (boot-reliable pairing agent; pair-from-phone then explicit
 Trust-and-Authorize), Dire Wolf generation/control/traffic view, Winlink
 RMS gateway (RF and Telnet/Network Post Office access), live-tested against
 production CMS. APRS clock fallback (syncs time from received APRS packets
-when NTP is unavailable).
+when NTP is unavailable). KISS bridge reliability: clean socket teardown on
+both bridges and automatic recovery of BLE legacy advertising, so iPhone and
+Android sessions survive repeated connect/disconnect cycles.
 Next: production hardening (zram + read-only root switch).
 
 ## License
