@@ -612,3 +612,24 @@ Fixes (KISS bridge reliability):
   shutdown()+close()s the socket, and RFCOMM stop() closes the in-flight
   socket to unblock the reader. Verified with repeated back-to-back
   WoAD->Bluetooth->RF RMS sessions.
+
+## v1.3.15 - 2026-08-01
+
+Fixes (BLE bridge):
+- REGRESSION FIX for v1.3.14. The v1.3.14 socket-teardown work set
+  settimeout(1.0) on the Direwolf reader inside direwolf_loop() but did not
+  add the matching socket.timeout handler there. Every idle second raised,
+  closed the KISS connection and reconnected about every four seconds, so the
+  BLE bridge never held a usable KISS path: aprs.fi reported connected but
+  beacons never reached the radio. Both Direwolf readers now treat a timeout
+  as an idle interval rather than a disconnect.
+- Legacy raw-HCI advertising (the workaround for the June-2026 kernel MGMT
+  regression) is switched off by the controller when a connection is accepted
+  and is also lost on classic-BT activity and adapter events, none of which
+  raise a D-Bus signal. The bridge could therefore remain "active" while being
+  completely undiscoverable until restarted by hand - observed in the field as
+  2.5 hours with no log output while the iPhone could not find the TNC. A 20
+  second watchdog now re-asserts the idempotent legacy-adv helper whenever no
+  BLE client is connected.
+- Validated on a Pi 3 A+: single stable ESTAB on port 8001, no reconnect
+  storm, and repeated iPhone beacons transmitted and digipeated over RF.
