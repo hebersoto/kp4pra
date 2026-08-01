@@ -31,8 +31,8 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
 
 - **Android** pairs over Bluetooth Classic (Just Works — no PIN) and
   APRSDroid connects via RFCOMM/SPP.
-- **iPhone** connects from inside aprs.fi over BLE KISS GATT — no iOS
-  pairing, no reboot, using the standard KISS-over-BLE UUIDs.
+- **iPhone** connects over BLE KISS GATT — no reboot, using the standard
+  KISS-over-BLE UUIDs.
 - **Both bridges** pass raw KISS binary, auto-reconnect if Dire Wolf
   restarts, and survive idle periods (no traffic ≠ disconnect).
 - **WiFi access point (field mode)**: the TNC can broadcast its own
