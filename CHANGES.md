@@ -633,3 +633,14 @@ Fixes (BLE bridge):
   BLE client is connected.
 - Validated on a Pi 3 A+: single stable ESTAB on port 8001, no reconnect
   storm, and repeated iPhone beacons transmitted and digipeated over RF.
+
+## v1.3.16 - 2026-08-01
+
+Docs:
+- README now notes that BLE legacy raw-HCI advertising is re-asserted
+  automatically about every 20 seconds while idle (added in 1.3.15), because
+  the controller silently stops it on connection accept and on classic-BT
+  activity.
+- Status/roadmap "Working" updated with the KISS bridge reliability work:
+  clean socket teardown on both bridges and automatic BLE advertising
+  recovery.
