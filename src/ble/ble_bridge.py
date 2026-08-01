@@ -57,6 +57,8 @@ BLE_MTU = 512      # negotiated MTU limit; chunk outgoing data to BLE_CHUNK_SIZE
 BLE_CHUNK_SIZE = 500
 READ_CHUNK = 4096
 RECONNECT_DELAY = 3.0
+# How often to re-assert legacy raw-HCI advertising when idle (seconds)
+ADV_WATCHDOG_INTERVAL = 20.0
 
 # D-Bus BlueZ paths
 BLUEZ_SERVICE = "org.bluez"
@@ -555,7 +557,13 @@ async def run_ble_bridge(config: dict):
 
                 async def recv_from_dw():
                     while True:
-                        data = await loop.run_in_executor(None, dw_sock.recv, 4096)
+                        try:
+                            data = await loop.run_in_executor(None, dw_sock.recv, 4096)
+                        except socket.timeout:
+                            await asyncio.sleep(0)
+                            continue  # idle interval, not a disconnect
+                        except OSError:
+                            break
                         if not data:
                             break
                         if notify_enabled[0]:
@@ -603,7 +611,27 @@ async def run_ble_bridge(config: dict):
                 except Exception as e:
                     log(f"BLE notify error: {e}")
 
-    await asyncio.gather(direwolf_loop(), notify_loop())
+    # ── Legacy advertising watchdog ──────────────────────────────────────────
+    async def adv_watchdog():
+        """Re-assert legacy raw-HCI advertising when it silently stops.
+
+        Legacy advertising (the MGMT-regression workaround) is turned off by
+        the controller whenever a connection is accepted, and is also lost on
+        classic-BT activity, scans, and adapter state changes. None of these
+        raise a D-Bus signal, so the bridge can stay 'active' while being
+        completely undiscoverable until it is restarted by hand. Re-running
+        the (idempotent) legacy-adv helper while no BLE client is connected
+        restores discoverability within one interval.
+        """
+        while True:
+            await asyncio.sleep(ADV_WATCHDOG_INTERVAL)
+            try:
+                if LEGACY_ADV["active"] and not ble_connected[0]:
+                    start_legacy_adv()
+            except Exception as e:
+                log(f"adv watchdog error: {e}")
+
+    await asyncio.gather(direwolf_loop(), notify_loop(), adv_watchdog())
 
 
 def main():
