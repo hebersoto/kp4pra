@@ -644,3 +644,10 @@ Docs:
 - Status/roadmap "Working" updated with the KISS bridge reliability work:
   clean socket teardown on both bridges and automatic BLE advertising
   recovery.
+
+## v1.3.17 - 2026-08-01
+
+Docs:
+- README "What it does": simplified the iPhone entry to "connects over BLE
+  KISS GATT — no reboot, using the standard KISS-over-BLE UUIDs", since the
+  BLE KISS path is not specific to aprs.fi.
