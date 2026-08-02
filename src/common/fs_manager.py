@@ -10,6 +10,7 @@ import time
 from typing import Tuple, Optional
 
 from .runtime_status import set_provisioning_status
+from .config import load_config
 
 BLUEZ_STATE_PATH = "/var/lib/bluetooth"
 RW_CONFIG_PATH = "/rw/kp4pra-tnc"
@@ -258,7 +259,20 @@ def check_dns_sd() -> dict:
             capture_output=True, timeout=8
         )
         out = result.stdout.decode(errors="replace")
-        found = "KP4PRA TNC" in out or "kiss" in out.lower()
+        # Match only OUR advertisement, by the configured instance name.
+        # Other stations on the same LAN can advertise _kiss-tnc._tcp too, so
+        # a bare substring test on "kiss" reports found even when this TNC
+        # advertises nothing at all.
+        try:
+            _name = (load_config().get("dns_sd") or {}).get("instance_name") or ""
+        except Exception:
+            _name = ""
+        _name = _name.strip().lower()
+        found = bool(_name) and any(
+            _name in line.lower()
+            for line in out.splitlines()
+            if "_kiss-tnc._tcp" in line
+        )
         return {
             "available": result.returncode == 0,
             "found_kiss_tnc": found,

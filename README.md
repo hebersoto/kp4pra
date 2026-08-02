@@ -98,6 +98,23 @@ remains the primary time source at all times.
 
 See docs/APRS_CLOCK.md for supported timestamp formats and details.
 
+## Network discovery (DNS-SD / mDNS)
+
+The gateway advertises the Dire Wolf KISS TCP port as `_kiss-tnc._tcp` through
+the system Avahi daemon, so a KISS client on WiFi - including a phone or laptop
+joined to the TNC's own hotspot in field mode - can find the TNC without being
+told an IP address.
+
+- Advertised by **the gateway, not by Dire Wolf**. Most Dire Wolf builds are
+  compiled without dns-sd support and silently advertise nothing; doing it from
+  the gateway works with any build.
+- The service name comes from `dns_sd.instance_name` and the port from
+  `direwolf.port`. `scripts/install.sh` writes
+  `/etc/avahi/services/kiss-tnc.service` from those values at install time;
+  changing them later means re-running the installer.
+- The Dashboard's DNS-SD card reports this TNC's own advertisement only. It
+  needs `avahi-utils` (installed as a prerequisite) to query Avahi.
+
 ## Appliance design principles
 
 - **Read-only root** in production; all persistent state on a small
