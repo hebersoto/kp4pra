@@ -652,7 +652,7 @@ Docs:
   KISS GATT — no reboot, using the standard KISS-over-BLE UUIDs", since the
   BLE KISS path is not specific to aprs.fi.
 
-## v1.3.17 - 2026-08-02
+## v1.3.18 - 2026-08-02
 
 Features:
 - The gateway now advertises the Dire Wolf KISS TCP port as `_kiss-tnc._tcp`
