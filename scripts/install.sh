@@ -48,7 +48,7 @@ log "Starting KP4PRA TNC installation..."
 # ── Auto-install prerequisite packages (Debian/Ubuntu) ───────────────────────
 # On a fresh image these are usually missing; install them up front so the
 # checks below pass on the first run. Idempotent: apt skips what's present.
-PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager libgpiod-dev"
+PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager libgpiod-dev avahi-daemon avahi-utils"
 if command -v apt-get >/dev/null 2>&1; then
     step "Installing prerequisite packages: $PREREQS"
     export DEBIAN_FRONTEND=noninteractive
@@ -266,11 +266,22 @@ log "Sudoers rules installed and validated"
 
 # ── Avahi DNS-SD ─────────────────────────────────────────────────────────────
 
-# DNS-SD: Dire Wolf (built with dns-sd support) advertises _kiss-tnc._tcp
-# itself - no separate Avahi service file is needed or installed. If your
-# Dire Wolf build lacks dns-sd, create /etc/avahi/services/kiss-tnc.service
-# manually or rebuild Dire Wolf with avahi support.
-log "DNS-SD advertisement is handled by Dire Wolf - skipping Avahi file"
+# The gateway advertises _kiss-tnc._tcp through the system Avahi daemon so
+# WiFi KISS clients can discover the TNC without being told an IP. This does
+# NOT depend on Dire Wolf being built with dns-sd support: many builds are
+# not, and such a build silently advertises nothing.
+# Name and port come from config.yaml (dns_sd.instance_name, direwolf.port).
+if [ -d /etc/avahi ]; then
+    DNS_SD_NAME=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG_DIR/config.yaml')) or {}; print((c.get('dns_sd') or {}).get('instance_name') or 'KP4PRA TNC')" 2>/dev/null || echo "KP4PRA TNC")
+    KISS_PORT=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG_DIR/config.yaml')) or {}; print((c.get('direwolf') or {}).get('port') or 8001)" 2>/dev/null || echo 8001)
+    mkdir -p /etc/avahi/services
+    sed -e "s|@INSTANCE_NAME@|$DNS_SD_NAME|g" -e "s|@KISS_PORT@|$KISS_PORT|g" "$PROJECT_DIR/avahi/kiss-tnc.service.template" > /etc/avahi/services/kiss-tnc.service
+    chmod 0644 /etc/avahi/services/kiss-tnc.service
+    systemctl reload-or-restart avahi-daemon 2>/dev/null || true
+    log "DNS-SD: advertising _kiss-tnc._tcp as '$DNS_SD_NAME' on port $KISS_PORT"
+else
+    warn "/etc/avahi not present - DNS-SD advertisement skipped (install avahi-daemon)"
+fi
 
 # ── BlueZ configuration ──────────────────────────────────────────────────────
 
