@@ -676,3 +676,11 @@ Docs:
 - README: new "Network discovery (DNS-SD / mDNS)" section describing what is
   advertised, that it comes from the gateway rather than Dire Wolf, and that
   the name and port are set at install time from config.
+
+## v1.3.19 - 2026-08-02
+
+Docs:
+- Hardware validated: added the Inovato Quadra and Inovato Quadra Plus on
+  Armbian 26.5.1 bookworm (Debian 12), 64-bit. The Quadra has no Bluetooth
+  hardware and runs as a WiFi/TCP KISS TNC; the RFCOMM and BLE paths are
+  unavailable there by hardware rather than by configuration.
