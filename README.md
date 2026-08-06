@@ -187,6 +187,14 @@ Boards:
   Android/RFCOMM works. Low-memory caveats in INSTALL.md; fine as a
   single-user unit, the Zero 2 W or Orange Pi is more comfortable.
 
+- **Inovato Quadra** and **Inovato Quadra Plus** - Armbian 26.5.1 bookworm
+  (Debian 12), 64-bit. Both validated working. The Quadra has no Bluetooth
+  hardware, so it runs as a WiFi/TCP KISS TNC only: clients connect to the
+  Dire Wolf KISS port over the network (discoverable as `_kiss-tnc._tcp`,
+  see Network discovery) rather than over Bluetooth. The Bluetooth paths
+  (RFCOMM/BLE) are unavailable on that variant by hardware, not by
+  configuration.
+
 Radios / audio:
 - CM108 USB sound dongle with HID PTT
 - AIOC (All-In-One-Cable) - validated ADEVICE plughw:AllInOneCable,0
