@@ -754,3 +754,43 @@ Docs:
 - Status/roadmap "Working" updated with the KISS bridge reliability work:
   clean socket teardown on both bridges and automatic BLE advertising
   recovery.
+
+## v1.3.17 - 2026-08-01
+
+Docs:
+- README "What it does": simplified the iPhone entry to "connects over BLE
+  KISS GATT — no reboot, using the standard KISS-over-BLE UUIDs", since the
+  BLE KISS path is not specific to aprs.fi.
+
+## v1.3.18 - 2026-08-02
+
+Features:
+- The gateway now advertises the Dire Wolf KISS TCP port as `_kiss-tnc._tcp`
+  over DNS-SD/mDNS, so WiFi KISS clients (including clients joined to the
+  TNC's own hotspot) can discover it without being given an IP address. The
+  advertisement is published by the system Avahi daemon from a service file
+  generated at install time using `dns_sd.instance_name` and `direwolf.port`.
+  Previously install.sh assumed Dire Wolf advertised this itself and wrote no
+  service file; most Dire Wolf builds have no dns-sd support, so in practice
+  nothing was advertised on any board.
+- `avahi-daemon` and `avahi-utils` added to the installer prerequisites. The
+  Dashboard DNS-SD card calls `avahi-browse`, which was not installed, so the
+  card reported "Avahi available: No" on every board regardless of state.
+
+Fixes:
+- `check_dns_sd()` matched any line containing "kiss", so another station on
+  the same LAN advertising `_kiss-tnc._tcp` was reported as this TNC's own
+  advertisement. It now matches the configured `dns_sd.instance_name`.
+
+Docs:
+- README: new "Network discovery (DNS-SD / mDNS)" section describing what is
+  advertised, that it comes from the gateway rather than Dire Wolf, and that
+  the name and port are set at install time from config.
+
+## v1.3.19 - 2026-08-02
+
+Docs:
+- Hardware validated: added the Inovato Quadra and Inovato Quadra Plus on
+  Armbian 26.5.1 bookworm (Debian 12), 64-bit. The Quadra has no Bluetooth
+  hardware and runs as a WiFi/TCP KISS TNC; the RFCOMM and BLE paths are
+  unavailable there by hardware rather than by configuration.

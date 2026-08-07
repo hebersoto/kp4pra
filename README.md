@@ -31,8 +31,8 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
 
 - **Android** pairs over Bluetooth Classic (Just Works — no PIN) and
   APRSDroid connects via RFCOMM/SPP.
-- **iPhone** connects from inside aprs.fi over BLE KISS GATT — no iOS
-  pairing, no reboot, using the standard KISS-over-BLE UUIDs.
+- **iPhone** connects over BLE KISS GATT — no reboot, using the standard
+  KISS-over-BLE UUIDs.
 - **Both bridges** pass raw KISS binary, auto-reconnect if Dire Wolf
   restarts, and survive idle periods (no traffic ≠ disconnect).
 - **WiFi access point (field mode)**: the TNC can broadcast its own
@@ -97,6 +97,23 @@ remains the primary time source at all times.
   --set` via sudo — nothing else.
 
 See docs/APRS_CLOCK.md for supported timestamp formats and details.
+
+## Network discovery (DNS-SD / mDNS)
+
+The gateway advertises the Dire Wolf KISS TCP port as `_kiss-tnc._tcp` through
+the system Avahi daemon, so a KISS client on WiFi - including a phone or laptop
+joined to the TNC's own hotspot in field mode - can find the TNC without being
+told an IP address.
+
+- Advertised by **the gateway, not by Dire Wolf**. Most Dire Wolf builds are
+  compiled without dns-sd support and silently advertise nothing; doing it from
+  the gateway works with any build.
+- The service name comes from `dns_sd.instance_name` and the port from
+  `direwolf.port`. `scripts/install.sh` writes
+  `/etc/avahi/services/kiss-tnc.service` from those values at install time;
+  changing them later means re-running the installer.
+- The Dashboard's DNS-SD card reports this TNC's own advertisement only. It
+  needs `avahi-utils` (installed as a prerequisite) to query Avahi.
 
 ## Appliance design principles
 
@@ -170,6 +187,14 @@ Boards:
   Android/RFCOMM works. Low-memory caveats in INSTALL.md; fine as a
   single-user unit, the Zero 2 W or Orange Pi is more comfortable.
 
+- **Inovato Quadra** and **Inovato Quadra Plus** - Armbian 26.5.1 bookworm
+  (Debian 12), 64-bit. Both validated working. The Quadra has no Bluetooth
+  hardware, so it runs as a WiFi/TCP KISS TNC only: clients connect to the
+  Dire Wolf KISS port over the network (discoverable as `_kiss-tnc._tcp`,
+  see Network discovery) rather than over Bluetooth. The Bluetooth paths
+  (RFCOMM/BLE) are unavailable on that variant by hardware, not by
+  configuration.
+
 Radios / audio:
 - CM108 USB sound dongle with HID PTT
 - AIOC (All-In-One-Cable) - validated ADEVICE plughw:AllInOneCable,0
@@ -182,7 +207,11 @@ Radios / audio:
 
 Clients:
 - Android APRSDroid (Bluetooth RFCOMM/SPP)
+- Android WoAD (Winlink, Bluetooth RFCOMM/SPP)
 - iPhone aprs.fi (BLE KISS)
+- Windows APRSIS32
+- Windows PinPoint APRS
+- Linux YAAC ("Yet Another APRS Client")
 
 ## Status / roadmap
 

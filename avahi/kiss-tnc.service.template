@@ -1,0 +1,20 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!--
+  KP4PRA TNC - DNS-SD advertisement for the Dire Wolf KISS TCP port.
+
+  Installed to /etc/avahi/services/kiss-tnc.service by scripts/install.sh,
+  which substitutes the instance name and KISS port from config.yaml
+  (dns_sd.instance_name and direwolf.port).
+
+  This is advertised by the gateway's Avahi daemon, NOT by Dire Wolf, so it
+  works with any Dire Wolf build regardless of whether it was compiled with
+  dns-sd support.
+-->
+<service-group>
+  <name replace-wildcards="yes">@INSTANCE_NAME@</name>
+  <service>
+    <type>_kiss-tnc._tcp</type>
+    <port>@KISS_PORT@</port>
+  </service>
+</service-group>
