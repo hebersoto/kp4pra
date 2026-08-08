@@ -209,6 +209,7 @@ Clients:
 - Android APRSDroid (Bluetooth RFCOMM/SPP)
 - Android WoAD (Winlink, Bluetooth RFCOMM/SPP)
 - iPhone aprs.fi (BLE KISS)
+- iPhone/iPad RadioMail 1.6.1 (Winlink, BLE KISS)
 - Windows APRSIS32
 - Windows PinPoint APRS
 - Linux YAAC ("Yet Another APRS Client")
