@@ -684,3 +684,9 @@ Docs:
   Armbian 26.5.1 bookworm (Debian 12), 64-bit. The Quadra has no Bluetooth
   hardware and runs as a WiFi/TCP KISS TNC; the RFCOMM and BLE paths are
   unavailable there by hardware rather than by configuration.
+
+## v1.3.20 - 2026-08-02
+
+Docs:
+- Hardware validated: added iPhone/iPad RadioMail 1.6.1 to the tested clients
+  list.
