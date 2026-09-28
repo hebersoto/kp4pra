@@ -223,6 +223,60 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
                 except (TypeError, ValueError):
                     errors.append("webmail.delivery.rf.%s must be an integer" % k)
 
+    if "aprs" in updates:
+        ap = updates["aprs"] or {}
+        import re as _re
+        _C = _re.compile(r"^[A-Z0-9]{1,6}(-[A-Z0-9]{1,3})?$")
+        _T = _re.compile(r"^[A-Z0-9]{1,6}(-[0-9]{1,2})?$")
+        if ap.get("tocall") and not _T.match(str(ap["tocall"]).upper()):
+            errors.append("aprs.tocall must be an APRS TOCALL like APKP41")
+        if ap.get("mycall") and not _C.match(str(ap["mycall"]).upper()):
+            errors.append("aprs.mycall must be CALLSIGN or CALLSIGN-SSID")
+        if "digipath" in ap:
+            dp = ap["digipath"]
+            if not isinstance(dp, list):
+                errors.append("aprs.digipath must be a list")
+            else:
+                ne = [d for d in dp if str(d).strip()]
+                if len(ne) > 8:
+                    errors.append("aprs.digipath: at most 8 hops")
+                for d in ne:
+                    if not _T.match(str(d).upper()):
+                        errors.append("aprs.digipath: %r is not a valid path element" % d)
+        for k in ("retry_interval", "max_retries"):
+            if k in ap:
+                try:
+                    v = int(ap[k])
+                    if v < 1 or v > 3600:
+                        errors.append("aprs.%s out of range" % k)
+                except (TypeError, ValueError):
+                    errors.append("aprs.%s must be an integer" % k)
+        isc = ap.get("aprsis", {}) or {}
+        if "port" in isc:
+            try:
+                p = int(isc["port"])
+                if not 1 <= p <= 65535:
+                    errors.append("aprs.aprsis.port invalid")
+            except (TypeError, ValueError):
+                errors.append("aprs.aprsis.port must be an integer")
+        bc = ap.get("beacon", {}) or {}
+        if "interval_min" in bc:
+            try:
+                iv = int(bc["interval_min"])
+                if iv < 0 or iv > 1440:
+                    errors.append("aprs.beacon.interval_min out of range")
+            except (TypeError, ValueError):
+                errors.append("aprs.beacon.interval_min must be an integer")
+        for _k in ("symbol_table", "symbol_code"):
+            if bc.get(_k) and len(str(bc[_k])) != 1:
+                errors.append("aprs.beacon.%s must be a single character" % _k)
+        for _k in ("lat", "lon"):
+            if bc.get(_k) not in (None, "", 0, 0.0):
+                try:
+                    float(bc[_k])
+                except (TypeError, ValueError):
+                    errors.append("aprs.beacon.%s must be a number" % _k)
+
     if errors:
         return False, "; ".join(errors)
     return True, ""

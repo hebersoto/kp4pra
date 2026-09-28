@@ -133,6 +133,28 @@ DEFAULT_CONFIG = {
         "telnet_enabled": True,
         "telnet_port": 8772,  # Winlink Express "Telnet Winlink" defaults to 8772
     },
+    "aprs": {
+        "enabled": True,
+        "tocall": "APKP41",        # APRS software identifier (AX.25 dest addr)
+        "mycall": "",              # TX callsign; blank = station.callsign
+        "digipath": ["WIDE1-1", "WIDE2-1"],  # RF digipeater path
+        "retry_interval": 30,      # seconds before an un-acked resend
+        "max_retries": 3,          # give up after this many resends
+        "aprsis": {
+            "enabled": False,      # also use APRS-IS (internet) when available
+            "host": "rotate.aprs2.net",
+            "port": 14580,
+        },
+        "beacon": {
+            "enabled": False,      # periodic position beacon on/off
+            "interval_min": 0,     # 0 = manual "Beacon now" only
+            "symbol_table": "/",   # / primary, \\ alternate, or overlay char
+            "symbol_code": "-",    # - house, > car, & gateway, # digipeater
+            "comment": "KP4PRA APRS",
+            "lat": 0.0,            # 0 = use station lat/lon, else grid
+            "lon": 0.0,
+        },
+    },
 }
 
 CONFIG_PATH = os.environ.get("KP4PRA_CONFIG", "/rw/kp4pra-tnc/config.yaml")

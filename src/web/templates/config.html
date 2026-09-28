@@ -308,6 +308,74 @@
   </div>
 </div>
 
+<!-- APRS Chat -->
+<div class="card">
+  <div class="card-title"><span class="icon">📻</span> APRS Chat</div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    Callsign, digipeater path, and position beacon for the APRS chat page.
+    Leave the callsign blank to use the station callsign.
+  </p>
+  {% set _ap = config.aprs %}
+  {% set _bc = _ap.beacon %}
+  {% set _apc = (_ap.mycall or "").split("-") %}
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="aprs-callsign">APRS Callsign</label>
+      <input class="form-input" id="aprs-callsign" maxlength="6" value="{{ _apc[0] }}" placeholder="(blank = station callsign)">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-ssid">APRS SSID</label>
+      <input class="form-input" id="aprs-ssid" type="number" min="0" max="15" value="{{ _apc[1] if _apc|length > 1 else '' }}" placeholder="(optional)">
+    </div>
+    <div class="form-group" style="grid-column:1/-1">
+      <label class="form-label" for="aprs-path">Digipeater Path</label>
+      <input class="form-input" id="aprs-path" value="{{ _ap.digipath|join(',') }}" placeholder="WIDE1-1,WIDE2-1">
+      <div class="form-hint">Comma-separated, in order. Common: WIDE1-1,WIDE2-1. Blank = direct (no digipeat).</div>
+    </div>
+  </div>
+  <div class="card-title" style="font-size:0.95rem;margin-top:1rem"><span class="icon">📍</span> Position Beacon</div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="aprs-beacon-enabled">Periodic Beacon</label>
+      <select class="form-select" id="aprs-beacon-enabled">
+        <option value="false" {% if not _bc.enabled %}selected{% endif %}>Off (manual only)</option>
+        <option value="true" {% if _bc.enabled %}selected{% endif %}>On</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-beacon-interval">Interval (minutes)</label>
+      <input class="form-input" id="aprs-beacon-interval" type="number" min="0" max="120" value="{{ _bc.interval_min }}">
+      <div class="form-hint">0 = manual "Beacon now" only.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-sym-table">Symbol Table</label>
+      <input class="form-input" id="aprs-sym-table" maxlength="1" value="{{ _bc.symbol_table }}" placeholder="/">
+      <div class="form-hint">/ primary &middot; \\ alternate &middot; or an overlay char.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-sym-code">Symbol Code</label>
+      <input class="form-input" id="aprs-sym-code" maxlength="1" value="{{ _bc.symbol_code }}" placeholder="-">
+      <div class="form-hint">- house &middot; &gt; car &middot; &amp; gateway &middot; # digipeater.</div>
+    </div>
+    <div class="form-group" style="grid-column:1/-1">
+      <label class="form-label" for="aprs-comment">Beacon Comment</label>
+      <input class="form-input" id="aprs-comment" maxlength="43" value="{{ _bc.comment }}" placeholder="KP4PRA APRS">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-lat">Latitude (optional)</label>
+      <input class="form-input" id="aprs-lat" type="number" step="any" value="{{ _bc.lat or '' }}" placeholder="0 = use station / grid">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-lon">Longitude (optional)</label>
+      <input class="form-input" id="aprs-lon" type="number" step="any" value="{{ _bc.lon or '' }}" placeholder="0 = use station / grid">
+    </div>
+  </div>
+  <p style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-top:0.6rem">
+    Position source: these lat/lon if set, else the Station lat/lon, else the
+    Station Maidenhead grid converted to coordinates.
+  </p>
+</div>
+
 <!-- BLE -->
 <div class="card">
   <div class="card-title"><span class="icon">📡</span> BLE KISS Bridge</div>
@@ -672,6 +740,19 @@ function collectConfig() {
           block_size: parseInt(document.getElementById('rf-block').value) || 250,
           restart_listener: document.getElementById('rf-restart').value === 'true',
         },
+      },
+    },
+    aprs: {
+      mycall: callWithSsid('aprs-callsign', 'aprs-ssid'),
+      digipath: document.getElementById('aprs-path').value.split(',').map(function(x){return x.trim().toUpperCase();}).filter(function(x){return x;}),
+      beacon: {
+        enabled: document.getElementById('aprs-beacon-enabled').value === 'true',
+        interval_min: parseInt(document.getElementById('aprs-beacon-interval').value) || 0,
+        symbol_table: document.getElementById('aprs-sym-table').value || '/',
+        symbol_code: document.getElementById('aprs-sym-code').value || '-',
+        comment: document.getElementById('aprs-comment').value.trim(),
+        lat: parseFloat(document.getElementById('aprs-lat').value) || 0,
+        lon: parseFloat(document.getElementById('aprs-lon').value) || 0,
       },
     },
     ble: {

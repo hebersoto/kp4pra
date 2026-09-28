@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}APRS Chat — KP4PRA TNC{% endblock %}
+{% block head %}
+<style>
+  .aprs-status { display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; }
+  .pill { display:inline-flex; align-items:center; gap:0.35rem; padding:0.2rem 0.6rem;
+          border-radius:999px; font-size:0.8rem; font-weight:600; }
+  .pill.on  { background:var(--kp4pra-success); color:#fff; }
+  .pill.off { background:var(--kp4pra-border); color:var(--kp4pra-muted-text); }
+  .dot { width:0.55rem; height:0.55rem; border-radius:50%; background:currentColor; }
+  .chat-shell { display:flex; gap:1rem; flex-wrap:wrap; }
+  .threads { flex:0 0 190px; max-width:100%; }
+  .threads .thread { display:block; width:100%; text-align:left; padding:0.5rem 0.6rem;
+        border:1px solid var(--kp4pra-border); border-radius:var(--kp4pra-radius-sm);
+        background:var(--kp4pra-bg); margin-bottom:0.4rem; cursor:pointer; font-size:0.9rem; }
+  .threads .thread.active { border-color:var(--kp4pra-primary); background:var(--kp4pra-surface); }
+  .conv { flex:1 1 320px; display:flex; flex-direction:column; min-height:52vh; }
+  .bubbles { flex:1; overflow-y:auto; display:flex; flex-direction:column;
+        padding:0.5rem; background:var(--kp4pra-surface); border:1px solid var(--kp4pra-border);
+        border-radius:var(--kp4pra-radius-sm); min-height:40vh; }
+  .bubble { max-width:80%; padding:0.45rem 0.65rem; border-radius:12px; margin:0.22rem 0;
+        font-size:0.92rem; word-wrap:break-word; position:relative; }
+  .bubble.in  { align-self:flex-start; background:var(--kp4pra-bg);
+        border:1px solid var(--kp4pra-border); border-bottom-left-radius:3px; }
+  .bubble.out { align-self:flex-end; background:var(--kp4pra-primary); color:#fff;
+        border-bottom-right-radius:3px; }
+  .bubble .meta { font-size:0.68rem; margin-top:0.2rem; opacity:0.75;
+        display:flex; gap:0.4rem; align-items:center; justify-content:flex-end; }
+  .bubble.in .meta { justify-content:flex-start; }
+  .tick { font-weight:700; }
+  .tick.acked { color:#d6ffca; }
+  .tick.failed { color:#ffd0d0; }
+  .badge-path { font-size:0.6rem; padding:0 0.3rem; border-radius:4px;
+        background:rgba(0,0,0,0.12); }
+  .compose { display:flex; gap:0.5rem; margin-top:0.5rem; }
+  .compose input[type=text] { flex:1; }
+  .compose .to { flex:0 0 120px; }
+  .muted { color:var(--kp4pra-muted-text); font-size:0.85rem; }
+  input, button { padding:0.5rem 0.6rem; border-radius:var(--kp4pra-radius-sm);
+        border:1px solid var(--kp4pra-border); font-size:0.92rem; }
+  button.primary { background:var(--kp4pra-primary); color:#fff; border-color:var(--kp4pra-primary); cursor:pointer; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-title"><span class="icon">📻</span> APRS Chat</div>
+  <div class="aprs-status">
+    <span id="sess-pill" class="pill off"><span class="dot"></span><span id="sess-text">Inactive</span></span>
+    <span class="muted">as <strong id="mycall">{{ mycall }}</strong> · tocall {{ tocall }}</span>
+    <span style="flex:1"></span>
+    <button id="btn-start" class="primary" onclick="startSession()">Start APRS chat</button>
+    <button id="btn-stop" onclick="stopSession()" style="display:none">Stop</button>
+    <button id="btn-beacon" onclick="beaconNow()" style="display:none">📍 Beacon now</button>
+  </div>
+  <p class="muted" style="margin-top:0.6rem">
+    Starting APRS chat takes the radio: the RMS gateway is stopped while chat is active, and
+    restarted when you stop. Messages are sent under your station callsign.
+  </p>
+  {% if not mycall %}
+  <p style="color:var(--kp4pra-error)">Set your station callsign on the Config page first.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="chat-shell">
+    <div class="threads">
+      <div class="muted" style="margin-bottom:0.4rem">Conversations</div>
+      <div id="thread-list"></div>
+    </div>
+    <div class="conv">
+      <div id="bubbles" class="bubbles"></div>
+      <div class="compose">
+        <input class="to" id="to-call" type="text" placeholder="TO CALL" maxlength="9" oninput="this.value=this.value.toUpperCase()">
+        <input id="msg-text" type="text" placeholder="Message (max 67 chars)" maxlength="67"
+               onkeydown="if(event.key==='Enter')sendMsg()">
+        <button id="btn-send" class="primary" onclick="sendMsg()" disabled>Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  var HEAD = 0;                 // last seq we've seen
+  var THREADS = {};             // peer -> [message,...]
+  var CURRENT = null;           // selected peer
+  var ACTIVE = false;
+  var POLL = null;
+
+  function esc(s){ var d=document.createElement('div'); d.textContent=s==null?'':s; return d.innerHTML; }
+  function hhmm(ts){ var d=new Date(ts*1000); return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+
+  function tickFor(m){
+    if(m.direction!=='out') return '';
+    if(m.status==='acked')  return '<span class="tick acked">✓✓</span>';
+    if(m.status==='failed') return '<span class="tick failed">✕</span>';
+    return '<span class="tick">✓</span>';           // sending / sent
+  }
+
+  function ingest(msgs){
+    msgs.forEach(function(m){
+      (THREADS[m.peer] = THREADS[m.peer] || []);
+      // replace if we already have this seq (status update), else append
+      var arr = THREADS[m.peer], i = arr.findIndex(function(x){return x.seq===m.seq;});
+      if(i>=0) arr[i]=m; else arr.push(m);
+      if(m.seq>HEAD) HEAD=m.seq;
+    });
+    // status updates can arrive for a message whose seq we already had under
+    // the same peer; also update any out message matched by seq globally
+    renderThreads();
+    if(CURRENT) renderBubbles();
+  }
+
+  function renderThreads(){
+    var box=document.getElementById('thread-list'); box.innerHTML='';
+    var peers=Object.keys(THREADS).sort();
+    if(!CURRENT && peers.length) CURRENT=peers[0];
+    peers.forEach(function(p){
+      var b=document.createElement('button');
+      b.className='thread'+(p===CURRENT?' active':'');
+      var last=THREADS[p][THREADS[p].length-1];
+      b.innerHTML='<strong>'+esc(p)+'</strong><br><span class="muted">'+esc((last?last.text:'').slice(0,22))+'</span>';
+      b.onclick=function(){ CURRENT=p; document.getElementById('to-call').value=p; renderThreads(); renderBubbles(); };
+      box.appendChild(b);
+    });
+  }
+
+  function renderBubbles(){
+    var box=document.getElementById('bubbles'); box.innerHTML='';
+    var arr=THREADS[CURRENT]||[];
+    arr.forEach(function(m){
+      var d=document.createElement('div');
+      d.className='bubble '+(m.direction==='out'?'out':'in');
+      var path = m.path==='aprsis' ? 'IS' : 'RF';
+      var meta='<span class="badge-path">'+path+'</span><span>'+hhmm(m.ts)+'</span>'+tickFor(m);
+      var who = m.direction==='in' ? '<div class="muted" style="font-size:0.68rem">'+esc(m.peer)+'</div>' : '';
+      d.innerHTML=who+esc(m.text)+'<div class="meta">'+meta+'</div>';
+      box.appendChild(d);
+    });
+    box.scrollTop=box.scrollHeight;
+  }
+
+  async function refreshStatus(){
+    try{
+      var r=await fetch('/api/aprs/status'); var s=await r.json();
+      setActive(s.active);
+    }catch(e){}
+  }
+
+  function setActive(on){
+    ACTIVE=on;
+    document.getElementById('sess-pill').className='pill '+(on?'on':'off');
+    document.getElementById('sess-text').textContent=on?'Active':'Inactive';
+    document.getElementById('btn-start').style.display=on?'none':'';
+    document.getElementById('btn-stop').style.display=on?'':'none';
+    document.getElementById('btn-send').disabled=!on;
+    document.getElementById('btn-beacon').style.display=on?'':'none';
+    if(on && !POLL){ POLL=setInterval(poll, 2000); poll(); }
+    if(!on && POLL){ clearInterval(POLL); POLL=null; }
+  }
+
+  async function poll(){
+    try{
+      var r=await fetch('/api/aprs/messages?since='+HEAD);
+      var d=await r.json();
+      if(d.messages && d.messages.length) ingest(d.messages);
+      if(typeof d.active==='boolean' && d.active!==ACTIVE) setActive(d.active);
+    }catch(e){}
+  }
+
+  async function startSession(){
+    document.getElementById('btn-start').disabled=true;
+    try{
+      var r=await fetch('/api/aprs/start',{method:'POST'}); var d=await r.json();
+      if(!d.ok){ alert('Could not start: '+(d.error||'unknown')); return; }
+      HEAD=0; THREADS={}; CURRENT=null; setActive(true);
+    }catch(e){ alert('Error: '+e); }
+    finally{ document.getElementById('btn-start').disabled=false; }
+  }
+
+  async function stopSession(){
+    try{
+      var r=await fetch('/api/aprs/stop',{method:'POST'}); await r.json();
+      setActive(false);
+    }catch(e){ alert('Error: '+e); }
+  }
+
+  async function sendMsg(){
+    var peer=document.getElementById('to-call').value.trim().toUpperCase();
+    var text=document.getElementById('msg-text').value;
+    if(!peer || !text.trim()) return;
+    try{
+      var r=await fetch('/api/aprs/send',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({peer:peer, text:text})});
+      var d=await r.json();
+      if(!d.ok){ alert(d.error||'send failed'); return; }
+      document.getElementById('msg-text').value='';
+      CURRENT=peer;
+      ingest([d.message]);
+    }catch(e){ alert('Error: '+e); }
+  }
+
+  async function beaconNow(){
+    try{
+      var r=await fetch('/api/aprs/beacon',{method:'POST'}); var d=await r.json();
+      if(!d.ok){ alert('Beacon failed: '+(d.error||'unknown')); return; }
+      alert('Beacon sent:\n'+d.info);
+    }catch(e){ alert('Error: '+e); }
+  }
+
+  refreshStatus();
+</script>
+{% endblock %}

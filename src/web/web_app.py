@@ -54,6 +54,8 @@ import b2f
 import mailbuilder
 import b2fsend
 import rfsend
+import aprssession
+from rms import ax25 as _aprs_ax25
 
 PRODUCT_NAME = "KP4PRA TNC"
 
@@ -171,6 +173,69 @@ async def csrf_middleware(request: Request, call_next):
 
 # Backwards-compatible alias: existing route signatures use check_auth.
 check_auth = require_auth
+
+# APRS chat session (singleton; owns the radio while active, mutually
+# exclusive with the RMS gateway).
+_aprs_session = None
+
+
+def _get_aprs():
+    global _aprs_session
+    if _aprs_session is None:
+        _aprs_session = aprssession.AprsSession(_aprs_ax25, get_config())
+    elif not _aprs_session.active:
+        _aprs_session.cfg = get_config()
+    return _aprs_session
+
+
+@app.get("/admin/aprs", response_class=HTMLResponse)
+async def aprs_page(request: Request, _auth=Depends(check_auth)):
+    cfg = get_config()
+    a = cfg.get("aprs", {}) or {}
+    mycall = a.get("mycall") or cfg.get("station", {}).get("callsign") or ""
+    return templates.TemplateResponse("aprs.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "mycall": mycall,
+        "tocall": a.get("tocall", "APKP41"),
+    })
+
+
+@app.post("/api/aprs/start")
+async def aprs_start(request: Request, _auth=Depends(check_auth)):
+    return JSONResponse(await _get_aprs().start())
+
+
+@app.post("/api/aprs/stop")
+async def aprs_stop(request: Request, _auth=Depends(check_auth)):
+    return JSONResponse(await _get_aprs().stop())
+
+
+@app.get("/api/aprs/status")
+async def aprs_status(request: Request, _auth=Depends(check_auth)):
+    return JSONResponse({"success": True, **_get_aprs().status()})
+
+
+@app.post("/api/aprs/send")
+async def aprs_send(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    r = await _get_aprs().send(body.get("peer", ""), body.get("text", ""),
+                               want_ack=bool(body.get("want_ack", True)))
+    return JSONResponse(r)
+
+
+@app.get("/api/aprs/messages")
+async def aprs_messages(request: Request, since: int = 0,
+                        _auth=Depends(check_auth)):
+    s = _get_aprs()
+    return JSONResponse({"success": True, "head": s.store.head,
+                         "active": s.active,
+                         "messages": s.messages_since(since)})
+
+
+@app.post("/api/aprs/beacon")
+async def aprs_beacon(request: Request, _auth=Depends(check_auth)):
+    return JSONResponse(await _get_aprs().beacon_now())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

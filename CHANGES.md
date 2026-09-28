@@ -1,3 +1,33 @@
+## APRS messaging + position beaconing — new in 1.4.8
+- APRS text chat (/admin/aprs): WhatsApp-style conversation UI with
+  distinguishable sent/received bubbles, delivery ticks (sending/acked/
+  failed), and an RF/IS path badge. RF over the Dire Wolf KISS TNC as
+  unconnected AX.25 UI frames (dest = TOCALL APKP41), with an optional
+  additive APRS-IS path for EMCOMM fallback. Auto-ack of inbound messages,
+  msgNo tracking, and timed ret/reject-aware resends.
+- Radio interlock: an active APRS session owns the radio and is mutually
+  exclusive with the RMS gateway — starting chat stops kp4pra-tnc-rms and
+  stopping it restarts the service (refuses to start mid-relay).
+- Position beacon: APRS position report (=DDMM.mmN/DDDMM.mmW + symbol) with
+  position taken from the beacon lat/lon, else the station lat/lon, else the
+  station Maidenhead grid converted to coordinates. A "Beacon now" button on
+  the APRS page plus an optional periodic beacon. Sent over the configured
+  digipeater path (e.g. WIDE1-1,WIDE2-2). Lets WXBOT/KP4DOG and other
+  position-gated services respond.
+- APRS configuration section on the Config page: callsign + SSID (blank =
+  station callsign), comma-separated multi-hop digipeater path, and beacon
+  settings (enable/interval, symbol table+code, comment, optional lat/lon
+  override). Server-side validation in config_writer for all fields.
+- Endpoints: GET /admin/aprs, POST /api/aprs/{start,stop,send,beacon},
+  GET /api/aprs/{status,messages}. New modules under src/web
+  (aprs, aprschat, aprs_transports, aprssession, ax25_stub) with four unit
+  test suites; no I/O in the protocol/logic core (fully mock-tested).
+- Deploy tooling: scripts/deploy-to-system.sh pushes repo src/ + VERSION to
+  the live install (/opt/kp4pra-tnc), chowns to the service user, clears
+  stale bytecode, handles the read-only-root remount, and restarts the web
+  service — the repo->/opt counterpart to sync-from-system.sh. The
+  apply_aprs*.py installers now warn when they patch a checkout that differs
+  from the live install.
 ## Web Email — Phase 4 step 3.5 (LZHUF B2 framing correction) — new in 1.4.5
 - Corrected the LZHUF/B2 compressed-stream framing to match the Winlink
   reference (la5nta/wl2k-go lzhuf, whose CRC the source attributes to
