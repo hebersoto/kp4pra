@@ -609,6 +609,22 @@ async def api_system_reboot(_auth=Depends(check_auth)):
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 
+@app.post("/api/system/shutdown")
+async def api_system_shutdown(_auth=Depends(check_auth)):
+    """Power off the TNC. Backgrounds a short-delayed poweroff so this HTTP
+    response flushes to the browser before the network drops. Narrow sudoers:
+    kp4pra-tnc may run only /sbin/poweroff."""
+    import subprocess
+    try:
+        subprocess.Popen(
+            ["/bin/sh", "-c", "sleep 2 && sudo -n /sbin/poweroff"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return JSONResponse({"success": True,
+            "message": "Shutting down now. Wait ~15s, then it is safe to remove power."})
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
 @app.post("/api/dra/setup")
 async def api_dra_setup(_auth=Depends(check_auth)):
     """Phase 1 of DRA-Pi-Zero setup: write the I2S overlay + audio-off lines to

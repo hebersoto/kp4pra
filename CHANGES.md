@@ -1,3 +1,11 @@
+## Config page Shutdown button - new in 1.3.21
+- Config page: a Shut Down button beside Reboot, with a confirm dialog.
+  POST /api/system/shutdown backgrounds `sudo -n /sbin/poweroff` (narrow
+  sudoers, like the reboot control) so the HTTP response flushes before the
+  network drops.
+- sudoers.d/kp4pra-tnc: adds NOPASSWD /sbin/poweroff for the service user.
+  Re-copy the sudoers file on deploy (it lives outside src/).
+
 ## APRS clock fallback — new in 1.3.10
 - Added a receive-only Dire Wolf AGW listener using the existing
   `station.clock` source callsign and `direwolf.host` configuration.
