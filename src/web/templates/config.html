@@ -187,6 +187,9 @@
   <button class="btn btn-secondary" onclick="rebootTNC()" id="btn-reboot"
           style="margin-top:0.5rem">🔄 Reboot Now</button>
   <div class="form-hint" id="reboot-result" style="margin-top:0.4rem"></div>
+  <button class="btn btn-secondary" onclick="shutdownTNC()" id="btn-shutdown"
+          style="margin-top:0.5rem">⏻ Shut Down</button>
+  <div class="form-hint" id="shutdown-result" style="margin-top:0.4rem"></div>
 </div>
 
 <!-- Direwolf -->
@@ -899,6 +902,23 @@ async function rebootTNC() {
     out.textContent = 'Reboot triggered (connection closed). Reload in ~60s.';
   }
   // leave the button disabled; the box is rebooting
+}
+async function shutdownTNC() {
+  if (!confirm('Shut down the TNC now?\n\nRF operation and this web interface ' +
+      'will go offline. You will need to power the TNC back on by hand.')) return;
+  const btn = document.getElementById('btn-shutdown');
+  const out = document.getElementById('shutdown-result');
+  btn.disabled = true; btn.textContent = 'Shutting down\u2026';
+  try {
+    const r = await fetch('/api/system/shutdown', {method:'POST'});
+    const d = await r.json();
+    out.textContent = d.message || (d.success ? 'Shutting down\u2026' : 'Failed.');
+    if (d.success) out.textContent += ' Safe to remove power once the LEDs stop.';
+  } catch(e) {
+    // A dropped connection here is EXPECTED - the box is going down.
+    out.textContent = 'Shutdown triggered (connection closed). Safe to remove power in ~15s.';
+  }
+  // leave the button disabled; the box is powering off
 }
 async function setupDRA() {
   if (!confirm('This edits /boot config.txt and requires a REBOOT.\n\n' +
