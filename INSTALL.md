@@ -12,7 +12,44 @@ Requires Python 3.11+ and BlueZ 5.6x+.
   Preconfigure user `kp4pra`, WiFi, and SSH in the imager. (WiFi may be
   left unconfigured for headless setup — the TNC then starts its own
   KP4PRA hotspot at boot; see section 6b.)
-Boot, log in as `kp4pra`, and update: `sudo apt update && sudo apt upgrade -y`
+
+Boot the board — headless (no monitor or keyboard) is fine. Section 1b
+connects you to its command line and updates the system.
+
+## 1b. Connect to the board over SSH (PuTTY)
+
+> **New to Linux or headless setup?** This section gets you a terminal on the
+> board from a Windows PC. **Experienced users** who already SSH in — or who
+> use a monitor and keyboard on the board — can skip to section 2.
+
+The board runs "headless": no monitor or keyboard. You reach its command line
+from your Windows PC over the network with **PuTTY**, a free SSH client.
+
+1. **Enable SSH when you flash** (section 1). In Raspberry Pi Imager's settings
+   (the gear icon), turn on **Enable SSH**, set the username to `kp4pra` with a
+   password, and enter your WiFi so the board joins your network at boot. On
+   Armbian, SSH is enabled by default.
+2. **Install PuTTY** on your PC from https://www.putty.org/ (Windows installer).
+3. **Find the board's address.** Give it a minute to boot, then try the
+   hostname `kp4pra.local`. If that does not connect, open your router's
+   device/DHCP list and note the board's IP address (for example
+   `192.168.1.42`).
+4. **Open PuTTY**, enter `kp4pra.local` (or the IP) in **Host Name**, leave
+   **Port** at `22`, and click **Open**. The first time, accept the security
+   alert (**Accept** / **Yes**) — this just records the board's key.
+5. **Log in** as `kp4pra` with the password you set. You now have the board's
+   command line. Every command in the sections below is typed — or pasted —
+   into this PuTTY window.
+
+> **Pasting into PuTTY:** use the **copy button** on any command block below,
+> then **right-click** inside the PuTTY window to paste, and press **Enter**.
+> PuTTY pastes with a right-click, not Ctrl+V. (Every ` ``` ` command block on
+> GitHub has a copy button in its top-right corner when you hover over it.)
+
+Once connected, update the system before installing:
+```bash
+sudo apt update && sudo apt upgrade -y
+```
 
 > **KNOWN ISSUE (June 2026) — BLE advertising broken on current Raspberry Pi
 > OS kernels.** A kernel patch ("Bluetooth: MGMT: validate Add Extended
@@ -42,7 +79,11 @@ cd ~ && git clone https://github.com/wb2osz/direwolf.git
 cd direwolf && mkdir build && cd build
 cmake .. && make -j2 && sudo make install
 ```
-Verify: `direwolf --help` and `cm108` (lists CM108 HID→ADEVICE mapping).
+Verify the build:
+```bash
+direwolf --help    # the optional-support line must list libgpiod
+cm108              # lists the CM108 HID → ADEVICE mapping
+```
 The `--help` banner must list `libgpiod` in optional support - the
 DRA-Pi-Zero's GPIOD PTT needs it, and on kernel 6.x legacy sysfs GPIO
 is unreliable. If it's missing, install libgpiod-dev and rebuild.
