@@ -9,9 +9,23 @@ Requires Python 3.11+ and BlueZ 5.6x+.
 - Raspberry Pi Zero 2 W: Raspberry Pi OS Lite via Raspberry Pi Imager —
   **32-bit or 64-bit both work** (both validated; 32-bit on Trixie is the reference configuration). On this 512MB board
   the 32-bit image leaves more free RAM; choose it if memory is tight.
-  Preconfigure user `kp4pra`, WiFi, and SSH in the imager. (WiFi may be
-  left unconfigured for headless setup — the TNC then starts its own
-  KP4PRA hotspot at boot; see section 6b.)
+
+  In the Raspberry Pi Imager settings (the gear icon before writing),
+  preconfigure:
+  - **Hostname:** set it to `kp4pra`. The board is then reachable at
+    `kp4pra.local` and shows up as `kp4pra` on your network.
+  - **Username / password:** create the user `kp4pra` with a password you
+    choose.
+  - **Enable SSH:** turn it on so you can connect with PuTTY (section 1b).
+  - **WiFi:** optional — see the note below before deciding.
+
+  > **WiFi vs. the KP4PRA hotspot — pick one.** The board has a single WiFi
+  > radio, so it can either *join* your WiFi **or** broadcast its own KP4PRA
+  > hotspot — **not both at once.** If you enter your WiFi here and the board
+  > connects, its own hotspot will **not** be available. Leave WiFi blank for a
+  > self-contained field unit: the board then starts its own KP4PRA hotspot at
+  > boot so a phone connects to it directly (see section 6b). You can switch
+  > between the two modes anytime with `sudo kp4pra-wifi-mode ap|client`.
 
 Boot the board — headless (no monitor or keyboard) is fine. Section 1b
 connects you to its command line and updates the system.
@@ -100,9 +114,14 @@ after installation.
 
 ## 4. Writable partition (production layout)
 Create a second partition on the SD card mounted at `/rw`
-(see README.md, "Read-Only Filesystem Deployment"). For bench testing you
-may instead just `sudo mkdir -p /rw` on the root filesystem and migrate to
-a real partition later (INSTALL step is identical afterward).
+(see README.md, "Read-Only Filesystem Deployment").
+
+For bench testing you can skip the extra partition and simply create the
+`/rw` directory on the root filesystem, then migrate to a real partition
+later (the rest of the install is identical either way). Enter this command:
+```bash
+sudo mkdir -p /rw
+```
 
 ## 5. KP4PRA TNC — stage 1
 ```bash
