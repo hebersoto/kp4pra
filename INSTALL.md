@@ -5,12 +5,12 @@ Targets: **Orange Pi Zero 2W** (Armbian/Debian trixie) and
 Requires Python 3.11+ and BlueZ 5.6x+.
 
 ## 1. Flash the OS
-- Orange Pi Zero 2W: Armbian minimal/CLI image → SD card.
+- Search the web for "Orange Pi Zero 2W: Armbian minimal/CLI image" and install to the → SD card.
 - Raspberry Pi Zero 2 W: Raspberry Pi OS Lite via Raspberry Pi Imager —
   **32-bit or 64-bit both work** (both validated; 32-bit on Trixie is the reference configuration). On this 512MB board
   the 32-bit image leaves more free RAM; choose it if memory is tight.
 
-  In the Raspberry Pi Imager settings (the gear icon before writing),
+  In the Raspberry Pi Imager or your selected imager settings,
   preconfigure:
   - **Hostname:** set it to `kp4pra`. The board is then reachable at
     `kp4pra.local` and shows up as `kp4pra` on your network.
