@@ -102,16 +102,6 @@ The `--help` banner must list `libgpiod` in optional support - the
 DRA-Pi-Zero's GPIOD PTT needs it, and on kernel 6.x legacy sysfs GPIO
 is unreliable. If it's missing, install libgpiod-dev and rebuild.
 
-**DRA-Pi-Zero users only** (I2S board): after install, run
-`sudo bash scripts/setup-dra-pi-zero.sh`, reboot, then run it once more
-to apply the WM8731 mixer. It enables the I2S overlay, disables onboard
-audio, sets mixer levels, and adds the service user to the gpio group.
-USB (CM108) users skip this entirely. See docs/DRA_PI_ZERO.md.
-The initial direwolf.conf is created automatically by the installer
-(a minimal config is seeded on /rw with a symlink at
-/home/kp4pra/direwolf.conf). Configure your station via the web UI
-after installation.
-
 ## 4. Writable partition (production layout)
 Create a second partition on the SD card mounted at `/rw`
 (see README.md, "Read-Only Filesystem Deployment").
@@ -194,6 +184,24 @@ Hotspot defaults (change them on the Config page / in
 > management. To make the hotspot start automatically at boot (field
 > units), set `wifi.mode_at_boot: "ap"` in the config. Bluetooth
 > KISS (Android and iPhone) works the same in either mode.
+
+## 6c. DRA-Pi-Zero audio setup (I2S boards only)
+
+**DRA-Pi-Zero users only** (I2S board). USB (CM108) users skip this entirely.
+
+The KP4PRA TNC is now installed, so the `scripts/` directory exists. From the
+repo folder, run the DRA setup, reboot, then run the same line once more after
+reboot to apply the WM8731 mixer:
+```bash
+cd ~/kp4pra-tnc
+sudo bash scripts/setup-dra-pi-zero.sh
+```
+It enables the I2S overlay, disables onboard audio, sets mixer levels, and adds
+the service user to the gpio group. See docs/DRA_PI_ZERO.md.
+
+The initial direwolf.conf is created automatically by the installer (a minimal
+config is seeded on /rw with a symlink at /home/kp4pra/direwolf.conf). Configure
+your station via the web UI after installation.
 
 ## 7. First-boot verification
 - `http://<host>:8088` (or plain `http://<host>/`) → Dashboard all green.
