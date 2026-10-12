@@ -1,3 +1,45 @@
+## DRA-Pi-Zero on the Orange Pi Zero 2W + new blue LED behavior — new in 1.4.9
+- DRA-Pi-Zero now works on the **Orange Pi Zero 2W with Armbian** (validated
+  2026-10-12: Armbian 26.8.3, kernel 6.18.44-current-sunxi64; RX, TX, all
+  LEDs, BLE). `scripts/setup-dra-pi-zero.sh` detects the board; on the Orange
+  Pi a one-time run from SSH installs kernel headers, builds the patched
+  WM8731 codec driver as DKMS package `kp4pra-wm8731` (source for the exact
+  kernel downloaded at build time and cached; rebuilt automatically on kernel
+  updates), installs the user overlay `platform/orangepi-zero2w/
+  kp4pra-dra-orangepi.dts` + `i2c1-pi`, and sets up GPIO access.
+- WM8731 patches (opt-in by DT property): fixed 12 MHz crystal
+  (`kp4pra,xtal-12mhz`) and the AHUB I2S0 LRCK period written from the
+  codec's real frame length (`kp4pra,ahub-fmt0-reg`) - the H618 AHUB, even as
+  clock slave, only latches frames when the period matches exactly
+  (125 BCLK/channel at 48 kHz), which its driver cannot program.
+- New `src/common/dra_platform.py` + `bin/kp4pra-dra-platform` (one table,
+  kept in sync by tests): card ID and PTT/DCD/LED gpiochip lines per board.
+  The Dire Wolf config generator and web UI use it: the card `DRAPiZero` is
+  recognized as "DRA-Pi-Zero (I2S)", PTT pre-fills to `gpiochip1 267` and DCD
+  to `gpiochip1 76` on the Orange Pi; a Raspberry Pi PTT value stored in the
+  config is remapped on the Orange Pi. Raspberry Pi output is byte-identical
+  to 1.4.8 (162-case golden comparison; tests/test_dra_platform.py).
+- New `kp4pra-dra-i2c-check` (Orange Pi only, Dire Wolf ExecStartPre
+  drop-in): detects the SoC I2C controller stuck in "bus locked" (codec
+  writes time out, Dire Wolf start stalls ~30 s with no RX/TX), resets the
+  controller and restores the mixer.
+- **Blue LED, all boards:** off = Bluetooth services down, solid = BLE/RFCOMM
+  service available, fast flash (5 Hz) = a client is connected; back to
+  solid on disconnect. Previously: on only while connected. On an unknown
+  board the LED service now leaves the pin alone.
+- `install.sh`: creates the gpio group when missing (Armbian has none - the
+  LED service failed with status=216/GROUP) and, on non-Raspberry-Pi boards,
+  a udev rule giving the group access to /dev/gpiochip*. Installs the new
+  helpers. `kp4pra-adevice-fix` treats `DRAPiZero` as an I2S card.
+- Web UI: DRA card shows the detected card and board; on an Orange Pi the
+  "Set up DRA-Pi-Zero" button reports status (the driver build runs from SSH).
+- Docs: docs/DRA_PI_ZERO.md board table, LED table, Orange Pi section
+  (requirements, setup, beta -> stable headers, bring-up notes,
+  troubleshooting); README, INSTALL.md 6c.
+- Upgrading an existing install from 1.4.8: pull, then
+  `sudo bash scripts/deploy-to-system.sh` (web/src) and
+  `sudo kp4pra-remount-rw; sudo install -m 755 bin/kp4pra-bt-led bin/kp4pra-dra-platform bin/kp4pra-dra-i2c-check bin/kp4pra-adevice-fix scripts/setup-dra-pi-zero.sh /usr/local/bin/; sudo systemctl restart kp4pra-tnc-bt-led; sudo kp4pra-remount-ro`.
+  Orange Pi: then run `sudo bash scripts/setup-dra-pi-zero.sh` and reboot.
 ## APRS messaging + position beaconing — new in 1.4.8
 - APRS text chat (/admin/aprs): WhatsApp-style conversation UI with
   distinguishable sent/received bubbles, delivery ticks (sending/acked/

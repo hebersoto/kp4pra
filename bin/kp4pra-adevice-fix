@@ -7,10 +7,11 @@
 # NUMBER shifts with enumeration order while the name is stable.
 
 # I2S GATE: if the configured ADEVICE is an on-header I2S card (e.g.
-# DRA-Pi-Zero -> audioinjectorpi), the user deliberately selected it in the
-# web UI. Do NOT wait 45s for USB and do NOT rewrite the conf back to a
-# CM108 card. Log the skip so a debug session sees why nothing happened.
-I2S_CARDS="audioinjectorpi"
+# DRA-Pi-Zero -> audioinjectorpi on a Raspberry Pi, DRAPiZero on an Orange
+# Pi Zero 2W), the user deliberately selected it in the web UI. Do NOT wait
+# 45s for USB and do NOT rewrite the conf back to a CM108 card. Log the skip
+# so a debug session sees why nothing happened.
+I2S_CARDS="audioinjectorpi DRAPiZero"
 conf_file=$(realpath /home/kp4pra/direwolf.conf 2>/dev/null)
 if [ -f "$conf_file" ]; then
     current_adevice=$(awk 'BEGIN{IGNORECASE=1} /^[[:space:]]*ADEVICE[[:space:]]+/ && $0 !~ /^#/ { print $2 }' "$conf_file")

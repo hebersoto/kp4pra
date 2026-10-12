@@ -1197,19 +1197,31 @@ async def api_soundcards(_auth=Depends(check_auth)):
 @app.get("/api/dra/status")
 async def api_dra_status(_auth=Depends(check_auth)):
     """Report whether the DRA-Pi-Zero I2S codec is present. Used by the Config
-    page after a reboot to tell the user if the overlay brought the card up."""
+    page after a reboot to tell the user if the overlay brought the card up.
+    The ALSA card ID differs per board (audioinjectorpi on a Raspberry Pi,
+    DRAPiZero on an Orange Pi Zero 2W) - see common.dra_platform."""
     import subprocess
+    from common.dra_platform import DRA_CARD_IDS, detect_platform, platform_info, is_dra_adevice
     present = False
+    card = ""
     try:
         r = subprocess.run(["aplay", "-l"], capture_output=True, timeout=10)
-        present = b"audioinjectorpi" in r.stdout
+        out = r.stdout.decode(errors="replace")
+        for cid in DRA_CARD_IDS:
+            if f": {cid} [" in out:
+                present, card = True, cid
+                break
     except Exception:
         present = False
     cfg = load_config()
     adevice = (cfg.get("station", {}).get("sound") or "")
+    plat = detect_platform()
     return JSONResponse({
         "dra_present": present,
-        "adevice_is_dra": "audioinjector" in adevice.lower(),
+        "card": card,
+        "platform": plat or "unknown",
+        "board": platform_info(plat)["name"] if plat else "unknown board",
+        "adevice_is_dra": is_dra_adevice(adevice) or "dra-pi-zero" in adevice.lower(),
     })
 
 
@@ -1260,6 +1272,16 @@ async def api_dra_setup(_auth=Depends(check_auth)):
         out = r.stdout.decode(errors="replace").strip()
         err = r.stderr.decode(errors="replace").strip()
         if r.returncode == 0:
+            # On an Orange Pi the web button only reports status: the one-time
+            # driver build needs internet + several minutes and runs from SSH
+            # (the script says so in its output, prefixed "INFO:").
+            if "INFO:" in out and "REBOOT REQUIRED" not in out:
+                return JSONResponse({
+                    "success": True,
+                    "reboot_required": False,
+                    "output": out,
+                    "message": out.split("INFO:", 1)[1].strip(),
+                })
             return JSONResponse({
                 "success": True,
                 "reboot_required": True,

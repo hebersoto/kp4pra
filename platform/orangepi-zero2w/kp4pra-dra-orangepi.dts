@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: MIT
+/*
+ * KP4PRA TNC - DRA-Pi-Zero (Masters Communications) on the Orange Pi Zero 2W.
+ *
+ * Armbian user overlay (installed by scripts/setup-dra-pi-zero.sh via
+ * armbian-add-overlay). Needs Armbian's sunxi AHUB audio support and the
+ * stock "i2c1-pi" overlay (I2C on header pins 3/5).
+ *
+ *   WM8731 codec on i2c1 (Linux bus i2c-2) at 0x1a. 12.000 MHz crystal.
+ *   Codec is the I2S clock MASTER (as on the Raspberry Pi); AHUB I2S0 is
+ *   the clock slave.
+ *
+ *   Header  Pi signal   H618 pin   Function
+ *   12      PCM_CLK     PI1        i2s0 BCLK
+ *   35      PCM_FS      PI2        i2s0 LRCK
+ *   40      PCM_DOUT    PI3        i2s0_dout0  (SoC -> codec DACDAT, TX)
+ *   38      PCM_DIN     PI4        i2s0_din0   (codec ADCDAT -> SoC, RX)
+ *   29      GPIO5       PI0        NOT claimed: the DRA's blue LED lives here
+ *                                  (PI0 is also I2S0 MCLK, unused - crystal)
+ *
+ * Notes from bring-up (2026-10-12):
+ *  - The AHUB driver selects its "default" pin state only at probe and the
+ *    ASoC core parks idle components in "sleep". The sleep state therefore
+ *    uses the SAME I2S mux as default; a gpio_in sleep state leaves the pins
+ *    disconnected while streaming.
+ *  - kp4pra,xtal-12mhz and kp4pra,ahub-fmt0-reg are read by the KP4PRA-patched
+ *    snd-soc-wm8731 module (DKMS package kp4pra-wm8731): fixed 12 MHz crystal,
+ *    and the AHUB I2S0 LRCK period set to the codec's real frame length
+ *    (125 BCLK/channel at 48 kHz, 136 at 44.1 kHz). Without it the AHUB, as
+ *    clock slave, never latches a frame.
+ *  - 0x05097204 = AHUB base 0x05097000 + I2S0 FMT0 (0x204).
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "allwinner,sun50i-h616";
+
+	fragment@0 {
+		target = <&pio>;
+		__overlay__ {
+			kp4pra_i2s0_pins: kp4pra-i2s0-pins {
+				pins = "PI1", "PI2";
+				function = "i2s0";
+			};
+			kp4pra_i2s0_dout: kp4pra-i2s0-dout {
+				pins = "PI3";
+				function = "i2s0_dout0";
+			};
+			kp4pra_i2s0_din: kp4pra-i2s0-din {
+				pins = "PI4";
+				function = "i2s0_din0";
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&i2c1>;
+		__overlay__ {
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			kp4pra_wm8731: codec@1a {
+				compatible = "wlf,wm8731";
+				reg = <0x1a>;
+				#sound-dai-cells = <0>;
+				kp4pra,xtal-12mhz;
+				kp4pra,ahub-fmt0-reg = <0x05097204>;	/* AHUB I2S0 FMT0 */
+			};
+		};
+	};
+
+	fragment@2 {
+		target-path = "/soc";
+		__overlay__ {
+			kp4pra_ahub0_plat: ahub0_plat {
+				#sound-dai-cells = <0>;
+				compatible = "allwinner,sunxi-snd-plat-ahub";
+				apb_num = <0>;			/* APBIF 0 -> DMA port 3 */
+				dmas = <&dma 3>, <&dma 3>;
+				dma-names = "tx", "rx";
+				playback_cma = <128>;
+				capture_cma = <128>;
+				tx_fifo_size = <128>;
+				rx_fifo_size = <128>;
+				tdm_num = <0>;			/* I2S0 on header pins */
+				tx_pin = <0>;
+				rx_pin = <0>;
+				pinctrl_used;
+				pinctrl-names = "default", "sleep";
+				pinctrl-0 = <&kp4pra_i2s0_pins &kp4pra_i2s0_dout &kp4pra_i2s0_din>;
+				pinctrl-1 = <&kp4pra_i2s0_pins &kp4pra_i2s0_dout &kp4pra_i2s0_din>;
+				status = "okay";
+			};
+
+			ahub0_mach {
+				compatible = "allwinner,sunxi-snd-mach";
+				soundcard-mach,name = "DRAPiZero";
+				soundcard-mach,format = "i2s";
+				soundcard-mach,frame-master = <&kp4pra_ahub0_codec>;
+				soundcard-mach,bitclock-master = <&kp4pra_ahub0_codec>;
+				soundcard-mach,slot-num = <2>;
+				soundcard-mach,slot-width = <32>;
+				status = "okay";
+
+				kp4pra_ahub0_cpu: soundcard-mach,cpu {
+					sound-dai = <&kp4pra_ahub0_plat>;
+					soundcard-mach,pll-fs = <4>;
+					soundcard-mach,mclk-fs = <0>;
+				};
+
+				kp4pra_ahub0_codec: soundcard-mach,codec {
+					sound-dai = <&kp4pra_wm8731>;
+				};
+			};
+		};
+	};
+};

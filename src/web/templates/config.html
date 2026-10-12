@@ -137,7 +137,7 @@
       <input class="form-input" id="st-ptt-param"
              value="{{ config.station.ptt_param if config.station is defined and config.station.ptt_param is defined else '' }}"
              placeholder="(GPIO pin or serial device)">
-      <div class="form-hint">GPIO: pin number (default 25). GPIOD: chip and line, e.g. "gpiochip0 12" (DRA-Pi-Zero). Serial RTS/DTR: device path (default /dev/ttyUSB0). Otherwise leave blank.</div>
+      <div class="form-hint">GPIO: pin number (default 25). GPIOD: chip and line, e.g. "gpiochip0 12" (DRA-Pi-Zero on a Raspberry Pi) or "gpiochip1 267" (DRA-Pi-Zero on an Orange Pi Zero 2W). Serial RTS/DTR: device path (default /dev/ttyUSB0). Otherwise leave blank.</div>
     </div>
     <div class="form-group">
       <label class="form-label" for="st-clock">Clock Source Station</label>
@@ -177,10 +177,14 @@
   <div class="card-title"><span class="icon">🎛️</span> DRA-Pi-Zero (I²S) Setup</div>
   <div class="form-hint" id="dra-status">Checking for DRA-Pi-Zero…</div>
   <p style="margin:0.5rem 0; font-size:0.9rem">
-    For the Masters Communications DRA-Pi-Zero I²S board only. This writes the
-    I²S overlay to config.txt (backed up first), disables onboard and HDMI
-    audio, and <strong>requires a reboot</strong>. The audio mixer is applied
-    automatically on the next boot. USB sound-card users do not need this.
+    For the Masters Communications DRA-Pi-Zero I²S board only. On a Raspberry
+    Pi this writes the I²S overlay to config.txt (backed up first), disables
+    onboard and HDMI audio, and <strong>requires a reboot</strong>. The audio
+    mixer is applied automatically on the next boot. On an Orange Pi Zero 2W
+    the one-time setup builds the codec driver and runs from SSH
+    (<code>sudo bash scripts/setup-dra-pi-zero.sh</code>, see
+    docs/DRA_PI_ZERO.md); this button then reports its status. USB sound-card
+    users do not need this.
   </p>
   <button class="btn btn-secondary" onclick="setupDRA()" id="btn-dra-setup">Set up DRA-Pi-Zero</button>
   <div class="form-hint" id="dra-setup-result" style="margin-top:0.4rem"></div>
@@ -877,7 +881,7 @@ async function refreshDRAStatus() {
     const d = await r.json();
     const el = document.getElementById('dra-status');
     if (d.dra_present) {
-      el.textContent = '✅ DRA-Pi-Zero detected (audioinjectorpi present).';
+      el.textContent = `✅ DRA-Pi-Zero detected (${d.card} on ${d.board}).`;
     } else {
       el.textContent = 'ℹ️ No DRA-Pi-Zero detected — USB or no I²S board. Run setup only if a DRA-Pi-Zero is installed.';
     }
@@ -921,7 +925,8 @@ async function shutdownTNC() {
   // leave the button disabled; the box is powering off
 }
 async function setupDRA() {
-  if (!confirm('This edits /boot config.txt and requires a REBOOT.\n\n' +
+  if (!confirm('Raspberry Pi: this edits /boot config.txt and requires a REBOOT.\n' +
+      'Orange Pi Zero 2W: this only checks the setup done from SSH.\n\n' +
       'The DRA mixer applies automatically on next boot. If no DRA is present ' +
       'after reboot, your existing sound config is unchanged.\n\nProceed?')) return;
   const btn = document.getElementById('btn-dra-setup');
@@ -931,7 +936,7 @@ async function setupDRA() {
     const r = await fetch('/api/dra/setup', {method:'POST'});
     const d = await r.json();
     out.textContent = (d.message || (d.success ? 'Done.' : 'Failed.')) +
-      (d.success ? ' ⚠️ Reboot required now.' : '');
+      (d.success && d.reboot_required ? ' ⚠️ Reboot required now.' : '');
   } catch(e) { out.textContent = 'Setup failed: ' + e; }
   finally { btn.disabled = false; btn.textContent = 'Set up DRA-Pi-Zero'; }
 }

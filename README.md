@@ -142,6 +142,7 @@ told an IP address.
 | `sudoers.d/` | Allowlisted sudo rules |
 | `config/` | Example config.yaml, tmpfiles rule |
 | `scripts/` | install.sh (stage 1), install-direwolf-integration.sh (stage 2), sync-from-system.sh |
+| `platform/` | Board-specific files: `orangepi-zero2w/` DRA-Pi-Zero overlay + WM8731 DKMS package |
 
 ## Installation
 
@@ -200,9 +201,11 @@ Radios / audio:
 - AIOC (All-In-One-Cable) - validated ADEVICE plughw:AllInOneCable,0
 - DigiRig Lite
 - Masters Communications DRA-Pi-Zero (I2S WM8731 codec on the 40-pin
-  header; GPIOD relay PTT on GPIO 12; red PTT / green DCD / blue BT-
-  connected LEDs). Opt-in: scripts/setup-dra-pi-zero.sh. Requires a
-  direwolf built with libgpiod. Validated on RF (RX+TX, digipeated).
+  header; GPIOD relay PTT on header pin 32; red PTT / green DCD / blue
+  Bluetooth LEDs). Opt-in: scripts/setup-dra-pi-zero.sh. Requires a
+  direwolf built with libgpiod. Validated on RF (RX+TX, digipeated) on
+  Raspberry Pi, and (1.4.9) on the Orange Pi Zero 2W with Armbian 26.8.3,
+  kernel 6.18.44-current-sunxi64 - see docs/DRA_PI_ZERO.md.
 - Yaesu FT-991A (USB audio codec + CP210x serial pair, PTT via RTS)
 
 Clients:

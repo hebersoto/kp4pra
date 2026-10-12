@@ -202,6 +202,12 @@ sudo bash scripts/setup-dra-pi-zero.sh
 It enables the I2S overlay, disables onboard audio, sets mixer levels, and adds
 the service user to the gpio group. See docs/DRA_PI_ZERO.md.
 
+**Orange Pi Zero 2W (Armbian):** run the same line once (needs internet, about
+5 minutes). It builds the codec driver for your kernel (DKMS, rebuilt
+automatically after kernel updates), installs the DRA overlay, then asks for a
+reboot. No second run is needed. It needs Armbian's stable repository for the
+kernel headers - see docs/DRA_PI_ZERO.md, "Orange Pi Zero 2W".
+
 The initial direwolf.conf is created automatically by the installer (a minimal
 config is seeded on /rw with a symlink at /home/kp4pra/direwolf.conf). Configure
 your station via the web UI after installation.

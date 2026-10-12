@@ -1,0 +1,60 @@
+#!/bin/bash
+# KP4PRA TNC - DRA-Pi-Zero board/platform table (shell twin of
+# src/common/dra_platform.py; tests/test_dra_platform.py keeps them in sync).
+#
+# Prints shell assignments for the running board. Usage:
+#     eval "$(kp4pra-dra-platform)"
+#     echo "$DRA_PLATFORM $DRA_CARD $DRA_PTT_CHIP $DRA_PTT_LINE"
+#
+#   Header pin  Function             Raspberry Pi        Orange Pi Zero 2W
+#   29          Blue BT LED          gpiochip0 5         gpiochip1 256 (PI0)
+#   32          PTT relay + red LED  gpiochip0 12        gpiochip1 267 (PI11)
+#   36          Green DCD LED        gpiochip0 16        gpiochip1 76  (PC12)
+#   I2S card    ALSA card ID         audioinjectorpi     DRAPiZero
+#
+# Unknown boards print DRA_PLATFORM=unknown and empty values, so callers can
+# refuse to drive pins they do not know.
+
+model=$(tr -d '\0' </proc/device-tree/model 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+case "$model" in
+    *raspberrypi*)
+        cat <<'EOF'
+DRA_PLATFORM=rpi
+DRA_BOARD="Raspberry Pi"
+DRA_CARD=audioinjectorpi
+DRA_PTT_CHIP=gpiochip0
+DRA_PTT_LINE=12
+DRA_DCD_CHIP=gpiochip0
+DRA_DCD_LINE=16
+DRA_LED_CHIP=gpiochip0
+DRA_LED_LINE=5
+EOF
+        ;;
+    *orangepizero2w*)
+        cat <<'EOF'
+DRA_PLATFORM=opi-zero2w
+DRA_BOARD="Orange Pi Zero 2W"
+DRA_CARD=DRAPiZero
+DRA_PTT_CHIP=gpiochip1
+DRA_PTT_LINE=267
+DRA_DCD_CHIP=gpiochip1
+DRA_DCD_LINE=76
+DRA_LED_CHIP=gpiochip1
+DRA_LED_LINE=256
+EOF
+        ;;
+    *)
+        cat <<'EOF'
+DRA_PLATFORM=unknown
+DRA_BOARD="unknown board"
+DRA_CARD=
+DRA_PTT_CHIP=
+DRA_PTT_LINE=
+DRA_DCD_CHIP=
+DRA_DCD_LINE=
+DRA_LED_CHIP=
+DRA_LED_LINE=
+EOF
+        ;;
+esac
+echo "DRA_MODEL=\"$(tr -d '\0"' </proc/device-tree/model 2>/dev/null)\""

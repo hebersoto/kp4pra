@@ -182,7 +182,17 @@ cp "$PROJECT_DIR/systemd/kp4pra-morse-id.service"    /etc/systemd/system/ 2>/dev
 cp "$PROJECT_DIR/systemd/kp4pra-morse-id.timer"      /etc/systemd/system/ 2>/dev/null || true
 
 log "Installing helper scripts to /usr/local/bin"
-usermod -aG gpio kp4pra-tnc 2>/dev/null || true  # blue BT LED on GPIO 5
+# Blue BT LED (DRA-Pi-Zero header pin 29). Raspberry Pi OS ships a gpio group
+# and udev rule; Armbian (Orange Pi) has neither, which made the LED service
+# fail with status=216/GROUP. groupadd -f is a no-op where the group exists.
+groupadd -f gpio
+usermod -aG gpio kp4pra-tnc 2>/dev/null || true
+if ! tr -d '\0' </proc/device-tree/model 2>/dev/null | grep -qi "raspberry pi"; then
+    echo 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' \
+        > /etc/udev/rules.d/60-kp4pra-gpio.rules
+    udevadm control --reload 2>/dev/null || true
+    udevadm trigger --subsystem-match=gpio 2>/dev/null || true
+fi
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-rw"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-ro"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-fix-bt-perms" /usr/local/bin/
@@ -190,6 +200,8 @@ install -m 755 "$PROJECT_DIR/bin/kp4pra-legacy-adv"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-wifi-mode"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-web-redirect" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-bt-led"       /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-platform" /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-i2c-check" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-aprs-clock"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/scripts/setup-dra-pi-zero.sh" /usr/local/bin/
 
