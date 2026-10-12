@@ -115,10 +115,13 @@ sudo mkdir -p /rw
 
 ## 5. KP4PRA TNC — stage 1
 ```bash
-cd ~ && git clone https://github.com/hebersoto/kp4pra.git kp4pra-tnc
+cd ~ && git clone -b dev https://github.com/hebersoto/kp4pra.git kp4pra-tnc
 cd kp4pra-tnc
 sudo bash scripts/install.sh
 ```
+This installs the **development** branch (1.4.x). For the stable release
+(1.3.x, `main` branch) leave out `-b dev`. Already cloned `main`? Switch with
+`git fetch origin && git checkout dev` before running the installer.
 Installs: system user, venv + pinned Python deps, systemd units
 (bridges, web, pairing agent, BlueZ bind mount, perms fix), sudoers,
 helper scripts, tmpfiles rule, bluetoothd -C compat mode, volatile journald.
