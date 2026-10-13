@@ -108,6 +108,11 @@ DEFAULT_CONFIG = {
             },
         },
     },
+    "display": {
+        # Adafruit Mini PiTFT 1.3" (240x240) status screen, kp4pra-tnc-tft:
+        # auto = use it when detected, on = always, off = never.
+        "tft": "auto",
+    },
     "station": {
         "callsign": "",
         "ssid": "",

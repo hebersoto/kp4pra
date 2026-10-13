@@ -1225,6 +1225,17 @@ async def api_dra_status(_auth=Depends(check_auth)):
     })
 
 
+@app.get("/api/tft/status")
+async def api_tft_status(_auth=Depends(check_auth)):
+    """Mini PiTFT display state written by kp4pra-tnc-tft (runtime only)."""
+    st = read_status("tft") or {}
+    return JSONResponse({
+        "state": st.get("state", "not_running"),
+        "detail": st.get("detail", "display service not running"),
+        "mode": st.get("mode", (get_config().get("display", {}) or {}).get("tft", "auto")),
+    })
+
+
 @app.post("/api/system/reboot")
 async def api_system_reboot(_auth=Depends(check_auth)):
     """Reboot the TNC. Backgrounds a short-delayed reboot so this HTTP response

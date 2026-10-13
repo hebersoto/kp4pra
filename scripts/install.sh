@@ -188,7 +188,8 @@ log "Installing helper scripts to /usr/local/bin"
 groupadd -f gpio
 usermod -aG gpio kp4pra-tnc 2>/dev/null || true
 if ! tr -d '\0' </proc/device-tree/model 2>/dev/null | grep -qi "raspberry pi"; then
-    echo 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' \
+    printf '%s\n' 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' \
+        'SUBSYSTEM=="spidev", KERNEL=="spidev*", GROUP="gpio", MODE="0660"' \
         > /etc/udev/rules.d/60-kp4pra-gpio.rules
     udevadm control --reload 2>/dev/null || true
     udevadm trigger --subsystem-match=gpio 2>/dev/null || true
@@ -409,6 +410,15 @@ if [ -x "$PROJECT_DIR/scripts/install-direwolf-integration.sh" ]; then
 else
     warn "Stage 2 script not found - run it manually after building Dire Wolf:"
     warn "  sudo bash scripts/install-direwolf-integration.sh"
+fi
+
+# ── Optional Mini PiTFT display (auto-detected) ─────────────────────────────
+# Always installs the kp4pra-tnc-tft service (Config -> TFT Display); enables
+# SPI only when a Mini PiTFT is plugged in right now. Never fails the install.
+if [ -x "$PROJECT_DIR/scripts/setup-tft.sh" ]; then
+    log "Mini PiTFT display (optional, auto-detect)"
+    bash "$PROJECT_DIR/scripts/setup-tft.sh" --auto \
+        || warn "TFT setup reported errors - re-run: sudo bash scripts/setup-tft.sh"
 fi
 
 echo ""

@@ -1,3 +1,31 @@
+## Mini PiTFT status display — new in 1.4.10
+- Optional Adafruit Mini PiTFT 1.3" (240x240, ST7789) front-panel display,
+  Raspberry Pi and Orange Pi Zero 2W, DejaVu Sans 24 pt. New service
+  kp4pra-tnc-tft (src/tft/), user kp4pra-tnc, system python3.
+- Splash "KP4PRA TNC" in KP4PRA green on white for 10 s at start.
+- Screen 1: call sign + SSID; last 3 frames (red TX / green RX); current
+  packet (SRC>DST, frame type, time); bottom row AP/CL + IP (static).
+  Screen 2: Winlink pending, WiFi devices (AP mode), BT/BLE devices, last 4
+  frames, same bottom row. Long lines scroll.
+- Frame types in UZ7HO Soundmodem style (<SABM C P>, <UA R F>, <RR R F R2>,
+  <I C P S0 R3>, <UI C>, UNKN for XID/TEST), from Dire Wolf's packet log -
+  the only source that also shows our own connected-mode transmissions.
+- Buttons: 23 = screen 1/2 (wakes if off); 24 = screen off/on; 24 held 3 s =
+  one APRS beacon (position, or status beacon without position) via Dire
+  Wolf AGW, independent of the APRS chat page.
+- Detection: the display cannot be read back, so Auto mode probes the
+  buttons' 10 k pull-ups against the SoC pull-downs. Web UI Config ->
+  TFT Display: Auto / On / Off (+ live status); applies within ~10 s.
+- scripts/setup-tft.sh: packages, groups (gpio, systemd-journal, spi on Pi),
+  SPI (Pi dtparam=spi=on with backup; Orange Pi user overlay
+  platform/orangepi-zero2w/kp4pra-tft-orangepi.dts = SPI1 + spidev), service.
+  install.sh runs it with --auto (SPI enabled only when a display is present).
+  udev rule 60-kp4pra-gpio now also covers /dev/spidev* on non-Pi boards.
+- New config key display.tft (default auto), validated.
+- Docs: docs/TFT_DISPLAY.md; README, INSTALL. Tests: tests/test_tft.py
+  (UZ7HO tokens from the field example, screens, buttons, AGW beacon frame).
+- Upgrading from 1.4.9: pull, `sudo bash scripts/deploy-to-system.sh`,
+  `sudo bash scripts/setup-tft.sh`, reboot if it says so.
 ## DRA-Pi-Zero on the Orange Pi Zero 2W + new blue LED behavior — new in 1.4.9
 - DRA-Pi-Zero now works on the **Orange Pi Zero 2W with Armbian** (validated
   2026-10-12: Armbian 26.8.3, kernel 6.18.44-current-sunxi64; RX, TX, all

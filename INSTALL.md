@@ -202,6 +202,11 @@ sudo bash scripts/setup-dra-pi-zero.sh
 It enables the I2S overlay, disables onboard audio, sets mixer levels, and adds
 the service user to the gpio group. See docs/DRA_PI_ZERO.md.
 
+**Optional Mini PiTFT display:** if an Adafruit Mini PiTFT 1.3" is plugged
+in during the install it is detected and enabled automatically (reboot after
+the install). To add one later: `sudo bash scripts/setup-tft.sh`, then reboot.
+See docs/TFT_DISPLAY.md.
+
 **Orange Pi Zero 2W (Armbian):** run the same line once (needs internet, about
 5 minutes). It builds the codec driver for your kernel (DKMS, rebuilt
 automatically after kernel updates), installs the DRA overlay, then asks for a

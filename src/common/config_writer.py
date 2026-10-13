@@ -122,6 +122,11 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
             if not isinstance(pw, str) or (len(pw) != 0 and not (8 <= len(pw) <= 63)):
                 errors.append("wifi.client_password must be 8-63 characters (WPA) or blank")
 
+    if "display" in updates:
+        dp = updates["display"] or {}
+        if "tft" in dp and dp["tft"] not in ("auto", "on", "off"):
+            errors.append("display.tft must be auto, on or off")
+
     if "station" in updates:
         st = updates["station"]
         import re as _re

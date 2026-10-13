@@ -314,8 +314,9 @@ EOF
     # 5. GPIO access (PTT, LEDs) + helpers + Dire Wolf pre-start I2C check.
     echo "-- [5/6] GPIO permissions and helpers"
     groupadd -f gpio
-    echo 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' > /etc/udev/rules.d/60-kp4pra-gpio.rules
-    udevadm control --reload; udevadm trigger --subsystem-match=gpio
+    printf '%s\n' 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' \
+        'SUBSYSTEM=="spidev", KERNEL=="spidev*", GROUP="gpio", MODE="0660"' > /etc/udev/rules.d/60-kp4pra-gpio.rules
+    udevadm control --reload; udevadm trigger --subsystem-match=gpio --subsystem-match=spidev
     local u
     for u in kp4pra kp4pra-tnc; do
         id "$u" >/dev/null 2>&1 && usermod -aG gpio "$u" && echo "  OK  : $u in gpio group"

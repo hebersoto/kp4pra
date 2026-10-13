@@ -208,6 +208,12 @@ Radios / audio:
   kernel 6.18.44-current-sunxi64 - see docs/DRA_PI_ZERO.md.
 - Yaesu FT-991A (USB audio codec + CP210x serial pair, PTT via RTS)
 
+Display (optional):
+- Adafruit Mini PiTFT 1.3" 240x240 (ST7789) - call sign, live traffic in
+  UZ7HO Soundmodem style, Winlink/WiFi/Bluetooth counters, IP; buttons for
+  screen switch, screen off and a 3-second-hold APRS beacon. Raspberry Pi and
+  Orange Pi Zero 2W. Auto-detected at install; see docs/TFT_DISPLAY.md.
+
 Clients:
 - Android APRSDroid (Bluetooth RFCOMM/SPP)
 - Android WoAD (Winlink, Bluetooth RFCOMM/SPP)

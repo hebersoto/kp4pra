@@ -383,6 +383,27 @@
   </p>
 </div>
 
+<!-- TFT display -->
+<div class="card">
+  <div class="card-title"><span class="icon">🖥️</span> TFT Display (Mini PiTFT 1.3")</div>
+  {% set _disp = config.display or {} %}
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="tft-mode">Display</label>
+      <select class="form-select" id="tft-mode">
+        <option value="auto" {% if (_disp.tft or 'auto') == 'auto' %}selected{% endif %}>Auto (use when detected)</option>
+        <option value="on" {% if _disp.tft == 'on' %}selected{% endif %}>On</option>
+        <option value="off" {% if _disp.tft == 'off' %}selected{% endif %}>Off</option>
+      </select>
+      <div class="form-hint">Button 23: screen 1/2 &middot; button 24: screen off/on &middot; hold 24 for 3 s: send APRS beacon.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <div class="form-hint" id="tft-status">Checking…</div>
+    </div>
+  </div>
+</div>
+
 <!-- BLE -->
 <div class="card">
   <div class="card-title"><span class="icon">📡</span> BLE KISS Bridge</div>
@@ -749,6 +770,9 @@ function collectConfig() {
         },
       },
     },
+    display: {
+      tft: document.getElementById('tft-mode').value,
+    },
     aprs: {
       mycall: callWithSsid('aprs-callsign', 'aprs-ssid'),
       digipath: document.getElementById('aprs-path').value.split(',').map(function(x){return x.trim().toUpperCase();}).filter(function(x){return x;}),
@@ -941,6 +965,16 @@ async function setupDRA() {
   finally { btn.disabled = false; btn.textContent = 'Set up DRA-Pi-Zero'; }
 }
 refreshDRAStatus();
+async function refreshTFTStatus() {
+  const el = document.getElementById('tft-status');
+  try {
+    const d = await (await fetch('/api/tft/status')).json();
+    const icon = {running:'✅', not_detected:'ℹ️', off:'⏸️', no_spi:'⚠️',
+                  unsupported:'ℹ️', error:'❌'}[d.state] || 'ℹ️';
+    el.textContent = `${icon} ${d.detail}`;
+  } catch(e) { el.textContent = 'Status check failed: ' + e; }
+}
+refreshTFTStatus();
 
 </script>
 {% endblock %}

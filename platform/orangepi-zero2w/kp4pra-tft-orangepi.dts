@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: MIT
+/*
+ * KP4PRA TNC - Adafruit Mini PiTFT 1.3" (ST7789, 240x240) on the Orange Pi
+ * Zero 2W: enable SPI1 on the 40-pin header with a spidev node for the
+ * kp4pra-tnc-tft service (user space driver, no fbtft).
+ *
+ *   Header  Pi signal  H618  Function
+ *   19      MOSI       PH7   spi1 MOSI
+ *   23      SCLK       PH6   spi1 CLK
+ *   24      CE0        PH5   spi1 CS0
+ *   21      MISO       PH8   spi1 MISO (not connected on the Mini PiTFT)
+ * DC (pin 22, PI6), backlight (pin 15, PI5) and the buttons (pins 16/18,
+ * PI14/PH4) are plain GPIOs driven by the service through libgpiod.
+ *
+ * Installed by scripts/setup-tft.sh via armbian-add-overlay. Shares no pins
+ * with the DRA-Pi-Zero overlay (kp4pra-dra-orangepi).
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "allwinner,sun50i-h616";
+
+	fragment@0 {
+		target = <&pio>;
+		__overlay__ {
+			kp4pra_spi1_pins: kp4pra-spi1-pins {
+				pins = "PH6", "PH7", "PH8";
+				function = "spi1";
+			};
+			kp4pra_spi1_cs0: kp4pra-spi1-cs0 {
+				pins = "PH5";
+				function = "spi1";
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&spi1>;
+		__overlay__ {
+			status = "okay";
+			pinctrl-names = "default";
+			pinctrl-0 = <&kp4pra_spi1_pins &kp4pra_spi1_cs0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			kp4pra_tft_spidev: spidev@0 {
+				compatible = "rohm,dh2228fv";	/* generic spidev binding */
+				reg = <0>;
+				spi-max-frequency = <40000000>;
+			};
+		};
+	};
+};
