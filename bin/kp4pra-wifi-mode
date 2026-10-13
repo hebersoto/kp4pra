@@ -1,9 +1,16 @@
 #!/bin/bash
 # KP4PRA TNC - switch wlan0 between client WiFi and the KP4PRA hotspot.
-# Usage: kp4pra-wifi-mode ap|client|status|boot
+# Usage: kp4pra-wifi-mode ap|client|status|security|boot
 # Parameters validated on Pi Zero 2 W (brcmfmac): explicit RSN/CCMP,
 # PMF disabled (chip's AP mode fails 802.1X setup with PMF), pinned
 # channel, rfkill/country pre-flight.
+# Hotspot security (wifi.ap_security: auto | wpa2 | open, default auto):
+# auto = WPA2 everywhere except the Orange Pi Zero 2W onboard WiFi
+# (Unisoc UWE5622, driver unisoc_wifi/sprdwl): that driver starts a WPA2
+# hotspot but never completes a client's WPA2 handshake (EAPOL is not passed
+# to wpa_supplicant, no AP-PSK handshake offload) and hostapd cannot drive
+# it, so there the hotspot is open (no WiFi password). Field-tested
+# 2026-10-13 on Armbian 26.11 trunk, kernel 6.18.
 CONF="/rw/kp4pra-tnc/config.yaml"
 val() { python3 -c "
 import yaml,sys
@@ -19,6 +26,22 @@ SSID="$(val ssid KP4PRA)"
 PASS="$(val password qwerty1234)"
 CHAN="$(val channel 6)"
 APIP="172.16.0.1"
+
+wifi_driver() {
+    basename "$(readlink -f /sys/class/net/wlan0/device/driver 2>/dev/null)" 2>/dev/null
+}
+
+# wpa2 or open, from wifi.ap_security and the WiFi driver
+ap_security() {
+    case "$(val ap_security auto)" in
+        open) echo open ;;
+        wpa2) echo wpa2 ;;
+        *) case "$(wifi_driver)" in
+               *unisoc*|*sprd*|*uwe5622*) echo open ;;
+               *) echo wpa2 ;;
+           esac ;;
+    esac
+}
 
 preflight() {
     rfkill unblock wifi 2>/dev/null || rfkill unblock all 2>/dev/null
@@ -51,15 +74,25 @@ case "$1" in
   ap)
     preflight
     nmcli connection delete KP4PRA-AP >/dev/null 2>&1
-    nmcli connection add type wifi ifname wlan0 con-name KP4PRA-AP autoconnect no \
-        ssid "$SSID" 802-11-wireless.mode ap 802-11-wireless.band bg \
-        802-11-wireless.channel "$CHAN" \
-        wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
-        wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp \
-        wifi-sec.pmf disable \
-        ipv4.method shared ipv4.addresses ${APIP}/24 >/dev/null
+    SEC="$(ap_security)"
+    if [ "$SEC" = open ]; then
+        nmcli connection add type wifi ifname wlan0 con-name KP4PRA-AP autoconnect no \
+            ssid "$SSID" 802-11-wireless.mode ap 802-11-wireless.band bg \
+            802-11-wireless.channel "$CHAN" \
+            ipv4.method shared ipv4.addresses ${APIP}/24 >/dev/null
+        NOTE="open hotspot, no WiFi password - set a Dashboard password"
+    else
+        nmcli connection add type wifi ifname wlan0 con-name KP4PRA-AP autoconnect no \
+            ssid "$SSID" 802-11-wireless.mode ap 802-11-wireless.band bg \
+            802-11-wireless.channel "$CHAN" \
+            wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
+            wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp \
+            wifi-sec.pmf disable \
+            ipv4.method shared ipv4.addresses ${APIP}/24 >/dev/null
+        NOTE="WPA2"
+    fi
     nmcli connection up KP4PRA-AP && \
-      echo "AP mode: SSID $SSID, web UI at http://$APIP/ (client WiFi disconnected)"
+      echo "AP mode: SSID $SSID ($NOTE), web UI at http://$APIP/ (client WiFi disconnected)"
     ;;
   client)
     nmcli connection down KP4PRA-AP >/dev/null 2>&1
@@ -79,6 +112,10 @@ case "$1" in
   status)
     nmcli -t -f NAME connection show --active 2>/dev/null | grep -q "^KP4PRA-AP$" \
       && echo "ap" || echo "client"
+    ;;
+  security)
+    # Hotspot security that "ap" would use: wpa2 or open
+    ap_security
     ;;
   boot)
     CLIENT_SSID="$(val client_ssid '')"
@@ -103,5 +140,5 @@ case "$1" in
     echo "Boot: client WiFi not joined after 5 min -> AP mode fallback"
     exec "$0" ap
     ;;
-  *) echo "Usage: kp4pra-wifi-mode ap|client|status|boot"; exit 1 ;;
+  *) echo "Usage: kp4pra-wifi-mode ap|client|status|security|boot"; exit 1 ;;
 esac

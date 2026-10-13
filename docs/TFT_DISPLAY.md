@@ -103,7 +103,9 @@ show no `via`.
 Client mode turns the hotspot off and joins the client WiFi set in
 Config -> WiFi. With no client WiFi configured, WiFi stays disconnected and
 the bottom row shows `CL` with the wired / USB Ethernet address (if any).
-Access Point mode needs `dnsmasq-base` (installed by the installer). If the
+Access Point mode needs `dnsmasq-base` (installed by the installer). On
+the Orange Pi Zero 2W the hotspot is open (no WiFi password; its onboard
+WiFi cannot complete WPA2 joins) - see INSTALL.md. If the
 switch fails the screen shows "WiFi switch failed" in red; details in
 `journalctl -u kp4pra-tnc-tft -b`.
 

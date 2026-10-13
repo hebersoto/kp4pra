@@ -170,8 +170,20 @@ Hotspot defaults (change them on the Config page / in
 | Setting | Default |
 |---|---|
 | SSID | `KP4PRA` |
-| Password | `qwerty1234` |
+| Password | `qwerty1234` (Raspberry Pi; Orange Pi Zero 2W: none, see below) |
 | Web UI | `http://172.16.0.1/` |
+
+> **Orange Pi Zero 2W: the hotspot is open (no WiFi password).** Its
+> onboard WiFi (Unisoc UWE5622, Armbian driver `unisoc_wifi`) starts a
+> WPA2 hotspot but phones can never finish joining it ("Unable to join"),
+> and `hostapd` cannot drive that chip. So on this board the hotspot is
+> created without a WiFi password. Anyone nearby can join it, so **set a
+> Dashboard password** (Config -> Dashboard Security) before using AP mode
+> in the field. Secure alternatives: client mode (for example joining your
+> phone's Personal Hotspot) or USB Ethernet. To force a setting, use
+> `wifi.ap_security: wpa2 | open` in /rw/kp4pra-tnc/config.yaml (default
+> `auto`), then `sudo kp4pra-wifi-mode ap`. `sudo kp4pra-wifi-mode security`
+> shows what the hotspot will use.
 
 **Boot behavior:**
 - `wifi.client_ssid` **blank** → the TNC boots straight into AP mode

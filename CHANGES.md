@@ -1,4 +1,15 @@
 ## Config page wording - new in 1.4.12
+- Orange Pi Zero 2W hotspot is now open (no WiFi password). Its onboard
+  WiFi (Unisoc UWE5622, driver unisoc_wifi) starts a WPA2 hotspot but no
+  client can complete the WPA2 handshake ("Unable to join"), with any
+  PMF/cipher combination; hostapd cannot drive the chip ("Could not
+  configure driver mode", no AP type change, no virtual AP). Field-tested
+  on Armbian 26.11 trunk, kernel 6.18.44.
+  New `wifi.ap_security: auto | wpa2 | open` (default auto = open only on
+  the unisoc/sprd driver, WPA2 everywhere else - Raspberry Pi unchanged).
+  `kp4pra-wifi-mode security` prints the effective setting; /api/wifi/status
+  reports `ap_security`. INSTALL.md: set a Dashboard password before using
+  the open hotspot.
 - Config page header: "Changes are written atomically" now reads "Changes
   are saved when you press Save or Apply on each card" (plain language;
   config.yaml is still written atomically - temp file + rename).

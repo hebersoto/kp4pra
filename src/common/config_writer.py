@@ -121,6 +121,8 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
             pw = wf["client_password"]
             if not isinstance(pw, str) or (len(pw) != 0 and not (8 <= len(pw) <= 63)):
                 errors.append("wifi.client_password must be 8-63 characters (WPA) or blank")
+        if "ap_security" in wf and wf["ap_security"] not in ("auto", "wpa2", "open"):
+            errors.append("wifi.ap_security must be auto, wpa2 or open")
 
     if "display" in updates:
         dp = updates["display"] or {}

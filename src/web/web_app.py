@@ -1074,9 +1074,16 @@ async def api_wifi_status(_auth=Depends(check_auth)):
         mode = r.stdout.decode(errors="replace").strip() or "unknown"
     except Exception as e:
         mode = f"error: {e}"
+    try:
+        r = subprocess.run(["/usr/local/bin/kp4pra-wifi-mode", "security"],
+                           capture_output=True, timeout=10)
+        ap_security = r.stdout.decode(errors="replace").strip() or "wpa2"
+    except Exception:
+        ap_security = "wpa2"
     cfg = load_config()
     return JSONResponse({
         "mode": mode,
+        "ap_security": ap_security,
         "client_ssid": cfg.get("wifi", {}).get("client_ssid", ""),
     })
 
