@@ -38,7 +38,10 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
 - **WiFi access point (field mode)**: the TNC can broadcast its own
   network (default SSID KP4PRA) so a phone joins it directly and reaches
   the web UI at http://172.16.0.1/ - no home WiFi needed. Switchable
-  between client and AP modes; NetworkManager-based.
+  between client and AP modes; NetworkManager-based. WPA2-protected on the
+  Raspberry Pi; **open (no WiFi password) on the Orange Pi Zero 2W**, whose
+  onboard WiFi cannot complete WPA2 hotspot joins - set a Dashboard
+  password there (INSTALL.md section 6b, `wifi.ap_security`).
 - **Web UI** (FastAPI + Jinja2, mobile-friendly): dashboard with live
   status, Bluetooth pairing wizards for Android and iPhone, service
   control (bridges + Dire Wolf), live Dire Wolf traffic view, and a
@@ -158,6 +161,9 @@ See **[CHANGES.md](CHANGES.md)** for every fix from on-device bring-up
 Boards:
 - **Orange Pi Zero 2W** (1GB, Unisoc UWE5622 WiFi5/BT5.0) — Debian trixie,
   Python 3.13, BlueZ 5.7x. Reference unit: full RFCOMM + BLE, on RF.
+  Hotspot: open only (no WiFi password) - the Armbian `unisoc_wifi` driver
+  starts a WPA2 hotspot but clients never finish joining, and hostapd cannot
+  drive the chip (tested Armbian 26.11 trunk, kernel 6.18.44).
 - **Raspberry Pi 3 Model B+** (CYW43455, BT 4.2) — Raspberry Pi OS Lite
   32-bit Bookworm, Python 3.11, BlueZ 5.66, kernel 6.12.9x. Full automated
   install validated (chained stage 2, port-80 redirect). BLE works via the

@@ -1,4 +1,9 @@
 ## WiFi fixes (backport from 1.4.11/1.4.12) - new in 1.3.23
+- Docs/UI for the open Orange Pi hotspot: INSTALL.md (WiFi note in step 1,
+  end of install, first-boot check), README.md (features, validated
+  hardware); Services page shows
+  "AP (hotspot, open - no WiFi password)" and warns before switching to AP;
+  the installer warns at the end when the hotspot is open.
 - Orange Pi Zero 2W hotspot is now open (no WiFi password). Its onboard
   WiFi (Unisoc UWE5622, driver unisoc_wifi) starts a WPA2 hotspot but no
   client can complete the WPA2 handshake ("Unable to join"), with any
