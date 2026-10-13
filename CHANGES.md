@@ -1,3 +1,7 @@
+## Config page wording - new in 1.4.12
+- Config page header: "Changes are written atomically" now reads "Changes
+  are saved when you press Save or Apply on each card" (plain language;
+  config.yaml is still written atomically - temp file + rename).
 ## Mini PiTFT: shorter monitor lines + WiFi mode button — new in 1.4.11
 - Traffic lines start with FROM>TO for every frame, RX and TX
   ("KP3M-11>WP4DMD-2 <RR R F R3>"), with short monitor tokens and no Pid/Len:
