@@ -1,9 +1,16 @@
 #!/bin/bash
 # KP4PRA TNC - switch wlan0 between client WiFi and the KP4PRA hotspot.
-# Usage: kp4pra-wifi-mode ap|client|status|boot
+# Usage: kp4pra-wifi-mode ap|client|status|security|boot
 # Parameters validated on Pi Zero 2 W (brcmfmac): explicit RSN/CCMP,
 # PMF disabled (chip's AP mode fails 802.1X setup with PMF), pinned
 # channel, rfkill/country pre-flight.
+# Hotspot security (wifi.ap_security: auto | wpa2 | open, default auto):
+# auto = WPA2 everywhere except the Orange Pi Zero 2W onboard WiFi
+# (Unisoc UWE5622, driver unisoc_wifi/sprdwl): that driver starts a WPA2
+# hotspot but never completes a client's WPA2 handshake (EAPOL is not passed
+# to wpa_supplicant, no AP-PSK handshake offload) and hostapd cannot drive
+# it, so there the hotspot is open (no WiFi password). Field-tested
+# 2026-10-13 on Armbian 26.11 trunk, kernel 6.18.
 CONF="/rw/kp4pra-tnc/config.yaml"
 val() { python3 -c "
 import yaml,sys
@@ -20,6 +27,22 @@ PASS="$(val password qwerty1234)"
 CHAN="$(val channel 6)"
 APIP="172.16.0.1"
 
+wifi_driver() {
+    basename "$(readlink -f /sys/class/net/wlan0/device/driver 2>/dev/null)" 2>/dev/null
+}
+
+# wpa2 or open, from wifi.ap_security and the WiFi driver
+ap_security() {
+    case "$(val ap_security auto)" in
+        open) echo open ;;
+        wpa2) echo wpa2 ;;
+        *) case "$(wifi_driver)" in
+               *unisoc*|*sprd*|*uwe5622*) echo open ;;
+               *) echo wpa2 ;;
+           esac ;;
+    esac
+}
+
 preflight() {
     rfkill unblock wifi 2>/dev/null || rfkill unblock all 2>/dev/null
     # NM keeps its own software radio switch (separate from rfkill); it is
@@ -29,39 +52,11 @@ preflight() {
     iw reg get 2>/dev/null | grep -q "country 00" && iw reg set US 2>/dev/null
 }
 
-case "$1" in
-  ap)
-    preflight
-    nmcli connection delete KP4PRA-AP >/dev/null 2>&1
-    nmcli connection add type wifi ifname wlan0 con-name KP4PRA-AP autoconnect no \
-        ssid "$SSID" 802-11-wireless.mode ap 802-11-wireless.band bg \
-        802-11-wireless.channel "$CHAN" \
-        wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
-        wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp \
-        wifi-sec.pmf disable \
-        ipv4.method shared ipv4.addresses ${APIP}/24 >/dev/null
-    nmcli connection up KP4PRA-AP && \
-      echo "AP mode: SSID $SSID, web UI at http://$APIP/ (client WiFi disconnected)"
-    ;;
-  client)
-    nmcli connection down KP4PRA-AP 2>/dev/null
-    nmcli device connect wlan0 2>/dev/null || true
-    echo "Client mode: rejoining configured WiFi"
-    ;;
-  status)
-    nmcli -t -f NAME connection show --active 2>/dev/null | grep -q "^KP4PRA-AP$" \
-      && echo "ap" || echo "client"
-    ;;
-  boot)
-    CLIENT_SSID="$(val client_ssid '')"
-    # No client network configured -> come up as the KP4PRA hotspot.
-    if [ -z "$CLIENT_SSID" ]; then
-        echo "Boot: no client WiFi configured -> AP mode"
-        exec "$0" ap
-    fi
-    # Client network configured: ensure a NM profile exists for it, then
-    # wait up to 5 minutes for association; fall back to AP if it never joins.
-    preflight
+# Make sure a NetworkManager profile exists for the configured client WiFi.
+# Never use "nmcli device connect wlan0" to get back to client mode: it also
+# considers profiles with autoconnect=no and picks KP4PRA-AP again when it is
+# the only (or best) profile, so the board silently stays in AP mode.
+ensure_client_profile() {
     CLIENT_PASS="$(val client_password '')"
     if ! nmcli -t -f NAME connection show | grep -qx "$CLIENT_SSID"; then
         if [ -n "$CLIENT_PASS" ]; then
@@ -73,9 +68,69 @@ case "$1" in
                 ssid "$CLIENT_SSID" autoconnect yes 2>/dev/null
         fi
     fi
-    nmcli connection up "$CLIENT_SSID" 2>/dev/null || nmcli device connect wlan0 2>/dev/null || true
+}
+
+case "$1" in
+  ap)
+    preflight
+    nmcli connection delete KP4PRA-AP >/dev/null 2>&1
+    SEC="$(ap_security)"
+    if [ "$SEC" = open ]; then
+        nmcli connection add type wifi ifname wlan0 con-name KP4PRA-AP autoconnect no \
+            ssid "$SSID" 802-11-wireless.mode ap 802-11-wireless.band bg \
+            802-11-wireless.channel "$CHAN" \
+            ipv4.method shared ipv4.addresses ${APIP}/24 >/dev/null
+        NOTE="open hotspot, no WiFi password - set a Dashboard password"
+    else
+        nmcli connection add type wifi ifname wlan0 con-name KP4PRA-AP autoconnect no \
+            ssid "$SSID" 802-11-wireless.mode ap 802-11-wireless.band bg \
+            802-11-wireless.channel "$CHAN" \
+            wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
+            wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp \
+            wifi-sec.pmf disable \
+            ipv4.method shared ipv4.addresses ${APIP}/24 >/dev/null
+        NOTE="WPA2"
+    fi
+    nmcli connection up KP4PRA-AP && \
+      echo "AP mode: SSID $SSID ($NOTE), web UI at http://$APIP/ (client WiFi disconnected)"
+    ;;
+  client)
+    nmcli connection down KP4PRA-AP >/dev/null 2>&1
+    CLIENT_SSID="$(val client_ssid '')"
+    if [ -z "$CLIENT_SSID" ]; then
+        echo "Client mode: hotspot off. No client WiFi configured (Config -> WiFi), so WiFi stays disconnected."
+        exit 0
+    fi
+    preflight
+    ensure_client_profile
+    if nmcli connection up "$CLIENT_SSID" >/dev/null 2>&1; then
+        echo "Client mode: joined '$CLIENT_SSID'"
+    else
+        echo "Client mode: hotspot off, '$CLIENT_SSID' not in range yet (NetworkManager keeps trying)"
+    fi
+    ;;
+  status)
+    nmcli -t -f NAME connection show --active 2>/dev/null | grep -q "^KP4PRA-AP$" \
+      && echo "ap" || echo "client"
+    ;;
+  security)
+    # Hotspot security that "ap" would use: wpa2 or open
+    ap_security
+    ;;
+  boot)
+    CLIENT_SSID="$(val client_ssid '')"
+    # No client network configured -> come up as the KP4PRA hotspot.
+    if [ -z "$CLIENT_SSID" ]; then
+        echo "Boot: no client WiFi configured -> AP mode"
+        exec "$0" ap
+    fi
+    # Client network configured: ensure a NM profile exists for it, then
+    # wait up to 5 minutes for association; fall back to AP if it never joins.
+    preflight
+    ensure_client_profile
+    nmcli connection up "$CLIENT_SSID" 2>/dev/null || true
     echo "Boot: waiting up to 5 min for client WiFi '$CLIENT_SSID'..."
-    for i in $(seq 1 60); do
+    for _ in $(seq 1 60); do
         if nmcli -t -f DEVICE,STATE device | grep -q "^wlan0:connected$"; then
             echo "Boot: joined '$CLIENT_SSID' (client mode)"
             exit 0
@@ -85,5 +140,5 @@ case "$1" in
     echo "Boot: client WiFi not joined after 5 min -> AP mode fallback"
     exec "$0" ap
     ;;
-  *) echo "Usage: kp4pra-wifi-mode ap|client|status|boot"; exit 1 ;;
+  *) echo "Usage: kp4pra-wifi-mode ap|client|status|security|boot"; exit 1 ;;
 esac

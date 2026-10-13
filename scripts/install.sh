@@ -48,7 +48,11 @@ log "Starting KP4PRA TNC installation..."
 # ── Auto-install prerequisite packages (Debian/Ubuntu) ───────────────────────
 # On a fresh image these are usually missing; install them up front so the
 # checks below pass on the first run. Idempotent: apt skips what's present.
-PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager libgpiod-dev avahi-daemon avahi-utils"
+# dnsmasq-base: NetworkManager's shared (hotspot) mode needs it for DHCP/DNS.
+# It is only a Recommends of network-manager, so minimal images (Armbian)
+# lack it and "kp4pra-wifi-mode ap" fails with "IP configuration could not
+# be reserved".
+PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils"
 if command -v apt-get >/dev/null 2>&1; then
     step "Installing prerequisite packages: $PREREQS"
     export DEBIAN_FRONTEND=noninteractive

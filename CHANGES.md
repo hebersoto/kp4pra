@@ -1,3 +1,23 @@
+## WiFi fixes (backport from 1.4.11/1.4.12) - new in 1.3.23
+- Orange Pi Zero 2W hotspot is now open (no WiFi password). Its onboard
+  WiFi (Unisoc UWE5622, driver unisoc_wifi) starts a WPA2 hotspot but no
+  client can complete the WPA2 handshake ("Unable to join"), with any
+  PMF/cipher combination; hostapd cannot drive the chip. New
+  `wifi.ap_security: auto | wpa2 | open` (default auto = open only on the
+  unisoc/sprd driver, WPA2 everywhere else - Raspberry Pi unchanged).
+  `kp4pra-wifi-mode security` prints the effective setting; /api/wifi/status
+  reports `ap_security`. INSTALL.md: set a Dashboard password first.
+- Fix: switching to Client mode re-activated the hotspot. `nmcli device
+  connect wlan0` also picks autoconnect=no profiles, and KP4PRA-AP was the
+  only one on a board with no client WiFi. Client mode now brings the
+  hotspot down and joins only the configured client SSID (same fix on the
+  boot path).
+- Fix: `dnsmasq-base` added to the installer prerequisites. NetworkManager's
+  shared (AP) mode needs it; without it "kp4pra-wifi-mode ap" failed with
+  "IP configuration could not be reserved".
+- Upgrading: pull, `sudo bash scripts/deploy-to-system.sh`,
+  `sudo install -m 755 bin/kp4pra-wifi-mode /usr/local/bin/`,
+  `sudo apt-get install -y dnsmasq-base`, `sudo systemctl restart kp4pra-tnc-web`.
 ## Config page wording - new in 1.3.22
 - Config page header: "Changes are written atomically" now reads "Changes
   are saved when you press Save or Apply on each card" (plain language;

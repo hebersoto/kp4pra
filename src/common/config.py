@@ -74,6 +74,7 @@ DEFAULT_CONFIG = {
         "ssid": "",
         "password": "qwerty1234",
         "channel": 6,
+        "ap_security": "auto",   # auto | wpa2 | open (auto: open on Orange Pi Zero 2W onboard WiFi)
         "mode_at_boot": "client",
         "client_ssid": "",
         "client_password": "",
