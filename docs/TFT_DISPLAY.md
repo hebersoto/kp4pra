@@ -74,6 +74,23 @@ never shown, and path entries not yet used (e.g. our own beacon going out
 with `WIDE2-2`, or a connect request via a digipeater before it repeats it)
 show no `via`.
 
+## Screen saver
+
+- No RX/TX traffic for **3 minutes**: the station callsign (without SSID,
+  e.g. `KP4PRA`) crawls around the screen like the centipede of the Atari
+  arcade game - one letter per body segment, red head, wiggling legs, no
+  mushrooms. Its path is random; leaving one edge it comes back in on the
+  opposite edge.
+- After **2 minutes** of centipede the screen goes black (display and
+  backlight off).
+- RX or TX traffic brings back the screen you were on, with the new packet.
+- A button press (23 or 24, short or long) while the centipede runs or the
+  screen is black only wakes the screen you were on; it does not switch
+  screens, turn it off, send a beacon or switch WiFi. After that the buttons
+  work normally.
+- A screen turned off with button 24 stays off (no saver, traffic does not
+  turn it on).
+
 ## Buttons
 
 | Button | Action |

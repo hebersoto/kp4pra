@@ -31,6 +31,11 @@
   connected), after the callsigns: "KP3M-11>WP4DMD-2 via KP4DIG-1 <RR R F R3>".
   Only used path entries (up to Dire Wolf's "*" mark) are shown; WIDEn-N
   aliases are always left out.
+- TFT screen saver: after 3 min without traffic the callsign crawls around
+  the screen like the Atari centipede (random path, wraps at the edges, no
+  mushrooms; src/tft/saver.py); 2 min later the screen goes black. RX/TX
+  traffic brings the screen back with the data; a button press only wakes
+  the screen (no action), then buttons work as before.
 - TFT shows "WiFi switch failed" (red) when kp4pra-wifi-mode returns an error
   instead of leaving the mode splash up.
 - Upgrading from 1.4.10: pull, `sudo bash scripts/deploy-to-system.sh`,

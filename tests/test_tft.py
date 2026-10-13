@@ -12,7 +12,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from tft import beacon, monitor, render, status   # noqa: E402
+from tft import beacon, monitor, render, saver, status   # noqa: E402
 
 try:
     from tft import main as tftmain                  # noqa: E402
@@ -211,6 +211,9 @@ class Buttons(unittest.TestCase):
         def sleep(self, on):
             self.sleeping = on
 
+        def show(self, img):
+            pass
+
     def make(self):
         d = tftmain.Display(self.Dev())
         return d
@@ -257,6 +260,83 @@ class Buttons(unittest.TestCase):
         self.assertEqual(actions.count("beacon"), 1)
         self.press(d, False, False, 4.6)
         self.assertFalse(d.off)                # long press does not blank the screen
+
+
+@unittest.skipIf(tftmain is None, "tft.main import failed")
+class ScreenSaver(unittest.TestCase):
+    def make(self, t0=1000.0):
+        d = tftmain.Display(Buttons.Dev())
+        d.last_activity, d.splash_until = t0, 0
+        d.sys = {"call": "KP4PRA-10"}
+        return d
+
+    def test_centipede_after_3_min_then_black_after_2(self):
+        d = self.make()
+        d.saver_tick(1000 + 179)
+        self.assertIsNone(d.saver)
+        d.saver_tick(1000 + 180)
+        self.assertEqual(d.saver, "worm")
+        self.assertEqual(d.worm.word, "KP4PRA")
+        d.saver_tick(1000 + 180 + 119)
+        self.assertEqual(d.saver, "worm")
+        d.saver_tick(1000 + 180 + 120)
+        self.assertEqual(d.saver, "blank")
+        self.assertTrue(d.dev.sleeping)
+
+    def test_traffic_wakes_with_data(self):
+        d = self.make()
+        d.saver_tick(1200); d.saver_tick(1400)
+        self.assertEqual(d.saver, "blank")
+        d.traffic_seen = True
+        d.saver_tick(1401)
+        self.assertIsNone(d.saver)
+        self.assertFalse(d.dev.sleeping)
+        d.saver_tick(1401 + 179)             # idle time restarts from the traffic
+        self.assertIsNone(d.saver)
+
+    def test_button_only_wakes_then_works_normally(self):
+        for btn in ((True, False), (False, True)):
+            d = self.make()
+            d.saver_tick(1200)
+            self.assertEqual(d.saver, "worm")
+            acts = [d.on_buttons(*btn, 1200 + k / 10) for k in range(0, 45)]  # even held 4.5 s
+            d.on_buttons(False, False, 1205)
+            self.assertEqual(acts.count(None), len(acts))     # no wifi / beacon
+            self.assertIsNone(d.saver)
+            self.assertEqual((d.screen, d.off), (1, False))   # same screen, still on
+            d.on_buttons(True, False, 1206); d.on_buttons(False, False, 1206.1)
+            self.assertEqual(d.screen, 2)                     # buttons work again
+
+    def test_no_saver_when_screen_turned_off(self):
+        d = self.make()
+        d.set_off(True)
+        d.saver_tick(2000)
+        self.assertIsNone(d.saver)
+
+
+class Centipede(unittest.TestCase):
+    def test_moves_one_cell_wraps_and_never_reverses(self):
+        import random
+        c = saver.Centipede("KP4PRA", rng=random.Random(7))
+        for _ in range(500):
+            d0 = c.dir
+            c.step()
+            self.assertNotEqual(c.dir, (-d0[0], -d0[1]))
+            self.assertEqual(len(c.cells), 6)
+            for (ax, ay), (bx, by) in zip(c.cells, c.cells[1:]):   # body stays joined
+                self.assertEqual(abs(c._delta(ax, bx)) + abs(c._delta(ay, by)), 1)
+            for x, y in c.cells:
+                self.assertTrue(0 <= x < saver.GRID and 0 <= y < saver.GRID)
+
+    def test_render_and_word(self):
+        self.assertEqual(saver.word_for("KP4PRA-10"), "KP4PRA")
+        self.assertEqual(saver.word_for(""), "KP4PRA")
+        c = saver.Centipede("NP4JM-7")
+        img = c.render(0.12)
+        self.assertEqual(img.size, (240, 240))
+        colors = [col for _, col in img.getcolors(65536)]
+        self.assertIn(saver.HEAD, colors)
+        self.assertIn(saver.BODY, colors)
 
 
 if __name__ == "__main__":

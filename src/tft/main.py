@@ -17,6 +17,12 @@ Behavior
   - Button 24: screen off / on (any button wakes it on the same screen).
   - Button 24 held >= 3 s: send one APRS beacon (position, or status text
     when no position is configured).
+  - Screen saver: no traffic for 3 min -> the callsign crawls around the
+    screen like the Atari centipede (src/tft/saver.py); 2 min later the
+    screen goes black. RX/TX traffic brings back the screen with the data.
+    A button press while the saver runs only wakes the screen (no action);
+    after that the buttons work as above. A screen turned off with button 24
+    stays off.
 Status for the web UI: /run/kp4pra-tnc/tft.json
 """
 
@@ -29,7 +35,7 @@ import time
 
 from common.config import load_config, reload_config
 from common.runtime_status import write_status
-from tft import beacon, hw, monitor, render, status
+from tft import beacon, hw, monitor, render, saver, status
 
 SPLASH_S = 10
 LONG_PRESS_S = 3.0
@@ -37,6 +43,9 @@ CONFIG_POLL_S = 10
 STATUS_POLL_S = 5
 FRAME_HISTORY = 20
 TOAST_S = 3
+SAVER_AFTER_S = 180          # no traffic for 3 min -> centipede
+SAVER_BLANK_S = 120          # centipede for 2 min -> black screen
+SAVER_FRAME_S = 0.1          # centipede animation, 10 frames/s
 
 
 def log(msg):
@@ -73,6 +82,12 @@ class Display:
         self._prev = (False, False)
         self._b_down = None
         self._b_fired = False
+        self.saver = None            # None | "worm" | "blank"
+        self.saver_since = 0.0
+        self.worm = None
+        self.last_activity = time.time()
+        self.traffic_seen = False
+        self._swallow = False        # button press that woke the saver
 
     # ---- data feeds ----
     def journal_reader(self):
@@ -89,6 +104,7 @@ class Display:
                         with self.lock:
                             self.frames.append(fr)
                             self.current = fr
+                            self.traffic_seen = True
                             self.dirty = True
                 proc.terminate()
             except Exception as e:
@@ -158,6 +174,40 @@ class Display:
                 self.dev.sleep(off)
             self.dirty = True
 
+    # ---- screen saver ----
+    def enter_saver(self, now):
+        call = (self.sys or {}).get("call", "")
+        self.worm = saver.Centipede(call, now=now)
+        self.saver, self.saver_since = "worm", now
+        log("no traffic for %d s - screen saver" % SAVER_AFTER_S)
+
+    def exit_saver(self, now):
+        with self.dev_lock:
+            if self.saver == "blank":
+                self.dev.sleep(False)
+            self.saver = None
+        self.worm = None
+        self.last_activity = now
+        self.dirty = True
+
+    def saver_tick(self, now):
+        """Start the saver after SAVER_AFTER_S idle, blank it SAVER_BLANK_S later."""
+        with self.lock:
+            traffic, self.traffic_seen = self.traffic_seen, False
+        if traffic:
+            self.last_activity = now
+            if self.saver:
+                self.exit_saver(now)
+            return
+        if self.saver is None:
+            if not self.off and now >= self.splash_until \
+                    and now - self.last_activity >= SAVER_AFTER_S:
+                self.enter_saver(now)
+        elif self.saver == "worm" and now - self.saver_since >= SAVER_BLANK_S:
+            with self.dev_lock:
+                self.saver = "blank"
+                self.dev.sleep(True)
+
     # ---- render ----
     def draw(self, t):
         with self.lock:
@@ -189,9 +239,22 @@ class Display:
         23 (A) held 3 s: switch WiFi Client <-> Access Point, once.
         24 (B) release before 3 s: screen off <-> on.
         24 (B) held 3 s: send a beacon once (no off/on on release).
+        While the screen saver runs, a press only wakes the screen: nothing
+        else happens until both buttons are released.
         Returns "beacon" or "wifi" when that action must run, else None."""
         action = None
         pa, pb = self._prev
+        if (a and not pa) or (b and not pb):
+            self.last_activity = now
+        if self.saver and (a or b):
+            self.exit_saver(now)
+            self._swallow = True
+        if self._swallow:
+            if not a and not b:
+                self._swallow = False
+            self._a_down = self._b_down = None
+            self._prev = (a, b)
+            return None
         if a and not pa:
             self._a_down, self._a_fired = now, False
         if a and self._a_down is not None and not self._a_fired \
@@ -247,8 +310,16 @@ class Display:
                     log("display.tft_rotation changed - restarting display")
                     return
 
+            self.saver_tick(now)
+            if self.saver == "worm":
+                if now - last_draw >= SAVER_FRAME_S:
+                    self.worm.update(now)
+                    with self.dev_lock:
+                        if self.saver == "worm":
+                            self.dev.show(self.worm.render(now))
+                    last_draw = now
             # Redraw on new data, and 4x/s for the scrolling (marquee) rows.
-            if not self.off and now >= self.splash_until:
+            elif self.saver is None and not self.off and now >= self.splash_until:
                 if self.dirty or now - last_draw >= 0.25:
                     self.dirty = False
                     self.draw(now)
