@@ -40,6 +40,11 @@ def log(msg):
     print("[KP4PRA TFT] %s" % msg, flush=True)
 
 
+def tft_rotation(cfg) -> int:
+    r = str((cfg.get("display", {}) or {}).get("tft_rotation", 0)).strip()
+    return 180 if r == "180" else 0
+
+
 def tft_mode(cfg) -> str:
     m = str(((cfg.get("display", {}) or {}).get("tft", "auto"))).lower()
     return m if m in ("auto", "on", "off") else "auto"
@@ -58,6 +63,7 @@ class Display:
         self.dirty = True
         self.stop = threading.Event()
         self.splash_until = 0.0
+        self.rotation = getattr(dev, "rotation", 0)
         self._prev = (False, False)
         self._b_down = None
         self._b_fired = False
@@ -183,9 +189,12 @@ class Display:
 
             if now - last_cfg >= CONFIG_POLL_S:
                 last_cfg = now
-                reload_config()
-                if tft_mode(load_config()) == "off":
+                cfg = reload_config()
+                if tft_mode(cfg) == "off":
                     log("display.tft set to off - stopping")
+                    return
+                if tft_rotation(cfg) != self.rotation:
+                    log("display.tft_rotation changed - restarting display")
                     return
 
             # Redraw on new data, and 4x/s for the scrolling (marquee) rows.
@@ -224,7 +233,8 @@ def main():
             continue
         dev = None
         try:
-            dev = hw.ST7789(p)
+            dev = hw.ST7789(p, rotation=tft_rotation(cfg))
+            dev.rotation = tft_rotation(cfg)
             write_status("tft", {"state": "running", "detail": "display active", "mode": mode})
             log("display active (%s)" % mode)
             announced = "running"

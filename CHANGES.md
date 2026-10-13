@@ -21,7 +21,10 @@
   platform/orangepi-zero2w/kp4pra-tft-orangepi.dts = SPI1 + spidev), service.
   install.sh runs it with --auto (SPI enabled only when a display is present).
   udev rule 60-kp4pra-gpio now also covers /dev/spidev* on non-Pi boards.
-- New config key display.tft (default auto), validated.
+- New config keys display.tft (default auto) and display.tft_rotation
+  (0 = Normal, default; 180 = Flipped), both validated and on the Config
+  page. Field check 2026-10-13: Adafruit's rotation-180 example showed
+  upside down on the KP4PRA board, so Normal (rotation 0) is the default.
 - Docs: docs/TFT_DISPLAY.md; README, INSTALL. Tests: tests/test_tft.py
   (UZ7HO tokens from the field example, screens, buttons, AGW beacon frame).
 - Upgrading from 1.4.9: pull, `sudo bash scripts/deploy-to-system.sh`,

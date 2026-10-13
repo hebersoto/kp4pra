@@ -191,3 +191,17 @@ class Buttons(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(tftmain is None, "tft.main import failed")
+class Rotation(unittest.TestCase):
+    def test_rotation_setting(self):
+        self.assertEqual(tftmain.tft_rotation({}), 0)
+        self.assertEqual(tftmain.tft_rotation({"display": {"tft_rotation": 180}}), 180)
+        self.assertEqual(tftmain.tft_rotation({"display": {"tft_rotation": "180"}}), 180)
+        self.assertEqual(tftmain.tft_rotation({"display": {"tft_rotation": 90}}), 0)
+
+    def test_orientation_table(self):
+        from tft import hw
+        self.assertEqual(hw.ORIENTATIONS[0], (0x00, 0))
+        self.assertEqual(hw.ORIENTATIONS[180], (0xC0, 80))

@@ -25,7 +25,9 @@ sudo reboot
 
 Web UI -> **Config -> TFT Display**: **Auto** (default - use the display when
 it is detected), **On** (always) or **Off**. The card shows the live status.
-Changes apply within about 10 seconds (no restart needed).
+**Orientation**: Normal (default) or Flipped 180° if the picture is upside
+down in your enclosure. Changes apply within about 10 seconds (no restart
+needed).
 
 What the setup does: installs `python3-pil python3-numpy python3-spidev
 python3-libgpiod python3-yaml fonts-dejavu-core`; adds `kp4pra-tnc` to the
@@ -97,5 +99,7 @@ chat page does not need to be running.
 - No traffic lines: the service user needs the `systemd-journal` group
   (`id kp4pra-tnc`); re-run the setup script, then
   `sudo systemctl restart kp4pra-tnc-tft`.
+- Picture upside down: Config -> TFT Display -> Orientation -> Flipped 180°.
 - Picture shifted or mirrored: the driver assumes the 1.3" 240x240 Mini
-  PiTFT (rotation 180, row offset 80). Other ST7789 sizes are not supported.
+  PiTFT (Normal: rows 0-239; Flipped: rows 80-319). Other ST7789 sizes are
+  not supported.

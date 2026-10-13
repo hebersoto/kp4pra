@@ -126,6 +126,8 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
         dp = updates["display"] or {}
         if "tft" in dp and dp["tft"] not in ("auto", "on", "off"):
             errors.append("display.tft must be auto, on or off")
+        if "tft_rotation" in dp and str(dp["tft_rotation"]) not in ("0", "180"):
+            errors.append("display.tft_rotation must be 0 or 180")
 
     if "station" in updates:
         st = updates["station"]

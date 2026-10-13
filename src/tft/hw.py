@@ -34,10 +34,12 @@ PINS = {
                    "spi_ctrl": "5011000.spi", "spidev": "/dev/spidev1.0"},
 }
 
-# ST7789 (240x240 window on a 240x320 controller; Adafruit: rotation 180,
-# y_offset 80 for the 1.3" Mini PiTFT).
-MADCTL_ROT180 = 0xC0
-ROW_OFFSET = 80
+# ST7789: a 240x240 window on a 240x320 controller. Two orientations,
+# selected by display.tft_rotation in the config:
+#   0   MADCTL 0x00, rows 0..239   (default: upright on the KP4PRA boards,
+#                                   field-checked 2026-10-13)
+#   180 MADCTL 0xC0 (MX|MY), rows 80..319 (Adafruit's example orientation)
+ORIENTATIONS = {0: (0x00, 0), 180: (0xC0, 80)}
 SPI_HZ = 40_000_000
 
 
@@ -131,9 +133,10 @@ def probe(p, samples=10) -> bool:
 
 # --------------------------------------------------------------- ST7789 ----
 class ST7789:
-    def __init__(self, p):
+    def __init__(self, p, rotation=0):
         import spidev
         self.p = p
+        self.madctl, self.row_offset = ORIENTATIONS.get(int(rotation), ORIENTATIONS[0])
         self.gpio = Gpio(p["chip"], [p["dc"], p["bl"]], [p["btn_a"], p["btn_b"]], pull="up")
         dev = find_spidev(p)
         bus, cs = (int(x) for x in os.path.basename(dev)[len("spidev"):].split("."))
@@ -154,7 +157,7 @@ class ST7789:
         self._cmd(0x01); time.sleep(0.15)          # SWRESET
         self._cmd(0x11); time.sleep(0.12)          # SLPOUT
         self._cmd(0x3A, [0x55])                    # COLMOD 16-bit RGB565
-        self._cmd(0x36, [MADCTL_ROT180])           # MADCTL rotation 180
+        self._cmd(0x36, [self.madctl])             # MADCTL orientation
         self._cmd(0x21)                            # INVON (IPS panel)
         self._cmd(0x13)                            # NORON
         self._cmd(0x29); time.sleep(0.05)          # DISPON
@@ -177,7 +180,7 @@ class ST7789:
         a = np.asarray(img.convert("RGB"), dtype=np.uint16)
         rgb565 = ((a[..., 0] & 0xF8) << 8) | ((a[..., 1] & 0xFC) << 3) | (a[..., 2] >> 3)
         buf = rgb565.astype(">u2").tobytes()
-        y0, y1 = ROW_OFFSET, ROW_OFFSET + 239
+        y0, y1 = self.row_offset, self.row_offset + 239
         self._cmd(0x2A, [0, 0, 0, 239])                       # CASET
         self._cmd(0x2B, [y0 >> 8, y0 & 0xFF, y1 >> 8, y1 & 0xFF])  # RASET
         self._cmd(0x2C)                                       # RAMWR

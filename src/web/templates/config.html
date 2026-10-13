@@ -398,6 +398,13 @@
       <div class="form-hint">Button 23: screen 1/2 &middot; button 24: screen off/on &middot; hold 24 for 3 s: send APRS beacon.</div>
     </div>
     <div class="form-group">
+      <label class="form-label" for="tft-rotation">Orientation</label>
+      <select class="form-select" id="tft-rotation">
+        <option value="0" {% if (_disp.tft_rotation or 0)|string != '180' %}selected{% endif %}>Normal</option>
+        <option value="180" {% if (_disp.tft_rotation or 0)|string == '180' %}selected{% endif %}>Flipped 180°</option>
+      </select>
+    </div>
+    <div class="form-group" style="grid-column:1/-1">
       <label class="form-label">Status</label>
       <div class="form-hint" id="tft-status">Checking…</div>
     </div>
@@ -772,6 +779,7 @@ function collectConfig() {
     },
     display: {
       tft: document.getElementById('tft-mode').value,
+      tft_rotation: parseInt(document.getElementById('tft-rotation').value) || 0,
     },
     aprs: {
       mycall: callWithSsid('aprs-callsign', 'aprs-ssid'),
