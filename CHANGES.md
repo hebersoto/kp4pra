@@ -33,6 +33,13 @@
   helpers. `kp4pra-adevice-fix` treats `DRAPiZero` as an I2S card.
 - Web UI: DRA card shows the detected card and board; on an Orange Pi the
   "Set up DRA-Pi-Zero" button reports status (the driver build runs from SSH).
+- Setup fix (field report, 2026-10-13): on a board whose kernel had been
+  updated without a reboot, the Orange Pi setup stopped silently after
+  "[1/6] Kernel headers" (the running kernel's files were gone, the package
+  lookup failed under set -e). It now says "reboot first" and names both
+  kernels; the kernel-package lookup has a fallback; any unexpected stop
+  prints the line and command. Same root cause made nftables fail during
+  install on that board (running kernel's modules removed) - a reboot fixes it.
 - Docs: docs/DRA_PI_ZERO.md board table, LED table, Orange Pi section
   (requirements, setup, beta -> stable headers, bring-up notes,
   troubleshooting); README, INSTALL.md 6c.

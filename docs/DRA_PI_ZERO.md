@@ -238,6 +238,10 @@ Armbian's kernel.
   config still has the Raspberry Pi PTT line. Re-select the DRA in the web
   UI and Apply (a Pi value is remapped to `gpiochip1 267` automatically).
 - Slow Dire Wolf start / `I2C bus locked` in dmesg: `sudo kp4pra-dra-i2c-check`.
+- Setup says "the kernel was updated but the board has not been rebooted
+  yet": an `apt upgrade` installed a new kernel and the running one's files
+  are gone (nftables and other modules fail too). `sudo reboot`, then run
+  the setup again.
 - After a kernel update the DRA is gone: the update ran without internet, so
   DKMS could not fetch the new driver source. Connect and run
   `sudo dkms autoinstall`, then reboot.

@@ -209,6 +209,9 @@ opi_die() { echo "ERROR: $*" >&2; exit 1; }
 
 opi_setup() {
     [ "$(id -u)" -eq 0 ] || exec sudo bash "$0"
+    # Never stop silently: report where an unexpected failure happened.
+    set -E
+    trap 'echo "ERROR: DRA setup stopped unexpectedly at line $LINENO (command: $BASH_COMMAND)." >&2; echo "Please report this output." >&2' ERR
     [ -f "$ENV_TXT" ] || opi_die "$ENV_TXT not found. The Orange Pi Zero 2W DRA support needs Armbian."
     [ -f "$OPI_DIR/${OPI_DTS_NAME}.dts" ] || opi_die "run this from the kp4pra-tnc repo checkout (platform/ files missing)."
     command -v armbian-add-overlay >/dev/null || opi_die "armbian-add-overlay not found (Armbian tooling missing)."
@@ -226,16 +229,36 @@ opi_setup() {
     fi
     rm -f /usr/src/.kp4pra-wtest
 
+    # 0. A kernel update without a reboot leaves the RUNNING kernel's files
+    #    deleted from disk (modules, /boot/vmlinuz-$K). Nothing can be built
+    #    or loaded for it, so stop with a clear instruction instead.
+    if [ ! -d "/lib/modules/$K/kernel" ]; then
+        local newk
+        newk="$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V | tail -1)"
+        echo "ERROR: the kernel was updated but the board has not been rebooted yet." >&2
+        echo "  running kernel : $K (its files are no longer on disk)" >&2
+        echo "  installed kernel: ${newk:-unknown}" >&2
+        echo "  Reboot (sudo reboot), then run this script again." >&2
+        exit 1
+    fi
+
     # 1. Kernel headers matching the running Armbian kernel.
     echo "-- [1/6] Kernel headers"
     if [ -e "/lib/modules/$K/build/Makefile" ]; then
         echo "  OK  : headers for $K present"
     else
         local IMG HDR IVER
-        IMG="$(dpkg -S "/boot/vmlinuz-$K" 2>/dev/null | cut -d: -f1 | head -1)"
-        [ -n "$IMG" ] || opi_die "cannot find the package that owns /boot/vmlinuz-$K."
+        # Which installed linux-image package is the running kernel?
+        # 1) the owner of /boot/vmlinuz-$K, 2) any installed Armbian sunxi64 image.
+        IMG="$( { dpkg-query -S "/boot/vmlinuz-$K" 2>/dev/null || true; } | sed -n '1s/:.*//p')"
+        if [ -z "$IMG" ]; then
+            IMG="$(dpkg-query -W -f '${Package} ${db:Status-Abbrev}\n' 'linux-image-*' 2>/dev/null \
+                   | awk '$2 ~ /^ii/ && $1 ~ /sunxi64/ {print $1; exit}' || true)"
+        fi
+        [ -n "$IMG" ] || opi_die "cannot find the installed Armbian kernel package (linux-image-*-sunxi64) for $K."
         HDR="${IMG/linux-image/linux-headers}"
-        IVER="$(dpkg-query -W -f '${Version}' "$IMG")"
+        IVER="$(dpkg-query -W -f '${Version}' "$IMG" 2>/dev/null || true)"
+        [ -n "$IVER" ] || opi_die "cannot read the version of $IMG."
         echo "  installing $HDR=$IVER"
         apt-get update -qq || true
         if ! apt-get install -y "$HDR=$IVER"; then
@@ -244,7 +267,7 @@ ERROR: kernel headers $HDR=$IVER are not available from your apt sources.
 Armbian's beta repository (beta.armbian.com) often has no headers for its
 trunk kernels. Switch to the stable repository (apt.armbian.com), install the
 stable kernel + headers, reboot, and run this script again. Step-by-step:
-docs/DRA_PI_ZERO.md, "Orange Pi Zero 2W - kernel headers".
+docs/DRA_PI_ZERO.md, section "Kernel headers: beta vs stable repository".
 EOF
             exit 1
         fi
