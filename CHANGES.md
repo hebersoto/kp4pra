@@ -27,6 +27,10 @@
 - Fix: `dnsmasq-base` added to the installer prerequisites. NetworkManager's
   shared (AP) mode needs it; without it "kp4pra-wifi-mode ap" failed with
   "IP configuration could not be reserved".
+- TFT monitor lines show the digipeaters that repeated a frame (UI and
+  connected), after the callsigns: "KP3M-11>WP4DMD-2 via KP4DIG-1 <RR R F R3>".
+  Only used path entries (up to Dire Wolf's "*" mark) are shown; WIDEn-N
+  aliases are always left out.
 - TFT shows "WiFi switch failed" (red) when kp4pra-wifi-mode returns an error
   instead of leaving the mode splash up.
 - Upgrading from 1.4.10: pull, `sudo bash scripts/deploy-to-system.sh`,

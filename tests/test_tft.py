@@ -96,6 +96,25 @@ class UIText(unittest.TestCase):
         self.assertEqual(self.short("[0.4] KP4ABC-9>T2SP0W,WIDE1-1:`c5Kl!x>/`\"4F}Mobile 146.52"),
                          "KP4ABC-9 <UI C> Mobile 146.52")
 
+    def test_digipeaters_shown_wide_omitted(self):
+        # UI via a named digi and a used WIDE1 (WIDE1-1 -> WIDE1*)
+        self.assertEqual(self.short("[0.4] NP4JM-10>APRS,KP4DIG-1,WIDE1*,WIDE2-1:>Hello"),
+                         "NP4JM-10 via KP4DIG-1 <UI C> Hello")
+        # two digis, last one marked; unused WIDE2-1 left out
+        self.assertEqual(self.short("[0.4] NP4JM-10>APRS,KP4A,KP4B-2*,WIDE2-1:>Hi"),
+                         "NP4JM-10 via KP4A,KP4B-2 <UI C> Hi")
+        # connected mode through a digipeater
+        self.assertEqual(self.short("[0.4] KP3M-11>WP4DMD-2,KP4DIG*:(RR res, n(r)=3, f=1)"),
+                         "KP3M-11>WP4DMD-2 via KP4DIG <RR R F R3>")
+        # not digipeated (yet): no via, WIDE path hidden
+        self.assertEqual(self.short("[0L] KP4PRA-10>APDW17,WIDE2-2:>Beacon"),
+                         "KP4PRA-10 <UI C> Beacon")
+        self.assertEqual(self.short("[0L] KP3M-11>WP4DMD-2,KP4DIG:(SABM cmd, p=1)"),
+                         "KP3M-11>WP4DMD-2 <SABM C P>")
+        # only WIDEs used: nothing to show
+        self.assertEqual(self.short("[0.4] N0CALL>APRS,WIDE1,WIDE2*:>x"), "N0CALL <UI C> x")
+        self.assertEqual(monitor.used_digis(",WIDE1-1"), ())
+
     def test_other_aprs_types(self):
         self.assertEqual(self.short("[0.4] N0CALL>APRS::KP3M-10  :Hello there{12"),
                          "N0CALL <UI C> KP3M-10: Hello there")

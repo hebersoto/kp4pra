@@ -42,7 +42,7 @@ service.
 |---|---|---|
 | 1 | Call sign + SSID | Winlink: N pending |
 | 2-4 | Last 3 frames (red = TX, green = RX) | WiFi: N devices (AP) / client · BT/BLE: N |
-| 5-7 | Current packet: `FROM>TO` (UI: `FROM`), `<frame type>` + time + TX/RX, UI text | Last 4 frames (rows 4-7) |
+| 5-7 | Current packet: `FROM>TO` (UI: `FROM`) + `via` digipeaters, `<frame type>` + time + TX/RX, UI text | Last 4 frames (rows 4-7) |
 | 8 | `AP 172.16.0.1` or `CL <ip>` (same on both screens) | same |
 
 At power-up a splash screen shows **KP4PRA TNC** in KP4PRA green on white for
@@ -65,6 +65,14 @@ frame text with repeated spaces collapsed, and drop GPS position data
 (coordinates, symbol, course/speed, altitude, raw NMEA):
 `NP4JM-10 <UI C> Hello from Ponce`.
 C/R = command/response, P/F = poll/final, R/S = receive/send sequence numbers.
+
+Digipeated frames (UI and connected) show the digipeaters that repeated them
+right after the callsigns, with `via`:
+`KP3M-11>WP4DMD-2 via KP4DIG-1 <RR R F R3>`,
+`NP4JM-10 via KP4A,KP4B-2 <UI C> Hello`. Generic `WIDEn-N` path entries are
+never shown, and path entries not yet used (e.g. our own beacon going out
+with `WIDE2-2`, or a connect request via a digipeater before it repeats it)
+show no `via`.
 
 ## Buttons
 

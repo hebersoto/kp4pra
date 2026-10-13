@@ -10,7 +10,7 @@ Screen 1                      Screen 2
   2  traffic (red TX/green RX)  2  WiFi: 3 devices
   3  traffic                    3  BT/BLE: 1
   4  traffic                    4  traffic
-  5  current: FROM>TO (UI: FROM) 5  traffic
+  5  current: FROM>TO [via ..] 5  traffic
   6  current: <TOKEN> time TX/RX 6  traffic
   7  current: UI text            7  traffic
   8  AP 172.16.0.1 (static)     8  AP 172.16.0.1 (static)

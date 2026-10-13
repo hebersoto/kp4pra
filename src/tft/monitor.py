@@ -33,6 +33,13 @@ UI frames leave out the destination (the TOCALL, e.g. APRS/APDW17) and show
 the frame text instead, with runs of spaces collapsed and GPS position data
 (coordinates, symbol, course/speed, altitude, raw NMEA) removed:
 "NP4JM-10 <UI C> Hello from Ponce".
+
+Digipeated frames show the digipeaters that actually repeated them, after the
+callsigns: "KP3M-11>WP4DMD-2 via KP4DIG-1 <RR R F R3>",
+"NP4JM-10 via KP4ABC-1,KP4XYZ <UI C> Hello". Dire Wolf marks the last used
+digipeater with "*" (H bit); every path entry up to it has been used, the rest
+not yet. Generic WIDEn-N aliases (used or not) are never shown, and a frame
+nobody has digipeated yet (e.g. our own TX with a WIDE2-2 path) shows no via.
 """
 
 import dataclasses
@@ -70,6 +77,7 @@ class Frame:
     info: str = ""
     ts: str = ""            # HH:MM:SS from Dire Wolf, or local time
     aprs: bool = False
+    digis: tuple = ()       # digipeaters that repeated the frame (no WIDEn-N)
 
     @property
     def is_ui(self) -> bool:
@@ -78,7 +86,8 @@ class Frame:
     @property
     def route(self) -> str:
         """FROM>TO, or just FROM for UI frames (the TO is only a TOCALL)."""
-        return self.src if self.is_ui else "%s>%s" % (self.src, self.dst)
+        base = self.src if self.is_ui else "%s>%s" % (self.src, self.dst)
+        return "%s via %s" % (base, ",".join(self.digis)) if self.digis else base
 
     @property
     def text(self) -> str:
@@ -91,6 +100,18 @@ class Frame:
         line = "%s <%s>" % (self.route, self.token)
         t = self.text
         return "%s %s" % (line, t) if t else line
+
+
+_WIDE = re.compile(r"^WIDE\d*(?:-\d{1,2})?$")
+
+
+def used_digis(via: str) -> tuple:
+    """',DIGI1,DIGI2*,WIDE2-1' -> ('DIGI1', 'DIGI2'): path entries up to the
+    last one marked '*' (already repeated), without WIDEn-N aliases."""
+    path = [p.strip() for p in (via or "").split(",") if p.strip()]
+    last = max((i for i, p in enumerate(path) if p.endswith("*")), default=-1)
+    used = (p.rstrip("*") for p in path[:last + 1])
+    return tuple(p for p in used if not _WIDE.match(p))
 
 
 def uz7ho_token(desc_type: str, cr: Optional[str], pf: Optional[str],
@@ -126,15 +147,16 @@ def parse_line(line: str) -> Optional[Frame]:
     direction = TX if m.group("kind") in ("L", "H") else RX
     ts = m.group("ts") or time.strftime("%H:%M:%S")
     rest = m.group("rest")
+    digis = used_digis(m.group("via"))
     d = _DESC.match(rest) if rest.startswith("(") else None
     if d:
         token = uz7ho_token(d.group("type"), d.group("cr"), d.group("pf"),
                             d.group("ns"), d.group("nr"))
         return Frame(direction, m.group("src"), m.group("dst"), token,
-                     d.group("info").strip(), ts, aprs=False)
+                     d.group("info").strip(), ts, aprs=False, digis=digis)
     # No description: an APRS frame (UI, pid F0, always a command).
     return Frame(direction, m.group("src"), m.group("dst"), "UI C",
-                 rest.strip(), ts, aprs=True)
+                 rest.strip(), ts, aprs=True, digis=digis)
 
 
 # ------------------------------------------------- UI text (no GPS data) ----
