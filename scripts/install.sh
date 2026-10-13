@@ -452,6 +452,11 @@ log "  Web interface: http://$(hostname).local:8088"
 log "  BLE device name:    KP4PRA TNC"
 log "  RFCOMM device name: KP4PRA TNC"
 log "  Config: $CONFIG_DIR/config.yaml"
+if [ "$(/usr/local/bin/kp4pra-wifi-mode security 2>/dev/null)" = open ]; then
+    warn "  Hotspot is OPEN (no WiFi password): this board's WiFi (Orange Pi"
+    warn "  Zero 2W, unisoc_wifi) cannot complete WPA2 hotspot joins."
+    warn "  Set a Dashboard password: Config -> Dashboard Security."
+fi
 echo ""
 log "  Service status:"
 systemctl is-active kp4pra-tnc-rfcomm.service && log "  ✓ RFCOMM bridge: running" || warn "  ✗ RFCOMM bridge: not running"

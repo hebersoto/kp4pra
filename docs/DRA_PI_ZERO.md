@@ -226,6 +226,15 @@ Armbian's kernel.
   with `sudo kp4pra-dra-i2c-check`; results are in
   `journalctl -u direwolf`.
 
+### WiFi hotspot on the Orange Pi
+
+The KP4PRA hotspot (AP mode, button 23 hold on the Mini PiTFT) has **no WiFi
+password** on this board: the onboard WiFi (Unisoc UWE5622, Armbian driver
+`unisoc_wifi`) starts a WPA2 hotspot but phones never finish joining it, and
+hostapd cannot drive the chip. Set a Dashboard password before using AP mode
+in the field, or use client mode / USB Ethernet. Details: INSTALL.md section
+6b (`wifi.ap_security`).
+
 ### Troubleshooting (Orange Pi)
 
 - `dmesg | grep KP4PRA` must show both `fixed 12 MHz crystal` and

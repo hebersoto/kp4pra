@@ -26,6 +26,9 @@ Requires Python 3.11+ and BlueZ 5.6x+.
   > self-contained field unit: the board then starts its own KP4PRA hotspot at
   > boot so a phone connects to it directly (see section 6b). You can switch
   > between the two modes anytime with `sudo kp4pra-wifi-mode ap|client`.
+  > **Orange Pi Zero 2W:** its hotspot has **no WiFi password** (the onboard
+  > WiFi cannot complete WPA2 hotspot joins) - set a Dashboard password; see
+  > section 6b.
 
 Boot the board — headless (no monitor or keyboard) is fine. Section 1b
 connects you to its command line and updates the system.
@@ -129,7 +132,7 @@ helper scripts, tmpfiles rule, bluetoothd -C compat mode, volatile journald.
 At the end of the install the KP4PRA hotspot starts automatically
 (unless you are installing over a WiFi connection, in which case start
 it manually: `sudo kp4pra-wifi-mode ap`). See section 6b for the SSID,
-password, and web UI address.
+password (none on the Orange Pi Zero 2W), and web UI address.
 
 ## 6. KP4PRA TNC — stage 2 (Dire Wolf integration)
 
@@ -234,7 +237,8 @@ your station via the web UI after installation.
 - Config page → Station Information → set callsign/grid/etc → Detect
   sound card → Preview → Apply to Dire Wolf.
 - Optional: `sudo kp4pra-wifi-mode ap`, join the KP4PRA WiFi from a
-  phone (password above), browse http://172.16.0.1/ — then switch back.
+  phone (password above; Orange Pi Zero 2W: no password), browse
+  http://172.16.0.1/ — then switch back.
 - Pair Android via the Android wizard (Just Works — confirm on phone).
 - iPhone: aprs.fi → BLE KISS → select the TNC (no iOS pairing).
 - Services page → Dire Wolf Traffic → Refresh: RF decodes appear.

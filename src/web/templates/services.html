@@ -251,7 +251,9 @@ async function loadWifiMode() {
   try {
     const r = await fetch('/api/wifi/status');
     const d = await r.json();
-    const label = d.mode === 'ap' ? 'AP (hotspot)'
+    window._apSecurity = d.ap_security;
+    const label = d.mode === 'ap'
+                  ? (d.ap_security === 'open' ? 'AP (hotspot, open - no WiFi password)' : 'AP (hotspot)')
                 : d.mode === 'client' ? 'Client (joined network)'
                 : d.mode;
     document.getElementById('wifi-mode-status').textContent = label;
@@ -267,7 +269,10 @@ async function wifiMode(mode) {
       + 'you will lose this page - reconnect on the client network.'
     : 'Switch to AP mode?\n\nThe TNC will stop using your client WiFi and broadcast '
       + 'the KP4PRA hotspot. If you are connected over the client network you will '
-      + 'lose this page - join the KP4PRA network and browse http://172.16.0.1/.';
+      + 'lose this page - join the KP4PRA network and browse http://172.16.0.1/.'
+      + (window._apSecurity === 'open'
+         ? '\n\nOn this board the hotspot has NO WiFi password (Orange Pi Zero 2W '
+           + 'onboard WiFi). Set a Dashboard password on the Config page.' : '');
   if (!confirm(warn)) return;
   const el = document.getElementById('wifi-mode-result');
   el.textContent = 'Switching WiFi mode...';
