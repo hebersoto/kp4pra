@@ -10,9 +10,9 @@ Screen 1                      Screen 2
   2  traffic (red TX/green RX)  2  WiFi: 3 devices
   3  traffic                    3  BT/BLE: 1
   4  traffic                    4  traffic
-  5  current: SRC>DST           5  traffic
-  6  current: <TOKEN>           6  traffic
-  7  current: time TX/RX        7  traffic
+  5  current: FROM>TO (UI: FROM) 5  traffic
+  6  current: <TOKEN> time TX/RX 6  traffic
+  7  current: UI text            7  traffic
   8  AP 172.16.0.1 (static)     8  AP 172.16.0.1 (static)
 """
 
@@ -97,6 +97,19 @@ def _traffic(draw, frames, first_row, n_rows, t):
             _row(draw, row, "no traffic yet", GREY, t)
 
 
+def mode_splash(mode):
+    """Same look as the start splash: entering 'AP' or 'CL' WiFi mode."""
+    lines = ("WiFi", "Access Point", "Mode") if mode == "AP" else ("WiFi", "Client", "Mode")
+    img = Image.new("RGB", (W, H), WHITE)
+    d = ImageDraw.Draw(img)
+    f = font(30, bold=True)
+    top = (H - len(lines) * 44) // 2
+    for i, word in enumerate(lines):
+        tw = _text_w(d, word, f)
+        d.text(((W - tw) / 2, top + i * 44), word, font=f, fill=KP4PRA_GREEN)
+    return img
+
+
 def splash():
     img = Image.new("RGB", (W, H), WHITE)
     d = ImageDraw.Draw(img)
@@ -119,8 +132,8 @@ def screen1(state, t=0.0):
     if cur:
         c = _color(cur)
         _row(d, 4, cur.route, c, t)
-        _row(d, 5, "<%s>" % cur.token, YELLOW, t)
-        _row(d, 6, "%s %s" % (cur.ts, cur.direction), GREY, t)
+        _row(d, 5, "<%s>  %s %s" % (cur.token, cur.ts[:5], cur.direction), YELLOW, t)
+        _row(d, 6, cur.text or "", WHITE, t)
     else:
         _row(d, 4, "waiting for", GREY, t)
         _row(d, 5, "packets...", GREY, t)

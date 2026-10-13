@@ -11,6 +11,9 @@ Behavior
   - Screen 2: Winlink pending, WiFi devices, BT/BLE devices, last 4 frames,
               AP/CL + IP on the bottom row.
   - Button 23: switch screen 1 <-> 2 (wakes the screen if it is off).
+  - Button 23 held >= 3 s: switch WiFi between Client and Access Point mode
+    (kp4pra-wifi-mode via its sudoers rule); shows "WiFi Access Point Mode"
+    or "WiFi Client Mode" in the splash colors for 10 s.
   - Button 24: screen off / on (any button wakes it on the same screen).
   - Button 24 held >= 3 s: send one APRS beacon (position, or status text
     when no position is configured).
@@ -54,6 +57,7 @@ class Display:
     def __init__(self, dev):
         self.dev = dev
         self.lock = threading.Lock()
+        self.dev_lock = threading.RLock()   # one SPI transaction at a time
         self.frames = collections.deque(maxlen=FRAME_HISTORY)
         self.current = None
         self.sys = {}
@@ -63,6 +67,8 @@ class Display:
         self.dirty = True
         self.stop = threading.Event()
         self.splash_until = 0.0
+        self._a_down = None
+        self._a_fired = False
         self.rotation = getattr(dev, "rotation", 0)
         self._prev = (False, False)
         self._b_down = None
@@ -111,6 +117,30 @@ class Display:
             log("beacon failed: %s" % e)
             self.set_toast("Beacon failed", render.TX_RED)
 
+    def switch_wifi(self):
+        """Toggle Client <-> Access Point. The splash for the new mode is shown
+        right away; nmcli can take several seconds in the background."""
+        target = "client" if status.wifi_mode() == "AP" else "ap"
+        self.show_splash(render.mode_splash("AP" if target == "ap" else "CL"))
+        log("button 23 held: switching WiFi to %s mode" % target)
+        try:
+            r = subprocess.run(["sudo", "-n", "/usr/local/bin/kp4pra-wifi-mode", target],
+                               capture_output=True, text=True, timeout=120)
+            log("wifi-mode %s: rc=%s %s" % (target, r.returncode,
+                                           (r.stdout or r.stderr).strip()[:120]))
+        except Exception as e:
+            log("wifi-mode %s failed: %s" % (target, e))
+        with self.lock:
+            self.dirty = True
+
+    def show_splash(self, img):
+        """Full-screen message for SPLASH_S seconds (wakes the screen)."""
+        self.splash_until = time.time() + SPLASH_S
+        with self.dev_lock:
+            if self.off:
+                self.set_off(False)
+            self.dev.show(img)
+
     def set_toast(self, text, color):
         with self.lock:
             self.toast = (text, color, time.time() + TOAST_S)
@@ -119,7 +149,8 @@ class Display:
     def set_off(self, off):
         if off != self.off:
             self.off = off
-            self.dev.sleep(off)
+            with self.dev_lock:
+                self.dev.sleep(off)
             self.dirty = True
 
     # ---- render ----
@@ -136,7 +167,9 @@ class Display:
             y = 3 * render.ROW_H
             d.rectangle([0, y, render.W - 1, y + 2 * render.ROW_H], fill=render.BAR_BG)
             render._row(d, 3, toast[0], toast[1], 0)
-        self.dev.show(img)
+        with self.dev_lock:
+            if time.time() >= self.splash_until:
+                self.dev.show(img)
 
     def run(self):
         try:
@@ -147,19 +180,28 @@ class Display:
     def on_buttons(self, a, b, now):
         """Button state machine (called every 50 ms with current levels).
 
-        23 (A) press: wake if off, else switch screen 1 <-> 2.
+        23 (A) release before 3 s: wake if off, else switch screen 1 <-> 2.
+        23 (A) held 3 s: switch WiFi Client <-> Access Point, once.
         24 (B) release before 3 s: screen off <-> on.
         24 (B) held 3 s: send a beacon once (no off/on on release).
-        Returns "beacon" when a beacon must be sent, else None."""
+        Returns "beacon" or "wifi" when that action must run, else None."""
         action = None
         pa, pb = self._prev
         if a and not pa:
-            if self.off:
-                self.set_off(False)
-            else:
-                self.screen = 2 if self.screen == 1 else 1
-                self.dirty = True
-            self.splash_until = 0
+            self._a_down, self._a_fired = now, False
+        if a and self._a_down is not None and not self._a_fired \
+                and now - self._a_down >= LONG_PRESS_S:
+            self._a_fired = True
+            action = "wifi"
+        if not a and pa:
+            if not self._a_fired:
+                if self.off:
+                    self.set_off(False)
+                else:
+                    self.screen = 2 if self.screen == 1 else 1
+                    self.dirty = True
+                self.splash_until = 0
+            self._a_down = None
         if b and not pb:
             self._b_down, self._b_fired = now, False
         if b and self._b_down is not None and not self._b_fired \
@@ -184,8 +226,11 @@ class Display:
         while not self.stop.is_set():
             now = time.time()
             a, b = self.dev.buttons()
-            if self.on_buttons(a, b, now) == "beacon":
+            act = self.on_buttons(a, b, now)
+            if act == "beacon":
                 threading.Thread(target=self.send_beacon, daemon=True).start()
+            elif act == "wifi":
+                threading.Thread(target=self.switch_wifi, daemon=True).start()
 
             if now - last_cfg >= CONFIG_POLL_S:
                 last_cfg = now

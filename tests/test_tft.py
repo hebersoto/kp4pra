@@ -41,12 +41,19 @@ class DirewolfLogToUZ7HO(unittest.TestCase):
 
     def test_i_frame(self):
         fr = self.tok("[0L 20:08:05] KP3M-10>KP4CE-10:(I cmd, n(s)=2, n(r)=5, p=1, pid=0xf0)[B2FHM$]")
-        self.assertEqual(fr.token, "I C P S2 R5")
+        self.assertEqual(fr.token, "I C P R5 S2")             # <I C [P] Rn Sn>
         self.assertEqual(fr.info, "[B2FHM$]")
 
-    def test_unknown_types_are_unkn(self):
-        self.assertEqual(self.tok("[0L 20:07:14] KP3M-10>KP4CE-10:(XID res, f=1) stuff").token, "UNKN R F")
+    def test_xid_test_named_unknown_unkn(self):
+        self.assertEqual(self.tok("[0L 20:07:14] KP3M-10>KP4CE-10:(XID res, f=1) stuff").token, "XID R F")
+        self.assertEqual(self.tok("[0L 20:07:14] KP3M-10>KP4CE-10:(TEST cmd, p=0)").token, "TEST C")
+        self.assertEqual(self.tok("[0.4] KP4CE-10>KP3M-10:(FRMR res, f=1)").token, "FRMR R F")
         self.assertEqual(self.tok("[0.4 20:07:14] KP4CE-10>KP3M-10:(U other???)").token, "UNKN")
+
+    def test_no_pid_or_len(self):
+        for l in ("[0L] KP3M-10>KP4CE-10:(I cmd, n(s)=2, n(r)=5, p=0, pid=0xf0)x",
+                  "[0.4] NODE-1>ID:(UI cmd, p=0) beacon"):
+            self.assertNotRegex(self.tok(l).short, r"(?i)pid|len")
 
     def test_direction(self):
         self.assertEqual(self.tok("[0L 20:07:17] KP3M-10>KP4CE-10:(UA res, f=1)").direction, monitor.TX)
@@ -58,15 +65,44 @@ class DirewolfLogToUZ7HO(unittest.TestCase):
     def test_aprs_frame(self):
         fr = self.tok("[0.3 20:08:15] NP4JM-10>APRS,WIDE1-1,WIDE2-1*:!1824.17N/06603.90W-Hi")
         self.assertTrue(fr.aprs)
-        self.assertEqual(fr.short, "NP4JM-10 <UI C>")
-        self.assertEqual(fr.route, "NP4JM-10>APRS")
+        self.assertEqual(fr.short, "NP4JM-10 <UI C> Hi")       # no TOCALL, no position
+        self.assertEqual(fr.route, "NP4JM-10")
 
     def test_ansi_and_noise(self):
         fr = self.tok("\x1b[0;32m[0.4 20:07:16] KP4CE-10>KP3M-10:(SABM cmd, p=1)\x1b[0m")
-        self.assertEqual(fr.short, "KP4CE-10 <SABM C P>")
+        self.assertEqual(fr.short, "KP4CE-10>KP3M-10 <SABM C P>")
         for noise in ("KP4CE-10 audio level = 35(18/10)   [NONE]   |||||||__",
                       "Position, House QTH (VHF), ...", "", "Dire Wolf version 1.8.2"):
             self.assertIsNone(monitor.parse_line(noise))
+
+
+class UIText(unittest.TestCase):
+    """UI lines: FROM <UI C> text - no TOCALL, single spaces, no GPS data."""
+
+    def short(self, line):
+        return monitor.parse_line(line).short
+
+    def test_connected_frames_start_with_from_to(self):
+        self.assertEqual(self.short("[0.4] KP3M-11>WP4DMD-2:(RR res, n(r)=3, f=1)"),
+                         "KP3M-11>WP4DMD-2 <RR R F R3>")
+
+    def test_position_removed_spaces_collapsed(self):
+        self.assertEqual(self.short("[0.4] NP4JM-10>APRS,WIDE1-1:!1824.17N/06603.90W-Hello   from    Ponce"),
+                         "NP4JM-10 <UI C> Hello from Ponce")
+        self.assertEqual(self.short("[0.4] N0CALL>APRS:/092345z4903.50N/07201.75W>088/036/A=001234Moving"),
+                         "N0CALL <UI C> Moving")
+        self.assertEqual(self.short("[0.4] N0CALL>APRS:!/5L!!<*e7>7P[ compressed comment"),
+                         "N0CALL <UI C> compressed comment")
+        self.assertEqual(self.short("[0.4] KP4ABC-9>T2SP0W,WIDE1-1:`c5Kl!x>/`\"4F}Mobile 146.52"),
+                         "KP4ABC-9 <UI C> Mobile 146.52")
+
+    def test_other_aprs_types(self):
+        self.assertEqual(self.short("[0.4] N0CALL>APRS::KP3M-10  :Hello there{12"),
+                         "N0CALL <UI C> KP3M-10: Hello there")
+        self.assertEqual(self.short("[0.4] N0CALL>APRS:>Net tonight 8pm"), "N0CALL <UI C> Net tonight 8pm")
+        self.assertEqual(self.short("[0.4] N0CALL>APRS:$GPRMC,123519,A,4807.038,N"), "N0CALL <UI C>")
+        self.assertEqual(self.short("[0.4] N0CALL>APRS:;LEADER   *092345z4903.50N/07201.75W>Convoy"),
+                         "N0CALL <UI C> LEADER Convoy")
 
 
 class Screens(unittest.TestCase):
@@ -180,6 +216,21 @@ class Buttons(unittest.TestCase):
         self.assertTrue(d.off and d.dev.sleeping)
         self.press(d, False, True, 1.0); self.press(d, False, False, 1.2)
         self.assertFalse(d.off)
+
+    def test_button23_long_press_switches_wifi_once(self):
+        d = self.make()
+        actions = [self.press(d, True, False, t / 10) for t in range(0, 45)]
+        self.assertEqual(actions.count("wifi"), 1)
+        self.press(d, False, False, 4.6)
+        self.assertEqual(d.screen, 1)          # long press does not switch screens
+        self.assertFalse(d.off)
+
+    def test_mode_splash_uses_splash_colors(self):
+        for mode in ("AP", "CL"):
+            img = render.mode_splash(mode)
+            self.assertEqual(img.size, (240, 240))
+            self.assertEqual(img.getpixel((2, 2)), render.WHITE)
+            self.assertIn(render.KP4PRA_GREEN, [c for _, c in img.getcolors(65536)])
 
     def test_button24_long_press_beacons_once(self):
         d = self.make()

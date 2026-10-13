@@ -42,24 +42,43 @@ service.
 |---|---|---|
 | 1 | Call sign + SSID | Winlink: N pending |
 | 2-4 | Last 3 frames (red = TX, green = RX) | WiFi: N devices (AP) / client · BT/BLE: N |
-| 5-7 | Current packet: `SRC>DST`, `<frame type>`, time + TX/RX | Last 4 frames (rows 4-7) |
+| 5-7 | Current packet: `FROM>TO` (UI: `FROM`), `<frame type>` + time + TX/RX, UI text | Last 4 frames (rows 4-7) |
 | 8 | `AP 172.16.0.1` or `CL <ip>` (same on both screens) | same |
 
 At power-up a splash screen shows **KP4PRA TNC** in KP4PRA green on white for
 10 seconds. Lines wider than the screen scroll slowly.
 
-Frame types follow UZ7HO Soundmodem: `KP4CE-10 <SABM C P>`, `<UA R F>`,
-`<RR R F R2>`, `<I C P S0 R3>`, `<DISC C P>`, `<DM R F>`, APRS `<UI C>`;
-XID/TEST and unknown frames show as `<UNKN ...>` (as UZ7HO does).
-C/R = command/response, P/F = poll/final, S/R = send/receive sequence numbers.
+Every traffic line starts with the callsigns, `FROM>TO`, followed by a short
+AX.25 monitor token (no Pid / Len, so lines stay short; long lines scroll):
+
+| Frame | Token |
+|---|---|
+| Connected data | `<I C [P] Rn Sn>` |
+| Supervisory | `<RR C\|R [P\|F] Rn>`, `<RNR ...>`, `<REJ ...>`, `<SREJ ...>` |
+| Link setup / teardown | `<SABM C P>`, `<SABME C P>`, `<DISC C P>`, `<UA R F>`, `<DM R F>`, `<FRMR R F>` |
+| Other | `<XID C\|R [P\|F]>`, `<TEST C\|R [P\|F]>`, `<UNKN>` |
+| UI (APRS, beacons) | `<UI C>` |
+
+Examples: `KP3M-11>WP4DMD-2 <RR R F R3>`, `KP3M-10>KP4CE-10 <I C P R5 S2>`.
+UI frames leave out the destination (the TOCALL such as `APRS`), show the
+frame text with repeated spaces collapsed, and drop GPS position data
+(coordinates, symbol, course/speed, altitude, raw NMEA):
+`NP4JM-10 <UI C> Hello from Ponce`.
+C/R = command/response, P/F = poll/final, R/S = receive/send sequence numbers.
 
 ## Buttons
 
 | Button | Action |
 |---|---|
-| 23 (top) | Switch screen 1 <-> 2. If the screen is off, turns it on |
+| 23 (top), short press | Switch screen 1 <-> 2. If the screen is off, turns it on |
+| 23 held 3 s | Switch WiFi between Client and Access Point mode. Shows "WiFi Access Point Mode" or "WiFi Client Mode" (splash colors) for 10 s. Switching to Access Point drops a client-WiFi SSH session |
 | 24 (bottom), short press | Screen off / on (wakes on the same screen) |
 | 24 held 3 s | Send one APRS beacon: call sign + SSID and position (beacon lat/lon, else station lat/lon, else grid). Without a position it sends a status beacon (`>comment`). "Beacon sent" shows for 3 s |
+
+After a WiFi mode switch the DRA-Pi-Zero blue LED keeps following Bluetooth
+availability (kp4pra-tnc-bt-led, every 2 s): off while neither BLE nor
+RFCOMM is available, solid when available, fast flash with a client
+connected.
 
 The beacon uses the APRS settings from the Config page (callsign, digipeater
 path, symbol, comment) and goes out through Dire Wolf's AGW port; the APRS

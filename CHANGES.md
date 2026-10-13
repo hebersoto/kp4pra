@@ -1,3 +1,25 @@
+## Mini PiTFT: shorter monitor lines + WiFi mode button — new in 1.4.11
+- Traffic lines start with FROM>TO for every frame, RX and TX
+  ("KP3M-11>WP4DMD-2 <RR R F R3>"), with short monitor tokens and no Pid/Len:
+  <I C [P] Rn Sn> (R before S), <RR|RNR|REJ|SREJ C|R [P|F] Rn>, <SABM C P>,
+  <SABME C P>, <DISC C P>, <UA R F>, <DM R F>, <FRMR R F>, <XID ...>,
+  <TEST ...> (XID/TEST now named instead of UNKN), <UI C>. Long lines scroll.
+- UI frames: no TOCALL/destination, repeated spaces collapsed, GPS position
+  data removed (uncompressed/compressed positions, Mic-E, objects, items,
+  course/speed, /A= altitude, DAO, raw $GP NMEA); messages show
+  "ADDRESSEE: text". Current-packet rows: FROM>TO, token + time + TX/RX,
+  UI text.
+- Button 23 held 3 s switches WiFi Client <-> Access Point (kp4pra-wifi-mode
+  via its existing sudoers rule) and shows "WiFi Access Point Mode" /
+  "WiFi Client Mode" in the splash colors for 10 s. Short press still
+  switches screens (now on release). Display access serialized between the
+  UI loop and background actions.
+- Blue LED unchanged: kp4pra-tnc-bt-led already follows Bluetooth
+  availability after a mode switch (off / solid / fast flash).
+- Docs: docs/TFT_DISPLAY.md token table, UI text rules, button 23 hold.
+  Tests: tests/test_tft.py (tokens, FROM>TO, UI text cleanup, long press).
+- Upgrading from 1.4.10: pull, `sudo bash scripts/deploy-to-system.sh`,
+  `sudo systemctl restart kp4pra-tnc-tft`.
 ## Mini PiTFT status display — new in 1.4.10
 - Optional Adafruit Mini PiTFT 1.3" (240x240, ST7789) front-panel display,
   Raspberry Pi and Orange Pi Zero 2W, DejaVu Sans 24 pt. New service
