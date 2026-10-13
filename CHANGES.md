@@ -18,8 +18,20 @@
   availability after a mode switch (off / solid / fast flash).
 - Docs: docs/TFT_DISPLAY.md token table, UI text rules, button 23 hold.
   Tests: tests/test_tft.py (tokens, FROM>TO, UI text cleanup, long press).
+- Fix: switching to Client mode (button 23 hold or `kp4pra-wifi-mode
+  client`) re-activated the hotspot. `nmcli device connect wlan0` also picks
+  autoconnect=no profiles, and KP4PRA-AP was the only one on a board with no
+  client WiFi. Client mode now brings the hotspot down and joins only the
+  configured client SSID; with no client SSID configured WiFi simply stays
+  disconnected (wired/USB Ethernet keeps working). Same fix on the boot path.
+- Fix: `dnsmasq-base` added to the installer prerequisites. NetworkManager's
+  shared (AP) mode needs it; without it "kp4pra-wifi-mode ap" failed with
+  "IP configuration could not be reserved".
+- TFT shows "WiFi switch failed" (red) when kp4pra-wifi-mode returns an error
+  instead of leaving the mode splash up.
 - Upgrading from 1.4.10: pull, `sudo bash scripts/deploy-to-system.sh`,
-  `sudo systemctl restart kp4pra-tnc-tft`.
+  `sudo install -m 755 bin/kp4pra-wifi-mode /usr/local/bin/`,
+  `sudo apt-get install -y dnsmasq-base`, `sudo systemctl restart kp4pra-tnc-tft`.
 ## Mini PiTFT status display — new in 1.4.10
 - Optional Adafruit Mini PiTFT 1.3" (240x240, ST7789) front-panel display,
   Raspberry Pi and Orange Pi Zero 2W, DejaVu Sans 24 pt. New service

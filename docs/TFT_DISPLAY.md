@@ -75,6 +75,13 @@ C/R = command/response, P/F = poll/final, R/S = receive/send sequence numbers.
 | 24 (bottom), short press | Screen off / on (wakes on the same screen) |
 | 24 held 3 s | Send one APRS beacon: call sign + SSID and position (beacon lat/lon, else station lat/lon, else grid). Without a position it sends a status beacon (`>comment`). "Beacon sent" shows for 3 s |
 
+Client mode turns the hotspot off and joins the client WiFi set in
+Config -> WiFi. With no client WiFi configured, WiFi stays disconnected and
+the bottom row shows `CL` with the wired / USB Ethernet address (if any).
+Access Point mode needs `dnsmasq-base` (installed by the installer). If the
+switch fails the screen shows "WiFi switch failed" in red; details in
+`journalctl -u kp4pra-tnc-tft -b`.
+
 After a WiFi mode switch the DRA-Pi-Zero blue LED keeps following Bluetooth
 availability (kp4pra-tnc-bt-led, every 2 s): off while neither BLE nor
 RFCOMM is available, solid when available, fast flash with a client

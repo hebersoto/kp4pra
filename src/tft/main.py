@@ -128,8 +128,13 @@ class Display:
                                capture_output=True, text=True, timeout=120)
             log("wifi-mode %s: rc=%s %s" % (target, r.returncode,
                                            (r.stdout or r.stderr).strip()[:120]))
+            if r.returncode != 0:
+                self.set_toast("WiFi switch failed", render.TX_RED)
+                self.splash_until = 0
         except Exception as e:
             log("wifi-mode %s failed: %s" % (target, e))
+            self.set_toast("WiFi switch failed", render.TX_RED)
+            self.splash_until = 0
         with self.lock:
             self.dirty = True
 
