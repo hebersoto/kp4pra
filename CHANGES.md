@@ -1,3 +1,7 @@
+## Config page wording - new in 1.3.22
+- Config page header: "Changes are written atomically" now reads "Changes
+  are saved when you press Save or Apply on each card" (plain language;
+  config.yaml is still written atomically - temp file + rename).
 ## Config page Shutdown button - new in 1.3.21
 - Config page: a Shut Down button beside Reboot, with a confirm dialog.
   POST /api/system/shutdown backgrounds `sudo -n /sbin/poweroff` (narrow
