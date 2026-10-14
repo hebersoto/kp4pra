@@ -1259,20 +1259,53 @@ async def api_system_reboot(_auth=Depends(check_auth)):
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 
+# Pending power-off started by /api/system/shutdown (sleep N && poweroff in its
+# own process group, so /api/system/shutdown/cancel can stop it before 0).
+_shutdown_proc = None
+SHUTDOWN_DELAY_S = 10
+
+
 @app.post("/api/system/shutdown")
 async def api_system_shutdown(_auth=Depends(check_auth)):
-    """Power off the TNC. Backgrounds a short-delayed poweroff so this HTTP
-    response flushes to the browser before the network drops. Narrow sudoers:
-    kp4pra-tnc may run only /sbin/poweroff."""
+    """Power off the TNC after SHUTDOWN_DELAY_S seconds (the Config page shows
+    the same 10 -> 0 countdown). The request is sent when the countdown
+    starts, so the shutdown still happens at 0 if the browser is closed or the
+    connection drops. Narrow sudoers: kp4pra-tnc may run only /sbin/poweroff."""
+    global _shutdown_proc
     import subprocess
+    if _shutdown_proc is not None and _shutdown_proc.poll() is None:
+        return JSONResponse({"success": True, "delay": SHUTDOWN_DELAY_S,
+            "message": "Shutdown already pending."})
     try:
-        subprocess.Popen(
-            ["/bin/sh", "-c", "sleep 2 && sudo -n /sbin/poweroff"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return JSONResponse({"success": True,
-            "message": "Shutting down now. Wait ~15s, then it is safe to remove power."})
+        _shutdown_proc = subprocess.Popen(
+            ["/bin/sh", "-c", f"sleep {SHUTDOWN_DELAY_S} && exec sudo -n /sbin/poweroff"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
+        return JSONResponse({"success": True, "delay": SHUTDOWN_DELAY_S,
+            "message": f"Shutting down in {SHUTDOWN_DELAY_S} s. Wait ~15 s after that, "
+                       "then it is safe to remove power."})
     except Exception as e:
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
+@app.post("/api/system/shutdown/cancel")
+async def api_system_shutdown_cancel(_auth=Depends(check_auth)):
+    """Cancel a pending shutdown during its countdown."""
+    global _shutdown_proc
+    import signal
+    p = _shutdown_proc
+    if p is None or p.poll() is not None:
+        return JSONResponse({"success": False,
+            "message": "No shutdown pending (or it already started)."}, status_code=409)
+    try:
+        os.killpg(p.pid, signal.SIGTERM)
+        p.wait(timeout=3)
+    except ProcessLookupError:
+        pass
+    except Exception as e:
+        return JSONResponse({"success": False, "message": f"Could not cancel: {e}"}, status_code=500)
+    _shutdown_proc = None
+    return JSONResponse({"success": True, "message": "Shutdown cancelled."})
 
 
 @app.post("/api/dra/setup")

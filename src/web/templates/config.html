@@ -196,6 +196,22 @@
   <div class="form-hint" id="shutdown-result" style="margin-top:0.4rem"></div>
 </div>
 
+<!-- Shutdown countdown: covers the whole page, 10 -> 0, then powers off -->
+<div id="shutdown-overlay" role="alertdialog" aria-modal="true" aria-labelledby="shutdown-title"
+     style="display:none;position:fixed;inset:0;z-index:9999;background:var(--kp4pra-bg);color:var(--kp4pra-text);
+            flex-direction:column;align-items:center;justify-content:center;
+            text-align:center;padding:1.5rem;gap:1rem">
+  <div id="shutdown-title" style="font-size:1.6rem;font-weight:700">Shutting down KP4PRA TNC</div>
+  <div id="shutdown-count" aria-live="assertive"
+       style="font-size:6rem;font-weight:800;line-height:1;color:var(--kp4pra-error);
+              font-variant-numeric:tabular-nums">10</div>
+  <div id="shutdown-msg" style="max-width:28rem;color:var(--kp4pra-muted-text)">
+    RF operation and this web interface will go offline. You will need to power the
+    TNC back on by hand.
+  </div>
+  <button class="btn btn-secondary" id="shutdown-cancel" onclick="cancelShutdown()">Cancel</button>
+</div>
+
 <!-- Direwolf -->
 <div class="card">
   <div class="card-title"><span class="icon">🐺</span> Direwolf KISS TCP</div>
@@ -939,23 +955,70 @@ async function rebootTNC() {
   }
   // leave the button disabled; the box is rebooting
 }
+// Shut Down: the power-off request is sent as soon as the button is pressed;
+// the TNC itself waits 10 s, matching the full-screen 10 -> 0 countdown, so
+// the shutdown happens at 0 even if this page is closed. Cancel (or Esc)
+// during the countdown asks the TNC to drop the pending shutdown.
+const SHUTDOWN_SECONDS = 10;
+let shutdownTimer = null;
+function shutdownShow(title, msg, showCancel) {
+  document.getElementById('shutdown-title').textContent = title;
+  document.getElementById('shutdown-msg').textContent = msg;
+  document.getElementById('shutdown-cancel').style.display = showCancel ? '' : 'none';
+}
+function shutdownHide() {
+  document.getElementById('shutdown-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
 async function shutdownTNC() {
-  if (!confirm('Shut down the TNC now?\n\nRF operation and this web interface ' +
-      'will go offline. You will need to power the TNC back on by hand.')) return;
-  const btn = document.getElementById('btn-shutdown');
-  const out = document.getElementById('shutdown-result');
-  btn.disabled = true; btn.textContent = 'Shutting down\u2026';
+  const ov = document.getElementById('shutdown-overlay');
+  const cnt = document.getElementById('shutdown-count');
+  const cancel = document.getElementById('shutdown-cancel');
+  cancel.textContent = 'Cancel'; cancel.onclick = cancelShutdown;
+  let left = SHUTDOWN_SECONDS;
+  cnt.textContent = left;
+  shutdownShow('Shutting down KP4PRA TNC',
+    'RF operation and this web interface will go offline. You will need to power the TNC back on by hand.', true);
+  ov.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  cancel.focus();
+  shutdownTimer = setInterval(() => {
+    left -= 1;
+    cnt.textContent = Math.max(left, 0);
+    if (left <= 0) {
+      clearInterval(shutdownTimer); shutdownTimer = null;
+      shutdownShow('Shutting down…',
+        'Powering off. Safe to remove power once the LEDs stop (about 15 seconds).', false);
+    }
+  }, 1000);
   try {
     const r = await fetch('/api/system/shutdown', {method:'POST'});
     const d = await r.json();
-    out.textContent = d.message || (d.success ? 'Shutting down\u2026' : 'Failed.');
-    if (d.success) out.textContent += ' Safe to remove power once the LEDs stop.';
+    if (!d.success) throw new Error(d.message || 'The TNC did not accept the shutdown request.');
   } catch(e) {
-    // A dropped connection here is EXPECTED - the box is going down.
-    out.textContent = 'Shutdown triggered (connection closed). Safe to remove power in ~15s.';
+    if (shutdownTimer === null) return;      // countdown already over: box going down
+    clearInterval(shutdownTimer); shutdownTimer = null;
+    cnt.textContent = '';
+    shutdownShow('Shutdown failed', String(e.message || e), true);
+    cancel.textContent = 'Close'; cancel.onclick = shutdownHide;
   }
-  // leave the button disabled; the box is powering off
 }
+async function cancelShutdown() {
+  if (shutdownTimer === null) return;          // countdown over: too late to cancel
+  clearInterval(shutdownTimer); shutdownTimer = null;
+  const out = document.getElementById('shutdown-result');
+  try {
+    const r = await fetch('/api/system/shutdown/cancel', {method:'POST'});
+    const d = await r.json();
+    if (!d.success) throw new Error(d.message);
+    shutdownHide();
+    out.textContent = 'Shutdown cancelled.';
+  } catch(e) {
+    shutdownShow('Could not cancel',
+      'The TNC may still shut down: ' + String(e.message || e), false);
+  }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cancelShutdown(); });
 async function setupDRA() {
   if (!confirm('Raspberry Pi: this edits /boot config.txt and requires a REBOOT.\n' +
       'Orange Pi Zero 2W: this only checks the setup done from SSH.\n\n' +

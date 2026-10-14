@@ -1,3 +1,14 @@
+## Shut Down countdown - new in 1.4.14
+- Config page Shut Down: the page is replaced by a full-screen
+  "Shutting down KP4PRA TNC" message with a 10 -> 0 countdown. The request is
+  sent when the countdown starts (at 10); the TNC waits 10 s itself and then
+  powers off, so the shutdown happens at 0 even if the page is closed or the
+  connection drops. Cancel (or Esc) during the countdown calls the new
+  POST /api/system/shutdown/cancel, which stops the pending power-off. At 0
+  the screen shows "Powering off. Safe to remove power once the LEDs stop
+  (about 15 seconds)". Pressing Shut Down twice does not start a second
+  shutdown. The separate confirm dialog is gone (the countdown replaces it).
+
 ## DRA setup works on any Armbian image - new in 1.4.13
 - setup-dra-pi-zero.sh (Orange Pi Zero 2W), step [1/6] Kernel headers no
   longer stops on Armbian rolling images ("linux-headers-current-sunxi64=
