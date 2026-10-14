@@ -5,7 +5,13 @@ Targets: **Orange Pi Zero 2W** (Armbian/Debian trixie) and
 Requires Python 3.11+ and BlueZ 5.6x+.
 
 ## 1. Flash the OS
-- Search the web for "Orange Pi Zero 2W: Armbian minimal/CLI image" and install to the → SD card.
+- Orange Pi Zero 2W: Armbian Debian 13 (trixie) minimal/CLI image
+  (https://dl.armbian.com/orangepizero2w/Trixie_current_minimal) written to
+  the SD card. Armbian currently offers only "rolling" images for this
+  board; that is fine. If you add the DRA-Pi-Zero (section 6c), its setup
+  script moves the board to Armbian's stable kernel automatically when the
+  rolling kernel has no headers (one extra reboot). See
+  docs/DRA_PI_ZERO.md, "Kernel headers".
 - Raspberry Pi Zero 2 W: Raspberry Pi OS Lite via Raspberry Pi Imager —
   **32-bit or 64-bit both work** (both validated; 32-bit on Trixie is the reference configuration). On this 512MB board
   the 32-bit image leaves more free RAM; choose it if memory is tight.
@@ -225,8 +231,12 @@ See docs/TFT_DISPLAY.md.
 **Orange Pi Zero 2W (Armbian):** run the same line once (needs internet, about
 5 minutes). It builds the codec driver for your kernel (DKMS, rebuilt
 automatically after kernel updates), installs the DRA overlay, then asks for a
-reboot. No second run is needed. It needs Armbian's stable repository for the
-kernel headers - see docs/DRA_PI_ZERO.md, "Orange Pi Zero 2W".
+reboot. On Armbian's **rolling** images (the only ones currently offered for
+this board) the running kernel usually has no headers: the script then moves
+the board to Armbian's stable repository and stable kernel by itself and says
+**reboot and run the same line again** - the second run finishes the setup.
+On a board already on a stable kernel one run is enough. See
+docs/DRA_PI_ZERO.md, "Kernel headers".
 
 The initial direwolf.conf is created automatically by the installer (a minimal
 config is seeded on /rw with a symlink at /home/kp4pra/direwolf.conf). Configure

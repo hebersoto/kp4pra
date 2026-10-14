@@ -1,3 +1,15 @@
+## DRA setup works on any Armbian image - new in 1.4.13
+- setup-dra-pi-zero.sh (Orange Pi Zero 2W), step [1/6] Kernel headers no
+  longer stops on Armbian rolling images ("linux-headers-current-sunxi64=
+  26.11.0-trunk.83 not available"): it switches the Armbian apt source to the
+  stable repository apt.armbian.com (backup in /var/backups/kp4pra/, or adds
+  the stable source if none exists), retries the running kernel's headers,
+  and otherwise installs the newest stable kernel with matching image + dtb +
+  headers and asks for a reboot and a re-run. Armbian's download page now
+  offers only rolling images for the Zero 2W, so every new install hit this.
+- Docs: DRA_PI_ZERO.md "Kernel headers (automatic on any Armbian image)",
+  INSTALL.md step 1 names the image and explains the extra reboot.
+
 ## Config page wording - new in 1.4.12
 - Docs/UI for the open Orange Pi hotspot: INSTALL.md (WiFi note in step 1,
   end of install, first-boot check), README.md (features, validated

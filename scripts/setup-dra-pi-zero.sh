@@ -207,6 +207,49 @@ opi_status() {  # --config-only on the Orange Pi (web button): report, change no
 
 opi_die() { echo "ERROR: $*" >&2; exit 1; }
 
+# --- Armbian kernel/headers helpers (any Armbian image) ---------------------
+# Versions of a package available from the apt sources, one per line.
+opi_versions() {
+    apt-cache madison "$1" 2>/dev/null | awk -F'|' '{gsub(/[[:space:]]/, "", $2); print $2}' | LC_ALL=C sort -u || true
+}
+opi_has_version() { opi_versions "$1" | grep -qxF "$2"; }
+
+# Newest version available for ALL of image, dtb and headers; stable releases
+# preferred over rolling "trunk" builds.
+opi_pick_kernel() {
+    local common pick
+    common="$(LC_ALL=C comm -12 <(opi_versions "$1") <(opi_versions "$2") \
+              | LC_ALL=C comm -12 - <(opi_versions "$3") || true)"
+    pick="$(printf '%s\n' "$common" | grep -v -e trunk -e '^$' | sort -V | tail -1 || true)"
+    [ -n "$pick" ] || pick="$(printf '%s\n' "$common" | grep -v '^$' | sort -V | tail -1 || true)"
+    printf '%s\n' "$pick"
+}
+
+# Point Armbian's apt source at the stable repository (apt.armbian.com).
+# Originals are backed up to /var/backups/kp4pra/. If no Armbian source is
+# configured at all, add the stable one.
+opi_use_stable_repo() {
+    local f code
+    mkdir -p /var/backups/kp4pra
+    for f in $(grep -rls 'beta\.armbian\.com' /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null || true); do
+        [ -f "/var/backups/kp4pra/$(basename "$f")" ] || cp "$f" "/var/backups/kp4pra/$(basename "$f")"
+        sed -i 's#beta\.armbian\.com#apt.armbian.com#g' "$f"
+        echo "  apt source $f -> stable repository apt.armbian.com (backup in /var/backups/kp4pra/)"
+    done
+    if ! grep -rqs 'apt\.armbian\.com' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+        code="$(. /etc/os-release 2>/dev/null; echo "${VERSION_CODENAME:-trixie}")"
+        cat > /etc/apt/sources.list.d/kp4pra-armbian-stable.sources <<EOF
+Types: deb
+URIs: http://apt.armbian.com
+Suites: $code
+Components: main ${code}-utils
+Signed-By: /usr/share/keyrings/armbian-archive-keyring.gpg
+EOF
+        echo "  added the stable Armbian repository (apt.armbian.com, $code)"
+    fi
+    apt-get update -qq || true
+}
+
 opi_setup() {
     [ "$(id -u)" -eq 0 ] || exec sudo bash "$0"
     # Never stop silently: report where an unexpected failure happened.
@@ -242,12 +285,16 @@ opi_setup() {
         exit 1
     fi
 
-    # 1. Kernel headers matching the running Armbian kernel.
+    # 1. Kernel headers matching the running Armbian kernel. Works on any
+    #    Armbian image: rolling/trunk images (beta.armbian.com) often have no
+    #    headers for their kernel, so fall back to the stable repository and,
+    #    if needed, to the newest stable kernel that has headers (then reboot
+    #    and run again).
     echo "-- [1/6] Kernel headers"
     if [ -e "/lib/modules/$K/build/Makefile" ]; then
         echo "  OK  : headers for $K present"
     else
-        local IMG HDR IVER
+        local IMG HDR DTB IVER PICK
         # Which installed linux-image package is the running kernel?
         # 1) the owner of /boot/vmlinuz-$K, 2) any installed Armbian sunxi64 image.
         IMG="$( { dpkg-query -S "/boot/vmlinuz-$K" 2>/dev/null || true; } | sed -n '1s/:.*//p')"
@@ -257,19 +304,32 @@ opi_setup() {
         fi
         [ -n "$IMG" ] || opi_die "cannot find the installed Armbian kernel package (linux-image-*-sunxi64) for $K."
         HDR="${IMG/linux-image/linux-headers}"
+        DTB="${IMG/linux-image/linux-dtb}"
         IVER="$(dpkg-query -W -f '${Version}' "$IMG" 2>/dev/null || true)"
         [ -n "$IVER" ] || opi_die "cannot read the version of $IMG."
-        echo "  installing $HDR=$IVER"
+        echo "  running kernel package: $IMG $IVER"
         apt-get update -qq || true
-        if ! apt-get install -y "$HDR=$IVER"; then
-            cat >&2 <<EOF
-ERROR: kernel headers $HDR=$IVER are not available from your apt sources.
-Armbian's beta repository (beta.armbian.com) often has no headers for its
-trunk kernels. Switch to the stable repository (apt.armbian.com), install the
-stable kernel + headers, reboot, and run this script again. Step-by-step:
-docs/DRA_PI_ZERO.md, section "Kernel headers: beta vs stable repository".
-EOF
-            exit 1
+        if opi_has_version "$HDR" "$IVER"; then
+            echo "  installing $HDR=$IVER"
+            apt-get install -y "$HDR=$IVER"
+        else
+            echo "  $HDR=$IVER is not in your apt sources (normal for Armbian rolling/trunk images)."
+            opi_use_stable_repo
+            if opi_has_version "$HDR" "$IVER"; then
+                echo "  installing $HDR=$IVER"
+                apt-get install -y "$HDR=$IVER"
+            else
+                PICK="$(opi_pick_kernel "$IMG" "$DTB" "$HDR")"
+                [ -n "$PICK" ] || opi_die "no Armbian kernel with matching headers found for $IMG in your apt sources. Check the internet connection and 'apt-cache policy $HDR', then report this output."
+                echo "  switching to stable kernel $PICK (image + device tree + headers)"
+                apt-get install -y --allow-downgrades "$IMG=$PICK" "$DTB=$PICK" "$HDR=$PICK"
+                echo
+                echo "== Kernel changed to the stable Armbian kernel $PICK =="
+                echo "REBOOT REQUIRED, then run the same command again to finish the DRA setup:"
+                echo "  sudo reboot"
+                echo "  cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh"
+                exit 0
+            fi
         fi
     fi
 

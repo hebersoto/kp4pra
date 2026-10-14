@@ -141,8 +141,8 @@ all three LEDs, BLE (iPhone) validated on 2026-10-12.
   sunxi AHUB audio support is an Armbian patch - Orange Pi's vendor images
   ("Orange Pi OS", legacy 4.9/5.4/6.1 BSP kernels) use a different audio
   stack and are not supported.
-- **Kernel headers** for the running kernel, from Armbian's **stable**
-  repository (see below).
+- **Kernel headers** for the running kernel. The setup script gets them
+  automatically on any Armbian image (see "Kernel headers" below).
 - **Internet** during setup and whenever a new kernel is installed (the codec
   driver source for that exact kernel is downloaded and cached).
 - Only the **Zero 2W** is covered. Other H616/H618 boards (Zero 2, Zero 3)
@@ -181,11 +181,36 @@ What the script does (six steps, all logged):
 
 Re-running the script is safe; it rebuilds the driver and keeps your settings.
 
-### Kernel headers: beta vs stable repository
+### Kernel headers (automatic on any Armbian image)
 
-Armbian images that point at `beta.armbian.com` often run "trunk" kernels
-that have **no headers package**; the script then stops with a message. Move
-to the stable repository and the stable kernel, then re-run:
+The codec driver is built against the running kernel's headers. Armbian's
+download page for the Zero 2W currently offers only **rolling** images
+(packages from `beta.armbian.com`, "trunk" kernels such as
+`26.11.0-trunk.83`), and the beta repository often has **no headers** for its
+trunk kernels. Step [1/6] of the setup script handles this by itself:
+
+1. Headers for the running kernel available -> installed, setup continues.
+2. Not available -> the Armbian apt source is switched to the **stable**
+   repository `apt.armbian.com` (original file backed up to
+   `/var/backups/kp4pra/`; if no Armbian source exists, a stable one is added)
+   and the running kernel's headers are tried again.
+3. Still not available (a rolling kernel) -> the newest **stable** kernel
+   that has image, device tree and headers is installed
+   (`linux-image/dtb/headers-current-sunxi64`). The script then says:
+   **reboot and run the same command again**:
+
+   ```bash
+   sudo reboot
+   cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh
+   ```
+
+   The second run finds the stable kernel's headers and finishes the setup.
+
+The board stays on the stable repository afterwards, so `apt upgrade` keeps
+kernel and headers in step and DKMS rebuilds the driver for each new kernel.
+To undo the repository change, copy the file back from `/var/backups/kp4pra/`.
+
+Manual equivalent (only if the automatic step cannot reach the repository):
 
 ```bash
 grep -rl beta.armbian.com /etc/apt/sources.list /etc/apt/sources.list.d/
@@ -193,7 +218,7 @@ grep -rl beta.armbian.com /etc/apt/sources.list /etc/apt/sources.list.d/
 sudo apt update
 apt-cache madison linux-image-current-sunxi64      # pick the newest stable version
 V=26.8.3                                           # example
-sudo apt install linux-image-current-sunxi64=$V linux-dtb-current-sunxi64=$V linux-headers-current-sunxi64=$V
+sudo apt install --allow-downgrades linux-image-current-sunxi64=$V linux-dtb-current-sunxi64=$V linux-headers-current-sunxi64=$V
 sudo reboot
 ```
 
