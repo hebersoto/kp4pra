@@ -930,8 +930,11 @@ async function refreshDRAStatus() {
     const el = document.getElementById('dra-status');
     if (d.dra_present) {
       el.textContent = `✅ DRA-Pi-Zero detected (${d.card} on ${d.board}).`;
+    } else if (d.setup_state && d.setup_state !== 'not_set_up' && d.hint) {
+      // A DRA setup was started on this board: say exactly what is missing.
+      el.textContent = '⚠️ DRA-Pi-Zero not detected. ' + d.hint;
     } else {
-      el.textContent = 'ℹ️ No DRA-Pi-Zero detected — USB or no I²S board. Run setup only if a DRA-Pi-Zero is installed.';
+      el.textContent = 'ℹ️ ' + (d.hint || 'No DRA-Pi-Zero detected — USB or no I²S board. Run setup only if a DRA-Pi-Zero is installed.');
     }
   } catch(e) {
     document.getElementById('dra-status').textContent = 'Status check failed: ' + e;

@@ -1,3 +1,26 @@
+## DRA mixer applied reliably at boot - new in 1.4.15
+- Fix: on the Orange Pi Zero 2W the DRA card can register a few seconds
+  after sound.target. kp4pra-dra-mixer.service looked once, logged "not
+  detected - skipping", and the WM8731 mixer stayed at its defaults (Mic not
+  captured, output off): the DRA had no RX/TX audio until
+  setup-dra-pi-zero.sh was run again by hand (tester report). The boot run
+  (--mixer-only) now waits up to 30 s for the card when the DRA overlay is
+  set up (no wait on USB-only boards); unit TimeoutStartSec=90.
+- `alsactl store` failing on the read-only root at boot no longer aborts the
+  script (the mixer is re-applied every boot anyway).
+- Every setup run is logged to /rw/kp4pra-tnc/logs/dra-setup.log, plus one
+  line per boot from the mixer service, so testers can send it.
+- Config page DRA card: when the DRA card is missing it now says why and
+  what to do, instead of only "not detected": setup never run / kernel
+  switched or updated without reboot (reboot, run setup again) / setup not
+  finished for this kernel (driver or overlay missing - run again) / setup
+  finished after the last boot (reboot) / installed but no card (check the
+  board is seated). New /api/dra/status fields setup_state and hint
+  (common.dra_platform.setup_state, file checks only; tests added).
+- Upgrading: pull, then `sudo install -m 755 scripts/setup-dra-pi-zero.sh
+  /usr/local/bin/`, `sudo cp systemd/kp4pra-dra-mixer.service
+  /etc/systemd/system/`, `sudo systemctl daemon-reload`, reboot.
+
 ## Shut Down countdown - new in 1.4.14
 - INSTALL.md: reboot after `apt upgrade` in 1b (a kernel update without a
   reboot stopped the DRA setup) and after the installer in 5; section 6c

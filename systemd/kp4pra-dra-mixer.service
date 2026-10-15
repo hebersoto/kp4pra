@@ -11,6 +11,8 @@ After=sound.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/setup-dra-pi-zero.sh --mixer-only
+# The script waits up to 30 s for the DRA card when its overlay is set up.
+TimeoutStartSec=90
 
 [Install]
 WantedBy=multi-user.target

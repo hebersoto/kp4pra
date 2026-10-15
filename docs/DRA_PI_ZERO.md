@@ -262,6 +262,15 @@ in the field, or use client mode / USB Ethernet. Details: INSTALL.md section
 
 ### Troubleshooting (Orange Pi)
 
+- **Send this file when reporting a problem:**
+  `/rw/kp4pra-tnc/logs/dra-setup.log`. It keeps the output of every
+  `setup-dra-pi-zero.sh` run plus one line per boot from the mixer service
+  (`boot mixer: mixer applied ...` or `... NOT detected after 30 s`).
+- Card listed but no RX/TX audio: the WM8731 mixer is not set. It is applied
+  at every boot by `kp4pra-dra-mixer.service` (which waits up to 30 s for the
+  card); apply it by hand with
+  `sudo /usr/local/bin/setup-dra-pi-zero.sh --mixer-only` and check
+  `journalctl -b -u kp4pra-dra-mixer`.
 - `dmesg | grep KP4PRA` must show both `fixed 12 MHz crystal` and
   `AHUB LRCK period fixup at 0x05097204`. If not: `dkms status` should list
   `kp4pra-wm8731/<version>, <kernel>: installed`.

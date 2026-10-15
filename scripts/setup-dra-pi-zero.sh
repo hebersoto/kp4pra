@@ -118,11 +118,43 @@ do_config() {
     fi
 }
 
+SETUP_LOG_DIR="/rw/kp4pra-tnc/logs"
+SETUP_LOG="$SETUP_LOG_DIR/dra-setup.log"
+# One line per boot-time mixer run in the setup log (for remote diagnosis).
+mixlog() { [ "$MODE" = mixer ] && { mkdir -p "$SETUP_LOG_DIR" && echo "$(date -Is) boot mixer: $*" >> "$SETUP_LOG"; } 2>/dev/null || true; }
+
+# Is the DRA overlay set up on this board (so the card SHOULD appear)?
+dra_expected() {
+    if [ "$DRA_PLATFORM" = "opi-zero2w" ]; then
+        [ -f /boot/overlay-user/kp4pra-dra-orangepi.dtbo ]
+    else
+        local c; c="$(find_cfg 2>/dev/null)" || return 1
+        grep -qE '^[[:space:]]*dtoverlay=audioinjector-wm8731-audio' "$c"
+    fi
+}
+
 do_mixer() {
+    # At boot (kp4pra-dra-mixer.service) the codec can register a few seconds
+    # after sound.target - on the Orange Pi the I2S card often does. When the
+    # DRA overlay is set up, wait for the card (up to 30 s) instead of giving
+    # up on the first look; otherwise the mixer stays at its defaults (Mic not
+    # captured, output off) and the DRA has no RX/TX audio until the setup is
+    # run again by hand.
+    if [ "$MODE" = mixer ] && dra_expected; then
+        local i
+        for i in $(seq 1 30); do
+            arecord -l 2>/dev/null | grep -q "$CARD" && break
+            sleep 1
+        done
+        if arecord -l 2>/dev/null | grep -q "$CARD" && [ "$i" -gt 1 ]; then
+            echo "DRA card '$CARD' appeared after ${i} s"
+        fi
+    fi
     # No-op safely if the codec isn't present (board absent / not seated).
     if ! arecord -l 2>/dev/null | grep -q "$CARD"; then
         echo "DRA-Pi-Zero ('${CARD}') not detected - skipping mixer setup."
         echo "(If you just enabled the overlay, a reboot is required first.)"
+        if dra_expected; then mixlog "card $CARD NOT detected after 30 s - mixer not applied"; fi
         return 0
     fi
 
@@ -153,8 +185,14 @@ do_mixer() {
     mset_opt 'Output Mixer Mic Sidetone' off
     mset_req 'Master' 100 unmute      # tested TX level (-21dB)
     mset_opt 'Capture' 31             # tested RX level (max); RX gain set by R12 pot
-    sudo alsactl store
-    echo "Mixer configured and stored."
+    # Saving can fail at boot on a read-only root; the boot service re-applies
+    # the mixer every boot, so that is not an error.
+    if sudo alsactl store 2>/dev/null; then
+        echo "Mixer configured and stored."
+    else
+        echo "Mixer configured (not saved: read-only root - re-applied at every boot)."
+    fi
+    mixlog "mixer applied on card $CARD"
 
     if command -v direwolf >/dev/null 2>&1; then
         if ! timeout 5 direwolf 2>&1 </dev/null | grep -qi libgpiod; then
@@ -261,6 +299,12 @@ opi_setup() {
     local K VER NEED_REBOOT=0
     K="$(uname -r)"
     VER="$(cat "$REPO_DIR/VERSION" 2>/dev/null || echo 0.0.0)"
+    # Keep a copy of every run on the writable partition, so a tester can
+    # send it: /rw/kp4pra-tnc/logs/dra-setup.log
+    if mkdir -p "$SETUP_LOG_DIR" 2>/dev/null && touch "$SETUP_LOG" 2>/dev/null; then
+        exec > >(tee -a "$SETUP_LOG") 2>&1
+        echo "--- $(date -Is) setup-dra-pi-zero.sh (mode: $MODE) ---"
+    fi
     echo "== DRA-Pi-Zero setup for ${DRA_BOARD} (kernel $K, KP4PRA $VER) =="
 
     # Read-only root: remount rw for the install, restore on exit.

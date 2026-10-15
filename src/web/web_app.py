@@ -1223,8 +1223,17 @@ async def api_dra_status(_auth=Depends(check_auth)):
     cfg = load_config()
     adevice = (cfg.get("station", {}).get("sound") or "")
     plat = detect_platform()
+    state, hint = ("ok", "")
+    if not present:
+        try:
+            from common.dra_platform import setup_state
+            state, hint = setup_state(plat)
+        except Exception as e:
+            state, hint = ("unknown", f"setup state check failed: {e}")
     return JSONResponse({
         "dra_present": present,
+        "setup_state": state,
+        "hint": hint,
         "card": card,
         "platform": plat or "unknown",
         "board": platform_info(plat)["name"] if plat else "unknown board",

@@ -92,3 +92,83 @@ def foreign_dra_ptt_params(platform: Optional[str] = None) -> set:
     that line does not exist and Dire Wolf exits. Callers remap these."""
     mine = dra_ptt_param(platform)
     return {f"{c} {l}" for c, l in (p["ptt"] for p in PLATFORMS.values())} - {mine}
+
+
+# ---------------------------------------------------------------------------
+# Setup state (shown on the Config page when the DRA card is NOT detected).
+# Read-only file checks, no root needed. `root` and `boot_time` exist for tests.
+SETUP_CMD = "cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh"
+OPI_DTBO = "boot/overlay-user/kp4pra-dra-orangepi.dtbo"
+OPI_ENV = "boot/armbianEnv.txt"
+
+
+def _boot_time() -> float:
+    try:
+        with open("/proc/uptime") as f:
+            import time
+            return time.time() - float(f.read().split()[0])
+    except (OSError, ValueError):
+        return 0.0
+
+
+def _read(path: str) -> str:
+    try:
+        with open(path, errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def setup_state(plat: Optional[str], kernel: Optional[str] = None,
+                root: str = "/", boot_time: Optional[float] = None):
+    """Why is the DRA card missing, and what should the user do?
+
+    Returns (state, hint). state is one of:
+      not_set_up      no sign of a DRA setup (USB-only boards land here)
+      kernel_pending  setup started, but the running kernel was replaced
+                      (kernel switch / update without reboot) -> reboot, run again
+      incomplete      setup started but driver or overlay missing -> run again
+      reboot_needed   setup finished after the last boot -> reboot
+      no_card         everything installed and booted, card still missing
+                      -> check the board is seated
+    """
+    import glob
+    j = lambda p: os.path.join(root, p)
+    k = kernel or os.uname().release
+    bt = _boot_time() if boot_time is None else boot_time
+
+    if plat == "opi-zero2w":
+        dtbo = j(OPI_DTBO)
+        started = (os.path.isdir(j("var/lib/dkms/kp4pra-wm8731"))
+                   or os.path.isdir(j("var/backups/kp4pra")) or os.path.exists(dtbo))
+        if not started:
+            return ("not_set_up", "Orange Pi Zero 2W: if a DRA-Pi-Zero is installed, run the "
+                    f"one-time setup from SSH: {SETUP_CMD}")
+        if not os.path.isdir(j(f"lib/modules/{k}/kernel")):
+            return ("kernel_pending", "DRA setup not finished: the kernel was changed or updated "
+                    f"and the board has not been rebooted. Reboot, then run again from SSH: {SETUP_CMD}")
+        built = glob.glob(j(f"lib/modules/{k}/updates/dkms/snd-soc-wm8731*.ko*"))
+        overlay = os.path.exists(dtbo) and "kp4pra-dra-orangepi" in _read(j(OPI_ENV))
+        if not built or not overlay:
+            missing = " and ".join(x for x, ok in (("codec driver", built), ("DRA overlay", overlay)) if not ok)
+            return ("incomplete", f"DRA setup not finished ({missing} missing for kernel {k}). "
+                    f"Run again from SSH: {SETUP_CMD} - it may ask for a reboot and one more run.")
+        newest = max(os.path.getmtime(p) for p in built + [dtbo])
+        if bt and newest > bt:
+            return ("reboot_needed", "DRA setup finished - reboot to load the DRA-Pi-Zero.")
+        return ("no_card", "Driver and overlay are installed but the DRA card did not appear. "
+                "Check the DRA-Pi-Zero is seated on the header, then reboot; "
+                "details: dmesg | grep KP4PRA (docs/DRA_PI_ZERO.md).")
+
+    # Raspberry Pi (or unknown): config.txt overlay line
+    for cfg in (j("boot/firmware/config.txt"), j("boot/config.txt")):
+        txt = _read(cfg)
+        if txt:
+            if "dtoverlay=audioinjector-wm8731-audio" not in txt:
+                break
+            if bt and os.path.getmtime(cfg) > bt:
+                return ("reboot_needed", "DRA overlay written to config.txt - reboot to load the DRA-Pi-Zero.")
+            return ("no_card", "The DRA overlay is set in config.txt but the card did not appear. "
+                    "Check the DRA-Pi-Zero is seated on the header, then reboot.")
+    return ("not_set_up", "No DRA-Pi-Zero detected - USB or no I²S board. "
+            "Run setup only if a DRA-Pi-Zero is installed.")

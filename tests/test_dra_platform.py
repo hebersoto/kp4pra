@@ -107,6 +107,63 @@ class OrangePiZero2W(unittest.TestCase):
         self.assertEqual(cards[0]["ptt_param_suggest"], "gpiochip1 267")
 
 
+
+class SetupState(unittest.TestCase):
+    """Config page hint when the DRA card is missing (fake filesystem)."""
+    K = "6.18.44-current-sunxi64"
+
+    def setUp(self):
+        import tempfile
+        self.root = tempfile.mkdtemp()
+
+    def mk(self, rel, text="", mtime=None):
+        path = os.path.join(self.root, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(text)
+        if mtime is not None:
+            os.utime(path, (mtime, mtime))
+        return path
+
+    def state(self, plat="opi-zero2w", boot=1000.0):
+        return dp.setup_state(plat, kernel=self.K, root=self.root, boot_time=boot)[0]
+
+    def opi_installed(self, mtime=500.0):
+        self.mk(f"lib/modules/{self.K}/kernel/x")
+        self.mk(f"lib/modules/{self.K}/updates/dkms/snd-soc-wm8731.ko.xz", mtime=mtime)
+        self.mk("boot/overlay-user/kp4pra-dra-orangepi.dtbo", mtime=mtime)
+        self.mk("boot/armbianEnv.txt", "user_overlays=kp4pra-dra-orangepi\n")
+
+    def test_opi_never_set_up(self):
+        self.assertEqual(self.state(), "not_set_up")
+
+    def test_opi_kernel_switched_not_rebooted(self):
+        os.makedirs(os.path.join(self.root, "var/backups/kp4pra"))
+        self.assertEqual(self.state(), "kernel_pending")       # no /lib/modules/<K>/kernel
+
+    def test_opi_incomplete_after_reboot(self):
+        os.makedirs(os.path.join(self.root, "var/backups/kp4pra"))
+        self.mk(f"lib/modules/{self.K}/kernel/x")
+        st, hint = dp.setup_state("opi-zero2w", kernel=self.K, root=self.root, boot_time=1000.0)
+        self.assertEqual(st, "incomplete")
+        self.assertIn("codec driver and DRA overlay missing", hint)
+        self.assertIn("setup-dra-pi-zero.sh", hint)
+
+    def test_opi_finished_needs_reboot(self):
+        self.opi_installed(mtime=2000.0)                       # installed after boot
+        self.assertEqual(self.state(boot=1000.0), "reboot_needed")
+
+    def test_opi_installed_booted_no_card(self):
+        self.opi_installed(mtime=500.0)
+        self.assertEqual(self.state(boot=1000.0), "no_card")
+
+    def test_pi_states(self):
+        self.assertEqual(self.state("rpi"), "not_set_up")
+        cfg = self.mk("boot/firmware/config.txt", "dtoverlay=audioinjector-wm8731-audio\n", mtime=2000.0)
+        self.assertEqual(self.state("rpi", boot=1000.0), "reboot_needed")
+        os.utime(cfg, (500.0, 500.0))
+        self.assertEqual(self.state("rpi", boot=1000.0), "no_card")
+
 class ShellTwinInSync(unittest.TestCase):
     """bin/kp4pra-dra-platform must carry the same values as the Python table."""
 
