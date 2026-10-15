@@ -69,10 +69,15 @@ from your Windows PC over the network with **PuTTY**, a free SSH client.
 > PuTTY pastes with a right-click, not Ctrl+V. (Every ` ``` ` command block on
 > GitHub has a copy button in its top-right corner when you hover over it.)
 
-Once connected, update the system before installing:
+Once connected, update the system before installing, then **reboot** so the
+board runs the kernel that was just installed (a kernel update without a
+reboot makes later steps - DKMS driver builds, the DRA setup - stop with
+"the kernel was updated but the board has not been rebooted yet"):
 ```bash
 sudo apt update && sudo apt upgrade -y
+sudo reboot
 ```
+Wait a minute, then reconnect with PuTTY (step 4 above).
 
 > **KNOWN ISSUE (June 2026) — BLE advertising broken on current Raspberry Pi
 > OS kernels.** A kernel patch ("Bluetooth: MGMT: validate Add Extended
@@ -139,6 +144,12 @@ At the end of the install the KP4PRA hotspot starts automatically
 (unless you are installing over a WiFi connection, in which case start
 it manually: `sudo kp4pra-wifi-mode ap`). See section 6b for the SSID,
 password (none on the Orange Pi Zero 2W), and web UI address.
+
+When the installer finishes, **reboot** (`sudo reboot`) before section 6c:
+the reboot puts the board in its normal read-only layout and starts every
+service from its saved state (and enables SPI if a Mini PiTFT was found).
+The scripts below handle the read-only root themselves - no
+`kp4pra-remount-rw` is needed before them.
 
 ## 6. KP4PRA TNC — stage 2 (Dire Wolf integration)
 
@@ -213,30 +224,47 @@ Hotspot defaults (change them on the Config page / in
 
 **DRA-Pi-Zero users only** (I2S board). USB (CM108) users skip this entirely.
 
-The KP4PRA TNC is now installed, so the `scripts/` directory exists. From the
-repo folder, run the DRA setup, reboot, then run the same line once more after
-reboot to apply the WM8731 mixer:
+The KP4PRA TNC is now installed, so the `scripts/` directory exists. The same
+command is used on both boards:
 ```bash
 cd ~/kp4pra-tnc
 sudo bash scripts/setup-dra-pi-zero.sh
 ```
-It enables the I2S overlay, disables onboard audio, sets mixer levels, and adds
-the service user to the gpio group. See docs/DRA_PI_ZERO.md.
+It is normal for this to take **two runs with a reboot after each**. Follow
+the last lines the script prints:
+
+**Raspberry Pi**
+1. Run the command. It enables the I2S overlay, disables onboard audio and
+   adds the service user to the gpio group, then says `REBOOT REQUIRED`.
+2. `sudo reboot`, reconnect, run the same command again. It now finds the
+   card and sets the WM8731 mixer levels (`Mixer configured and stored`).
+
+**Orange Pi Zero 2W (Armbian)** - needs internet, about 5 minutes per run.
+1. Run the command. On Armbian's **rolling** images (the only ones currently
+   offered for this board) the running kernel usually has no headers, so the
+   script moves the board to Armbian's stable repository and stable kernel
+   and stops with `== Kernel changed to the stable Armbian kernel ... ==` /
+   `REBOOT REQUIRED, then run the same command again`. **This is expected,
+   not a failure.**
+2. `sudo reboot`, reconnect, run the same command again. It now goes through
+   all six steps (`[1/6]` ... `[6/6]`), builds the codec driver (DKMS,
+   rebuilt automatically after later kernel updates), installs the DRA
+   overlay and ends with `== DRA-Pi-Zero setup finished for Orange Pi Zero 2W ==` /
+   `REBOOT REQUIRED`.
+3. `sudo reboot` once more. The card is then loaded and the mixer is applied
+   automatically at boot.
+
+On a board that is already on a stable kernel, Orange Pi step 1 goes
+straight to the full run (steps 2-3).
+
+**Both boards - finish in the web UI:** Config page -> Detect sound cards ->
+select "DRA-Pi-Zero (I2S)" (PTT pre-fills to GPIOD) -> Preview -> Apply.
+Details and troubleshooting: docs/DRA_PI_ZERO.md.
 
 **Optional Mini PiTFT display:** if an Adafruit Mini PiTFT 1.3" is plugged
 in during the install it is detected and enabled automatically (reboot after
 the install). To add one later: `sudo bash scripts/setup-tft.sh`, then reboot.
 See docs/TFT_DISPLAY.md.
-
-**Orange Pi Zero 2W (Armbian):** run the same line once (needs internet, about
-5 minutes). It builds the codec driver for your kernel (DKMS, rebuilt
-automatically after kernel updates), installs the DRA overlay, then asks for a
-reboot. On Armbian's **rolling** images (the only ones currently offered for
-this board) the running kernel usually has no headers: the script then moves
-the board to Armbian's stable repository and stable kernel by itself and says
-**reboot and run the same line again** - the second run finishes the setup.
-On a board already on a stable kernel one run is enough. See
-docs/DRA_PI_ZERO.md, "Kernel headers".
 
 The initial direwolf.conf is created automatically by the installer (a minimal
 config is seeded on /rw with a symlink at /home/kp4pra/direwolf.conf). Configure

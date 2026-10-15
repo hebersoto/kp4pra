@@ -1,4 +1,10 @@
 ## Shut Down countdown - new in 1.4.14
+- INSTALL.md: reboot after `apt upgrade` in 1b (a kernel update without a
+  reboot stopped the DRA setup) and after the installer in 5; section 6c
+  rewritten as numbered per-board steps - two runs with a reboot after each
+  is normal, the Orange Pi's first run stopping with "Kernel changed ...
+  REBOOT REQUIRED" is expected, and no kp4pra-remount-rw / nftables restart
+  is needed.
 - Config page Shut Down: the page is replaced by a full-screen
   "Shutting down KP4PRA TNC" message with a 10 -> 0 countdown. The request is
   sent when the countdown starts (at 10); the TNC waits 10 s itself and then
