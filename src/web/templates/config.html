@@ -990,8 +990,8 @@ async function shutdownTNC() {
     cnt.textContent = Math.max(left, 0);
     if (left <= 0) {
       clearInterval(shutdownTimer); shutdownTimer = null;
-      shutdownShow('Shutting down…',
-        'Powering off. Safe to remove power once the LEDs stop (about 15 seconds).', false);
+      shutdownShow('Shutting Down',
+        'Disconnect power in 15 seconds.', false);
     }
   }, 1000);
   try {

@@ -1,3 +1,18 @@
+## Shut Down on the Mini PiTFT - new in 1.4.16
+- Shut Down (Config page) now also clears the Mini PiTFT and shows the same
+  10 -> 0 countdown (wakes the display from the screen saver / off; buttons
+  ignored), then "Shutting Down, disconnect power in 15 seconds". The web
+  page shows the same final wording ("Shutting Down - Disconnect power in
+  15 seconds."). Cancel returns the display to normal.
+- How: the web UI writes /run/kp4pra-tnc/shutdown.json (deadline) when the
+  shutdown starts and removes it on Cancel; kp4pra-tnc-tft polls it every
+  0.5 s (a file more than 60 s past its deadline is ignored).
+- kp4pra-tnc-tft handles SIGTERM: while a shutdown is pending or the system
+  is stopping (also "sudo poweroff" from SSH) it leaves the final message on
+  the panel instead of blanking it; a normal service stop/restart still
+  blanks the display.
+- Docs: TFT_DISPLAY.md "Shut Down from the web UI". Tests added.
+
 ## DRA mixer applied reliably at boot - new in 1.4.15
 - Fix: on the Orange Pi Zero 2W the DRA card can register a few seconds
   after sound.target. kp4pra-dra-mixer.service looked once, logged "not

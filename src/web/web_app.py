@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common.config import load_config
 from common.config_writer import save_config, validate_config_updates
 from common.runtime_status import (
-    read_status, write_status, is_reboot_pending,
+    read_status, write_status, clear_status, is_reboot_pending,
     set_provisioning_status, clear_provisioning_status, set_reboot_pending
 )
 from common.bluez_manager import (
@@ -1290,6 +1290,9 @@ async def api_system_shutdown(_auth=Depends(check_auth)):
             ["/bin/sh", "-c", f"sleep {SHUTDOWN_DELAY_S} && exec sudo -n /sbin/poweroff"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True)
+        # Tell the Mini PiTFT (kp4pra-tnc-tft) to show the same countdown.
+        import time as _time
+        write_status("shutdown", {"deadline": _time.time() + SHUTDOWN_DELAY_S})
         return JSONResponse({"success": True, "delay": SHUTDOWN_DELAY_S,
             "message": f"Shutting down in {SHUTDOWN_DELAY_S} s. Wait ~15 s after that, "
                        "then it is safe to remove power."})
@@ -1314,6 +1317,7 @@ async def api_system_shutdown_cancel(_auth=Depends(check_auth)):
     except Exception as e:
         return JSONResponse({"success": False, "message": f"Could not cancel: {e}"}, status_code=500)
     _shutdown_proc = None
+    clear_status("shutdown")
     return JSONResponse({"success": True, "message": "Shutdown cancelled."})
 
 

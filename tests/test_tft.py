@@ -339,6 +339,95 @@ class Centipede(unittest.TestCase):
         self.assertIn(saver.BODY, colors)
 
 
+@unittest.skipIf(tftmain is None, "tft.main import failed")
+class ShutdownOnTFT(unittest.TestCase):
+    """Web UI shutdown -> countdown + final message on the Mini PiTFT."""
+    class Dev:
+        def __init__(self):
+            self.sleeping, self.shown, self.pressed = False, [], (False, False)
+        def sleep(self, on): self.sleeping = on
+        def show(self, img): self.shown.append(img)
+        def buttons(self): return self.pressed
+
+    def setUp(self):
+        self.status = {}
+        self._orig = tftmain.read_status
+        tftmain.read_status = lambda name: dict(self.status.get(name, {}))
+        tftmain._TERM.clear()
+
+    def tearDown(self):
+        tftmain.read_status = self._orig
+        tftmain._TERM.clear()
+
+    def make(self):
+        d = tftmain.Display(self.Dev())
+        d.splash_until = 0
+        return d
+
+    def tick(self, d, now):
+        d._shutdown_poll = 0
+        d.shutdown_tick(now)
+        if d.shutdown_deadline is not None:
+            d.draw_shutdown(now)
+
+    def test_countdown_wakes_from_saver_and_off(self):
+        for start in ("saver", "off"):
+            d = self.make()
+            if start == "saver":
+                d.sys = {"call": "KP4PRA-10"}; d.last_activity = 0; d.saver_tick(1000)
+                self.assertEqual(d.saver, "worm")
+            else:
+                d.set_off(True)
+            self.status["shutdown"] = {"deadline": 2010.0}
+            self.tick(d, 2000.0)
+            self.assertIsNone(d.saver)
+            self.assertFalse(d.off)
+            self.assertFalse(d.dev.sleeping)
+            self.assertEqual(d._shutdown_shown, 10)
+            self.tick(d, 2003.2)
+            self.assertEqual(d._shutdown_shown, 7)
+            self.tick(d, 2010.5)
+            self.assertIsNone(d._shutdown_shown)        # final message
+
+    def test_cancel_returns_to_normal(self):
+        d = self.make()
+        self.status["shutdown"] = {"deadline": 2010.0}
+        self.tick(d, 2000.0)
+        del self.status["shutdown"]
+        self.tick(d, 2004.0)
+        self.assertIsNone(d.shutdown_deadline)
+        self.assertTrue(d.dirty)
+
+    def test_stale_file_ignored(self):
+        d = self.make()
+        self.status["shutdown"] = {"deadline": 1000.0}
+        self.tick(d, 1000.0 + tftmain.SHUTDOWN_STALE_S + 1)
+        self.assertIsNone(d.shutdown_deadline)
+
+    def test_stop_while_shutting_down_keeps_message(self):
+        d = self.make()
+        self.status["shutdown"] = {"deadline": 2010.0}
+        self.tick(d, 2000.0)
+        tftmain._TERM.set()
+        d.stop.clear()
+        d._run_loop_once = None
+        # run the real loop: it must return at once and keep the panel on
+        d.dev.show(render.splash())
+        orig_threads = tftmain.threading.Thread
+        tftmain.threading.Thread = lambda *a, **k: type("T", (), {"start": lambda self: None})()
+        try:
+            d._run()
+        finally:
+            tftmain.threading.Thread = orig_threads
+        self.assertTrue(d.keep_on_exit)
+        self.assertFalse(d.dev.sleeping)
+
+    def test_shutdown_screens_render(self):
+        for left in (10, 3, None):
+            img = render.shutdown_screen(left)
+            self.assertEqual(img.size, (240, 240))
+
+
 if __name__ == "__main__":
     unittest.main()
 

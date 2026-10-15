@@ -23,18 +23,25 @@ Behavior
     A button press while the saver runs only wakes the screen (no action);
     after that the buttons work as above. A screen turned off with button 24
     stays off.
+  - Shutdown from the web UI (/run/kp4pra-tnc/shutdown.json): the screen
+    wakes, clears and shows the same 10 -> 0 countdown (buttons ignored),
+    then "Shutting Down, disconnect power in 15 seconds". On power-off
+    (SIGTERM while shutting down, also for a "sudo poweroff" from SSH) that
+    message is left on screen instead of blanking it.
 Status for the web UI: /run/kp4pra-tnc/tft.json
 """
 
 import collections
+import math
 import os
+import signal
 import subprocess
 import sys
 import threading
 import time
 
 from common.config import load_config, reload_config
-from common.runtime_status import write_status
+from common.runtime_status import read_status, write_status
 from tft import beacon, hw, monitor, render, saver, status
 
 SPLASH_S = 10
@@ -46,6 +53,20 @@ TOAST_S = 3
 SAVER_AFTER_S = 180          # no traffic for 3 min -> centipede
 SAVER_BLANK_S = 120          # centipede for 2 min -> black screen
 SAVER_FRAME_S = 0.1          # centipede animation, 10 frames/s
+SHUTDOWN_POLL_S = 0.5        # how often to look for /run/kp4pra-tnc/shutdown.json
+SHUTDOWN_STALE_S = 60        # ignore a shutdown file this long past its deadline
+
+_TERM = threading.Event()    # SIGTERM received (service stop / system power-off)
+
+
+def system_stopping() -> bool:
+    """True while systemd is shutting the system down (poweroff/reboot)."""
+    try:
+        r = subprocess.run(["systemctl", "is-system-running"],
+                           capture_output=True, text=True, timeout=3)
+        return r.stdout.strip() == "stopping"
+    except Exception:
+        return False
 
 
 def log(msg):
@@ -88,6 +109,10 @@ class Display:
         self.last_activity = time.time()
         self.traffic_seen = False
         self._swallow = False        # button press that woke the saver
+        self.shutdown_deadline = None  # epoch seconds of the pending power-off
+        self._shutdown_shown = None    # last countdown value drawn
+        self._shutdown_poll = 0.0
+        self.keep_on_exit = False      # leave the shutdown message on screen
 
     # ---- data feeds ----
     def journal_reader(self):
@@ -208,6 +233,40 @@ class Display:
                 self.saver = "blank"
                 self.dev.sleep(True)
 
+    # ---- shutdown (web UI) ----
+    def shutdown_tick(self, now):
+        """Follow /run/kp4pra-tnc/shutdown.json written by the web UI."""
+        if now - self._shutdown_poll < SHUTDOWN_POLL_S:
+            return
+        self._shutdown_poll = now
+        try:
+            deadline = float(read_status("shutdown").get("deadline") or 0)
+        except (TypeError, ValueError):
+            deadline = 0
+        if deadline and now > deadline + SHUTDOWN_STALE_S:
+            deadline = 0                 # stale (web restarted mid-countdown)
+        if deadline and self.shutdown_deadline is None:
+            log("shutdown requested from the web UI - showing countdown")
+            if self.saver:
+                self.exit_saver(now)
+            self.set_off(False)
+            self.splash_until = 0
+            self._shutdown_shown = None
+        elif not deadline and self.shutdown_deadline is not None:
+            log("shutdown cancelled - back to normal screen")
+            self.last_activity = now
+            self.dirty = True
+        self.shutdown_deadline = deadline or None
+
+    def draw_shutdown(self, now, final=False):
+        left = None if final else math.ceil(self.shutdown_deadline - now)
+        if left is not None and left <= 0:
+            left = None
+        if left != self._shutdown_shown or final:
+            self._shutdown_shown = left
+            with self.dev_lock:
+                self.dev.show(render.shutdown_screen(left))
+
     # ---- render ----
     def draw(self, t):
         with self.lock:
@@ -293,6 +352,20 @@ class Display:
         last_cfg = time.time()
         while not self.stop.is_set():
             now = time.time()
+            if _TERM.is_set():
+                # Stopped by systemd. While powering off, leave the
+                # "disconnect power" message on screen instead of blanking.
+                if self.shutdown_deadline is not None or system_stopping():
+                    self.set_off(False)
+                    self.draw_shutdown(now, final=True)
+                    self.keep_on_exit = True
+                return
+            self.shutdown_tick(now)
+            if self.shutdown_deadline is not None:
+                self._prev = self.dev.buttons()      # buttons ignored meanwhile
+                self.draw_shutdown(now)
+                time.sleep(0.05)
+                continue
             a, b = self.dev.buttons()
             act = self.on_buttons(a, b, now)
             if act == "beacon":
@@ -328,6 +401,7 @@ class Display:
 
 
 def main():
+    signal.signal(signal.SIGTERM, lambda *_: _TERM.set())
     p = hw.pins_for()
     if not p:
         write_status("tft", {"state": "unsupported",
@@ -335,7 +409,7 @@ def main():
         log("unsupported board - exiting")
         return 0
     announced = None
-    while True:
+    while not _TERM.is_set():
         cfg = reload_config() or load_config()
         mode = tft_mode(cfg)
         state, detail = None, ""
@@ -350,7 +424,7 @@ def main():
                 log(detail)
                 announced = state
             write_status("tft", {"state": state, "detail": detail, "mode": mode})
-            time.sleep(CONFIG_POLL_S)
+            _TERM.wait(CONFIG_POLL_S)
             continue
         dev = None
         try:
@@ -359,11 +433,17 @@ def main():
             write_status("tft", {"state": "running", "detail": "display active", "mode": mode})
             log("display active (%s)" % mode)
             announced = "running"
-            Display(dev).run()
+            disp = Display(dev)
+            disp.run()
+            if disp.keep_on_exit:
+                # Powering off: exit WITHOUT blanking the panel, so the
+                # "disconnect power" message stays until the power goes.
+                log("power-off: leaving the shutdown message on screen")
+                os._exit(0)
         except Exception as e:
             log("display error: %s" % e)
             write_status("tft", {"state": "error", "detail": str(e), "mode": mode})
-            time.sleep(CONFIG_POLL_S)
+            _TERM.wait(CONFIG_POLL_S)
         finally:
             if dev:
                 dev.close()

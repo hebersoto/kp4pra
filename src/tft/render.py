@@ -110,6 +110,36 @@ def mode_splash(mode):
     return img
 
 
+SHUTDOWN_MSG = ("Shutting Down,", "disconnect power", "in 15 seconds")
+
+
+def shutdown_screen(left=None):
+    """Shutdown started from the web UI (or the system is powering off).
+    left = seconds until power-off (countdown, big red number), or None for
+    the final message: "Shutting Down, disconnect power in 15 seconds"."""
+    img = Image.new("RGB", (W, H), BLACK)
+    d = ImageDraw.Draw(img)
+
+    def fit(text, size, bold=True):         # largest font <= size that fits
+        while size > 12 and _text_w(d, text, font(size, bold)) > W - 16:
+            size -= 1
+        return font(size, bold)
+
+    def centered(y, text, f, color):
+        d.text(((W - _text_w(d, text, f)) / 2, y), text, font=f, fill=color)
+
+    if left is not None:
+        centered(30, "Shutting Down", fit("Shutting Down", 28), WHITE)
+        centered(75, str(max(int(left), 0)), font(96, bold=True), TX_RED)
+        centered(196, "Cancel on web page", fit("Cancel on web page", 18, False), GREY)
+    else:
+        size = min(26, *(fit(line, 26).size for line in SHUTDOWN_MSG))
+        f = font(size, bold=True)              # same size on all three lines
+        for i, line in enumerate(SHUTDOWN_MSG):
+            centered(62 + i * 40, line, f, WHITE if i == 0 else YELLOW)
+    return img
+
+
 def splash():
     img = Image.new("RGB", (W, H), WHITE)
     d = ImageDraw.Draw(img)

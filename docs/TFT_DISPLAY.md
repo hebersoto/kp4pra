@@ -91,6 +91,16 @@ show no `via`.
 - A screen turned off with button 24 stays off (no saver, traffic does not
   turn it on).
 
+## Shut Down from the web UI
+
+Pressing **Shut Down** on the Config page also takes over the display: it
+wakes (even from the screen saver or when turned off with button 24), clears
+and shows the same **10 -> 0 countdown** as the web page; the buttons do
+nothing meanwhile. Cancel on the web page returns the display to the normal
+screen. At 0 it shows **"Shutting Down, disconnect power in 15 seconds"**,
+and that message is left on screen while the board powers off (also after a
+`sudo poweroff` from SSH). Unplug when the screen goes dark or after 15 s.
+
 ## Buttons
 
 | Button | Action |
