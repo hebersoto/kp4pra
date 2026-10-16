@@ -1,3 +1,17 @@
+## Fix: running the installer again (update) stopped at the BlueZ step - new in 1.4.22
+- install.sh copied /var/lib/bluetooth into /rw/kp4pra-tnc/bluetooth on
+  every run. On an installed board the first is a bind mount of the second,
+  so a second run stopped with "cp: ... are the same file" (seen when
+  re-running the one-command install). The copy is now skipped when the two
+  are the same directory, and on a first install it never overwrites
+  pairings already on /rw (no-clobber: --update=none or -n, whichever the
+  board's cp supports).
+- Program files in /opt/kp4pra-tnc/src are replaced completely on each run
+  (files removed in a newer version no longer linger); the venv and config
+  are kept.
+- The capability copies of hcitool/hciconfig use cp --remove-destination
+  (no "Text file busy" if one is running during a re-run).
+
 ## Setup progress you can see: web banner, Mini PiTFT, login line - new in 1.4.21
 - New bin/kp4pra-install-state keeps /rw/kp4pra-tnc/install-state.json
   (installing / checking / dra_setup / complete / failed + a short

@@ -106,7 +106,12 @@ fi
 
 step "Installing application to $APP_DIR"
 mkdir -p "$APP_DIR"
-cp -r "$PROJECT_DIR/src" "$APP_DIR/"
+# Replace the program files completely (re-run / update safe: files removed
+# in a newer version do not linger). The venv and config are kept.
+rm -rf "$APP_DIR/src.new"
+cp -r "$PROJECT_DIR/src" "$APP_DIR/src.new"
+rm -rf "$APP_DIR/src"
+mv "$APP_DIR/src.new" "$APP_DIR/src"
 cp "$PROJECT_DIR/VERSION" "$APP_DIR/VERSION"   # web UI reads this for app_version
 chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 chmod -R 755 "$APP_DIR"
@@ -162,10 +167,18 @@ fi
 step "Setting up BlueZ persistent state directory: $BLUEZ_STATE_DIR"
 mkdir -p "$BLUEZ_STATE_DIR"
 
-# Copy any existing BlueZ pairing state to the persistent location
-if [ -d /var/lib/bluetooth ] && [ "$(ls -A /var/lib/bluetooth 2>/dev/null)" ]; then
+# Copy any existing BlueZ pairing state to the persistent location.
+# Re-run safe: on an installed board /var/lib/bluetooth IS the persistent
+# directory (bind mount, var-lib-bluetooth.mount) - nothing to copy. And never
+# overwrite pairings already on /rw (-n): the folder under the mount can hold
+# older state from before the first install.
+if [ /var/lib/bluetooth -ef "$BLUEZ_STATE_DIR" ] || mountpoint -q /var/lib/bluetooth 2>/dev/null; then
+    log "BlueZ state already lives in $BLUEZ_STATE_DIR (bind mount active) - nothing to copy"
+elif [ -d /var/lib/bluetooth ] && [ "$(ls -A /var/lib/bluetooth 2>/dev/null)" ]; then
     log "Copying existing BlueZ state to $BLUEZ_STATE_DIR..."
-    cp -a /var/lib/bluetooth/. "$BLUEZ_STATE_DIR/"
+    # "Do not overwrite": --update=none on newer coreutils, -n on older ones.
+    if cp --help 2>/dev/null | grep -q -- '--update\[=UPDATE\]'; then NOCLOBBER=--update=none; else NOCLOBBER=-n; fi
+    cp -a $NOCLOBBER /var/lib/bluetooth/. "$BLUEZ_STATE_DIR/"
 fi
 
 chown -R root:bluetooth "$BLUEZ_STATE_DIR"
@@ -223,7 +236,8 @@ log "Creating capability-bearing HCI tool copies for the legacy-adv fallback"
 mkdir -p /usr/local/lib/kp4pra
 for t in hcitool hciconfig; do
     if [ -x "/usr/bin/$t" ]; then
-        cp "/usr/bin/$t" /usr/local/lib/kp4pra/
+        # --remove-destination: re-run safe even if the old copy is running.
+        cp --remove-destination "/usr/bin/$t" /usr/local/lib/kp4pra/
         setcap cap_net_admin,cap_net_raw+ep "/usr/local/lib/kp4pra/$t" ||             warn "setcap failed for $t - legacy BLE advertising fallback may not work"
     else
         warn "$t not found - install bluez (legacy BLE advertising fallback needs it)"
