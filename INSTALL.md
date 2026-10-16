@@ -77,6 +77,18 @@ You do not need to do anything for these, they are found automatically:
   stable kernel, which the DRA driver needs.
 - **Mini PiTFT display:** if one is plugged in, it is turned on.
 
+**How do I know it is finished?** You do not have to watch the screen or type
+anything. After the restart:
+
+- The web page (step 4) shows **"Setup in progress"** at the top while the
+  board is still working, and **"Setup complete"** when it is done. It keeps
+  checking on its own, also while the board restarts.
+- A Mini PiTFT shows **"Setting up - please wait, do not unplug"** and then
+  **"Setup complete"**.
+- When you log in with PuTTY, the welcome text has a **Setup:** line.
+
+Keep the board powered on until you see "Setup complete".
+
 ## Step 4. Open the web page
 
 Use either way:
@@ -88,7 +100,9 @@ Use either way:
   The password is `qwerty1234` on a Raspberry Pi. On the Orange Pi Zero 2W
   this network has no password (see "WiFi" below).
 
-Click **Admin Dashboard**. The first time, a short setup page opens. Enter
+You can open the page while setup is still running; the banner at the top
+tells you when it is done. Click **Admin Dashboard**. The first time, a short
+setup page opens. Enter
 your callsign, check the sound card and choose a Dashboard password, then
 click **Save and start**. That's it.
 
@@ -100,8 +114,9 @@ To connect a phone:
 
 ## If something goes wrong
 
-- Run the install command from step 3 again. It is safe to repeat and
-  continues where it stopped.
+- If the web page says **"Setup stopped"**, it also says what to do. Usually
+  that is: run the install command from step 3 again. It is safe to repeat
+  and continues where it stopped.
 - Everything the installer printed is saved in `/root/kp4pra-install.log`.
 - DRA-Pi-Zero: the DRA card on the Config page says what is missing. The DRA
   setup keeps its own log in `/rw/kp4pra-tnc/logs/dra-setup.log`. To run the

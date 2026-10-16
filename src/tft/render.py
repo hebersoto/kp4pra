@@ -140,6 +140,44 @@ def shutdown_screen(left=None):
     return img
 
 
+def _wrap(d, text, f, width):
+    words, lines, cur = (text or "").split(), [], ""
+    for w in words:
+        t = (cur + " " + w).strip()
+        if _text_w(d, t, f) <= width:
+            cur = t
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def install_screen(title, message="", footer="", kind="busy"):
+    """Setup progress (bin/kp4pra-install-state), also "Restarting".
+    kind: busy (yellow title), ok (green), failed (red)."""
+    img = Image.new("RGB", (W, H), BLACK)
+    d = ImageDraw.Draw(img)
+    color = {"ok": RX_GREEN, "failed": TX_RED}.get(kind, YELLOW)
+    size = 28
+    while size > 16 and _text_w(d, title, font(size, True)) > W - 16:
+        size -= 1
+    ft = font(size, True)
+    d.text(((W - _text_w(d, title, ft)) / 2, 14), title, font=ft, fill=color)
+    fm = font(19)
+    lines = _wrap(d, message, fm, W - 16)[:6]
+    for i, line in enumerate(lines):
+        d.text(((W - _text_w(d, line, fm)) / 2, 58 + i * 24), line, font=fm, fill=WHITE)
+    if footer:
+        ff = font(17)
+        while _text_w(d, footer, ff) > W - 8 and ff.size > 12:
+            ff = font(ff.size - 1)
+        d.text(((W - _text_w(d, footer, ff)) / 2, 210), footer, font=ff, fill=GREY)
+    return img
+
+
 def splash():
     img = Image.new("RGB", (W, H), WHITE)
     d = ImageDraw.Draw(img)

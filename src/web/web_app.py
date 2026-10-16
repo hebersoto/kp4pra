@@ -290,6 +290,30 @@ async def landing(request: Request):
     })
 
 
+INSTALL_STATE_FILE = "/rw/kp4pra-tnc/install-state.json"
+INSTALL_ACTIVE = ("installing", "checking", "dra_setup")
+
+
+@app.get("/api/install/state")
+async def api_install_state():
+    """Setup progress (bin/kp4pra-install-state) for the banner on every page.
+    Public on purpose: it only says whether setup is still running."""
+    import time as _time
+    try:
+        with open(INSTALL_STATE_FILE) as f:
+            d = json.load(f)
+    except Exception:
+        d = {"state": "complete", "message": ""}
+    now = _time.time()
+    updated = float(d.get("updated") or now)
+    if d.get("state") in INSTALL_ACTIVE and now - updated > 3600:
+        d = {"state": "failed", "updated": updated,
+             "message": "Setup has not finished after an hour. Open the Config page "
+                        "(DRA card) or run the install command again."}
+    d["age"] = int(now - updated)
+    return JSONResponse(d, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request, _auth=Depends(check_auth)):
     """First-visit setup: callsign, sound card, Dashboard password in one form.

@@ -32,6 +32,7 @@ Status for the web UI: /run/kp4pra-tnc/tft.json
 """
 
 import collections
+import json
 import math
 import os
 import signal
@@ -57,6 +58,33 @@ SHUTDOWN_POLL_S = 0.5        # how often to look for /run/kp4pra-tnc/shutdown.js
 SHUTDOWN_STALE_S = 60        # ignore a shutdown file this long past its deadline
 
 _TERM = threading.Event()    # SIGTERM received (service stop / system power-off)
+
+
+INSTALL_STATE_FILE = "/rw/kp4pra-tnc/install-state.json"
+INSTALL_ACTIVE = ("installing", "checking", "dra_setup")
+INSTALL_POLL_S = 2
+INSTALL_TITLES = {"installing": "Installing", "checking": "Finishing setup",
+                  "dra_setup": "Setting up"}
+
+
+def read_install_state() -> dict:
+    try:
+        with open(INSTALL_STATE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def system_stop_kind():
+    """None while running; "reboot" or "poweroff" while systemd stops the system."""
+    if not system_stopping():
+        return None
+    try:
+        jobs = subprocess.run(["systemctl", "list-jobs", "--no-legend"],
+                              capture_output=True, text=True, timeout=3).stdout
+    except Exception:
+        jobs = ""
+    return "reboot" if ("reboot.target" in jobs or "kexec.target" in jobs) else "poweroff"
 
 
 def system_stopping() -> bool:
@@ -113,6 +141,11 @@ class Display:
         self._shutdown_shown = None    # last countdown value drawn
         self._shutdown_poll = 0.0
         self.keep_on_exit = False      # leave the shutdown message on screen
+        self.install = None            # (state, message) while setup runs / failed
+        self._install_upd = None
+        self._install_drawn = None
+        self._install_poll = 0.0
+        self._failed_dismissed = None  # "updated" of a failed state closed by a button
 
     # ---- data feeds ----
     def journal_reader(self):
@@ -267,6 +300,47 @@ class Display:
             with self.dev_lock:
                 self.dev.show(render.shutdown_screen(left))
 
+    # ---- setup progress (bin/kp4pra-install-state) ----
+    def install_tick(self, now):
+        if now - self._install_poll < INSTALL_POLL_S:
+            return
+        self._install_poll = now
+        d = read_install_state()
+        st, msg, upd = d.get("state", "complete"), d.get("message", ""), d.get("updated")
+        if st in INSTALL_ACTIVE and now - float(upd or now) > 3600:
+            st, msg = "failed", "Setup has not finished after an hour. See the web page."
+        if st == "failed" and self._failed_dismissed == upd:
+            st = "complete"
+        if st in INSTALL_ACTIVE or st == "failed":
+            if self.install is None:
+                log("setup in progress: %s - %s" % (st, msg))
+                if self.saver:
+                    self.exit_saver(now)
+                self.set_off(False)
+            self.install, self._install_upd = (st, msg), upd
+        elif self.install is not None:
+            was_active = self.install[0] in INSTALL_ACTIVE
+            self.install, self._install_drawn = None, None
+            self.last_activity, self.dirty = now, True
+            if was_active and st == "complete":
+                log("setup complete")
+                self.show_splash(render.install_screen(
+                    "Setup complete", msg or "Your KP4PRA TNC is ready.", kind="ok"))
+
+    def draw_install(self):
+        if self.install == self._install_drawn:
+            return
+        self._install_drawn = self.install
+        st, msg = self.install
+        if st == "failed":
+            img = render.install_screen("Setup stopped", msg,
+                                        "Press a button to close", kind="failed")
+        else:
+            img = render.install_screen(INSTALL_TITLES.get(st, "Setting up"), msg,
+                                        "Please wait, do not unplug")
+        with self.dev_lock:
+            self.dev.show(img)
+
     # ---- render ----
     def draw(self, t):
         with self.lock:
@@ -353,9 +427,19 @@ class Display:
         while not self.stop.is_set():
             now = time.time()
             if _TERM.is_set():
-                # Stopped by systemd. While powering off, leave the
-                # "disconnect power" message on screen instead of blanking.
-                if self.shutdown_deadline is not None or system_stopping():
+                # Stopped by systemd. While the system powers off, leave the
+                # "disconnect power" message on screen instead of blanking;
+                # while it restarts (e.g. during the DRA setup), "Restarting".
+                kind = "poweroff" if self.shutdown_deadline is not None else system_stop_kind()
+                if kind == "reboot":
+                    self.set_off(False)
+                    msg = self.install[1] if self.install else ""
+                    with self.dev_lock:
+                        self.dev.show(render.install_screen(
+                            "Restarting", msg or "Back in about a minute.",
+                            "Please wait, do not unplug"))
+                    self.keep_on_exit = True
+                elif kind == "poweroff":
                     self.set_off(False)
                     self.draw_shutdown(now, final=True)
                     self.keep_on_exit = True
@@ -366,6 +450,21 @@ class Display:
                 self.draw_shutdown(now)
                 time.sleep(0.05)
                 continue
+            self.install_tick(now)
+            if self.install is not None:
+                a, b = self.dev.buttons()
+                pa, pb = self._prev
+                if self.install[0] == "failed" and ((a and not pa) or (b and not pb)):
+                    # Close the error screen; that press does nothing else.
+                    self._failed_dismissed = self._install_upd
+                    self.install, self._install_drawn = None, None
+                    self.dirty, self._swallow = True, True
+                self._prev = (a, b)
+                if self.install is not None:
+                    if now >= self.splash_until:
+                        self.draw_install()
+                    time.sleep(0.05)
+                    continue
             a, b = self.dev.buttons()
             act = self.on_buttons(a, b, now)
             if act == "beacon":

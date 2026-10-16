@@ -46,6 +46,10 @@ log "Starting KP4PRA TNC installation..."
 
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash $0"
 
+# Setup progress for the web page / Mini PiTFT / login message.
+istate() { "$(dirname "$(dirname "$(readlink -f "$0")")")/bin/kp4pra-install-state" set "$@" >/dev/null 2>&1 || true; }
+istate installing "Installing KP4PRA TNC"
+
 # ── Auto-install prerequisite packages (Debian/Ubuntu) ───────────────────────
 # On a fresh image these are usually missing; install them up front so the
 # checks below pass on the first run. Idempotent: apt skips what's present.
@@ -209,6 +213,7 @@ install -m 755 "$PROJECT_DIR/bin/kp4pra-bt-led"       /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-platform" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-i2c-check" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-autodetect" /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-install-state" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-aprs-clock"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/scripts/setup-dra-pi-zero.sh" /usr/local/bin/
 
@@ -349,6 +354,12 @@ sed "s#@REPO_DIR@#$PROJECT_DIR#" "$PROJECT_DIR/systemd/kp4pra-dra-autodetect.ser
 systemctl daemon-reload
 systemctl enable kp4pra-dra-autodetect.service >/dev/null 2>&1 || true
 log "DRA-Pi-Zero auto-detect enabled (looks once, on the next boot)"
+# What the web page / display show until the next boot finishes the setup.
+if [ -f /rw/kp4pra-tnc/.dra-autodetect-done ] || [ -z "$DRA_PLAT" ] || [ "$DRA_PLAT" = unknown ]; then
+    INSTALL_END_STATE=complete
+else
+    INSTALL_END_STATE=checking
+fi
 
 step "Enabling KP4PRA TNC services"
 systemctl enable kp4pra-tnc-rms.service
@@ -478,6 +489,11 @@ else
     /usr/local/bin/kp4pra-wifi-mode ap || warn "Hotspot start failed - run manually: sudo kp4pra-wifi-mode ap"
 fi
 
+if [ "${INSTALL_END_STATE:-complete}" = checking ]; then
+    istate checking "Finishing after the restart: looking for a DRA-Pi-Zero"
+else
+    istate complete ""
+fi
 log "  KP4PRA TNC installation complete!"
 log "  Version: $(cat "$APP_DIR/VERSION" 2>/dev/null || echo dev)"
 log "═══════════════════════════════════════════════════════"

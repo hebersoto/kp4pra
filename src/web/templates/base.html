@@ -498,6 +498,52 @@
 {% endblock %}
 
 <div class="page">
+  <div id="install-banner" class="alert alert-warning" role="status" aria-live="polite"
+       style="display:none;margin-bottom:1rem">
+    <span class="alert-icon" id="install-icon">⏳</span><div id="install-text"></div>
+  </div>
+  <script>
+  // Setup progress banner (install / DRA setup). Polls while setup runs and
+  // keeps trying while the board restarts.
+  (function () {
+    const ACTIVE = ['installing', 'checking', 'dra_setup'];
+    const box = document.getElementById('install-banner');
+    let active = false;
+    function show(kind, icon, text) {
+      box.className = 'alert alert-' + kind;
+      document.getElementById('install-icon').textContent = icon;
+      document.getElementById('install-text').textContent = text;
+      box.style.display = '';
+    }
+    async function poll() {
+      let d;
+      try {
+        const r = await fetch('/api/install/state', {cache: 'no-store'});
+        d = await r.json();
+      } catch (e) {
+        if (active) show('info', '⏳', 'The board is restarting. This page reconnects by itself.');
+        setTimeout(poll, 5000);
+        return;
+      }
+      if (ACTIVE.includes(d.state)) {
+        active = true;
+        show('warning', '⏳', 'Setup in progress: ' + (d.message || 'please wait') +
+             '. The board may restart by itself. Keep it powered on; this page updates on its own.');
+        setTimeout(poll, 5000);
+      } else if (d.state === 'failed') {
+        show('error', '⚠', 'Setup stopped: ' + d.message);
+      } else if (active || d.age < 300) {
+        show('success', '✅', 'Setup complete. Your KP4PRA TNC is ready.' +
+             (d.message ? ' (' + d.message + ')' : ''));
+        if (active && typeof window.onInstallComplete === 'function') window.onInstallComplete();
+        active = false;
+      } else {
+        box.style.display = 'none';
+      }
+    }
+    poll();
+  })();
+  </script>
   {% if not dashboard_secured() and station_callsign_valid() %}
   <div class="alert alert-warning" style="margin-bottom:1rem">
     <span class="alert-icon">⚠</span>

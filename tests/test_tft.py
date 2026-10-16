@@ -428,6 +428,83 @@ class ShutdownOnTFT(unittest.TestCase):
             self.assertEqual(img.size, (240, 240))
 
 
+@unittest.skipIf(tftmain is None, "tft.main import failed")
+class InstallProgressOnTFT(unittest.TestCase):
+    """Setup progress (install-state.json) on the Mini PiTFT."""
+    Dev = ShutdownOnTFT.Dev
+
+    def setUp(self):
+        self.state = {}
+        self._orig = (tftmain.read_install_state, tftmain.system_stop_kind)
+        tftmain.read_install_state = lambda: dict(self.state)
+        tftmain._TERM.clear()
+
+    def tearDown(self):
+        tftmain.read_install_state, tftmain.system_stop_kind = self._orig
+        tftmain._TERM.clear()
+
+    def make(self):
+        d = tftmain.Display(self.Dev())
+        d.splash_until = 0
+        return d
+
+    def tick(self, d, now):
+        d._install_poll = 0
+        d.install_tick(now)
+
+    def test_active_setup_wakes_and_shows(self):
+        d = self.make()
+        d.sys = {"call": "KP4PRA-10"}; d.last_activity = 0; d.saver_tick(1000)
+        self.assertEqual(d.saver, "worm")
+        self.state = {"state": "dra_setup", "message": "building", "updated": 1000}
+        self.tick(d, 1001)
+        self.assertEqual(d.install, ("dra_setup", "building"))
+        self.assertIsNone(d.saver)
+        d.draw_install()
+        self.assertEqual(len(d.dev.shown), 1)
+        d.draw_install()                                   # unchanged -> not redrawn
+        self.assertEqual(len(d.dev.shown), 1)
+
+    def test_complete_shows_splash_then_normal(self):
+        d = self.make()
+        self.state = {"state": "checking", "message": "", "updated": 1000}
+        self.tick(d, 1001)
+        self.state = {"state": "complete", "message": "", "updated": 1010}
+        self.tick(d, 1011)
+        self.assertIsNone(d.install)
+        self.assertGreater(d.splash_until, 1011)          # "Setup complete" for 10 s
+
+    def test_failed_closed_by_button(self):
+        d = self.make()
+        self.state = {"state": "failed", "message": "x", "updated": 1000}
+        self.tick(d, 1001)
+        self.assertEqual(d.install[0], "failed")
+        d._failed_dismissed = d._install_upd               # what a button press does
+        d.install = None
+        self.tick(d, 1003)
+        self.assertIsNone(d.install)                       # same failure stays closed
+
+    def test_stale_setup_reported(self):
+        d = self.make()
+        self.state = {"state": "dra_setup", "message": "x", "updated": 1000}
+        self.tick(d, 1000 + 3601)
+        self.assertEqual(d.install[0], "failed")
+
+    def test_reboot_shows_restarting_poweroff_keeps_shutdown_text(self):
+        for kind in ("reboot", "poweroff"):
+            d = self.make()
+            tftmain.system_stop_kind = lambda k=kind: k
+            tftmain._TERM.set()
+            orig_threads = tftmain.threading.Thread
+            tftmain.threading.Thread = lambda *a, **k: type("T", (), {"start": lambda self: None})()
+            try:
+                d._run()
+            finally:
+                tftmain.threading.Thread = orig_threads
+            self.assertTrue(d.keep_on_exit, kind)
+            self.assertFalse(d.dev.sleeping)
+
+
 if __name__ == "__main__":
     unittest.main()
 

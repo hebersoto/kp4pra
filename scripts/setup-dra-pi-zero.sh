@@ -30,6 +30,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Setup progress for the web page / Mini PiTFT / login message
+# (bin/kp4pra-install-state; the installed copy of this script finds it in
+# /usr/local/bin, which is $REPO_DIR/bin for that copy).
+istate() {
+    local h="$REPO_DIR/bin/kp4pra-install-state"
+    [ -x "$h" ] || h="$(command -v kp4pra-install-state || true)"
+    [ -n "$h" ] && "$h" set "$@" >/dev/null 2>&1 || true
+}
+istate_is() {  # istate_is <state>: is the current setup state <state>?
+    local h="$REPO_DIR/bin/kp4pra-install-state"
+    [ -x "$h" ] || h="$(command -v kp4pra-install-state || true)"
+    [ -n "$h" ] && "$h" get 2>/dev/null | grep -q "\"state\": \"$1\""
+}
+
 # Board detection. Falls back to the Raspberry Pi behavior when the helper is
 # missing (older installs) or the board is unknown.
 PLAT_HELPER="$REPO_DIR/bin/kp4pra-dra-platform"
@@ -169,7 +183,12 @@ do_mixer() {
     if ! arecord -l 2>/dev/null | grep -q "$CARD"; then
         echo "DRA-Pi-Zero ('${CARD}') not detected - skipping mixer setup."
         echo "(If you just enabled the overlay, a reboot is required first.)"
-        if dra_expected; then mixlog "card $CARD NOT detected after 30 s - mixer not applied"; fi
+        if dra_expected; then
+            mixlog "card $CARD NOT detected after 30 s - mixer not applied"
+            if [ "$MODE" = mixer ] && istate_is dra_setup && [ ! -f "$RESUME_MARK" ]; then
+                istate failed "The DRA-Pi-Zero was set up but does not answer. Check it is seated on the header, then restart the board."
+            fi
+        fi
         return 0
     fi
 
@@ -208,6 +227,9 @@ do_mixer() {
         echo "Mixer configured (not saved: read-only root - re-applied at every boot)."
     fi
     mixlog "mixer applied on card $CARD"
+    if [ "$MODE" = mixer ] && istate_is dra_setup && [ ! -f "$RESUME_MARK" ]; then
+        istate complete "DRA-Pi-Zero ready"
+    fi
 
     if command -v direwolf >/dev/null 2>&1; then
         # Capture first: "direwolf --help" exits non-zero, which would fail
@@ -371,6 +393,9 @@ opi_on_exit() {
         [ "$rc" -ne 0 ] && echo "ERROR: the automatic DRA setup failed (exit $rc). Run it again from SSH: cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh"
         opi_clear_resume
     fi
+    if [ "$rc" -ne 0 ]; then
+        istate failed "The DRA-Pi-Zero setup stopped with an error. Open the Config page (DRA card) to see what to do."
+    fi
     if [ "$RO_RESTORE" = 1 ]; then
         echo "Restoring read-only root"
         kp4pra-remount-ro || echo "WARN: run sudo kp4pra-remount-ro"
@@ -438,6 +463,11 @@ opi_setup() {
         fi
         echo "Continuing the DRA setup automatically after the kernel change."
     fi
+    if [ "$RESUME" = 1 ]; then
+        istate dra_setup "Building the DRA-Pi-Zero driver after the kernel change (a few minutes)"
+    else
+        istate dra_setup "Setting up the DRA-Pi-Zero"
+    fi
 
     # Read-only root: remount rw for the install, restore on exit.
     if ! ( : > /usr/src/.kp4pra-wtest ) 2>/dev/null; then
@@ -467,6 +497,7 @@ opi_setup() {
     #    if needed, to the newest stable kernel that has headers (then reboot
     #    and run again).
     echo "-- [1/6] Kernel headers"
+    istate dra_setup "Setting up the DRA-Pi-Zero: checking the kernel (step 1 of 6)"
     if [ -e "/lib/modules/$K/build/Makefile" ]; then
         echo "  OK  : headers for $K present"
     else
@@ -508,12 +539,14 @@ opi_setup() {
                 echo
                 echo "== Kernel changed to the stable Armbian kernel $PICK =="
                 if [ "$NO_REBOOT" = 1 ]; then
+                    istate dra_setup "Kernel changed. Restart the board, then run the DRA setup again"
                     echo "REBOOT REQUIRED (--no-reboot given), then run the same command again:"
                     echo "  sudo reboot"
                     echo "  cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh"
                     exit 0
                 fi
                 opi_schedule_resume
+                istate dra_setup "Switched to Armbian's stable kernel. Restarting, then the setup continues by itself"
                 echo "After the reboot the setup finishes by itself (about 5 minutes) and the"
                 echo "board reboots once more. Then the DRA-Pi-Zero is ready - nothing else to run."
                 echo "Progress: Config page (DRA card) or /rw/kp4pra-tnc/logs/dra-setup.log"
@@ -525,10 +558,12 @@ opi_setup() {
 
     # 2. Build tools and runtime tools.
     echo "-- [2/6] Packages: dkms, compiler, device-tree compiler, i2c-tools, gpiod"
+    istate dra_setup "Setting up the DRA-Pi-Zero: installing tools (step 2 of 6)"
     opi_packages
 
     # 3. Patched WM8731 driver via DKMS (downloads the matching kernel source).
     echo "-- [3/6] WM8731 driver (DKMS package $DKMS_NAME/$VER)"
+    istate dra_setup "Setting up the DRA-Pi-Zero: building the driver, a few minutes (step 3 of 6)"
     # Remove hand-built copies from the 2026-10-12 bring-up (updates/, not updates/dkms/).
     find /lib/modules/*/updates -maxdepth 1 -name 'snd-soc-wm8731*.ko*' -print -delete 2>/dev/null || true
     local old
@@ -551,6 +586,7 @@ opi_setup() {
 
     # 4. I2C on header pins 3/5 + the DRA overlay.
     echo "-- [4/6] Device-tree overlay"
+    istate dra_setup "Setting up the DRA-Pi-Zero: installing the overlay (step 4 of 6)"
     [ -f "${ENV_TXT}.kp4pra.bak" ] || { cp "$ENV_TXT" "${ENV_TXT}.kp4pra.bak"; echo "  backed up $ENV_TXT"; }
     if grep -qE '^overlays=' "$ENV_TXT"; then
         grep -qE '^overlays=.*\bi2c1-pi\b' "$ENV_TXT" || sed -i -E 's/^(overlays=.*)$/\1 i2c1-pi/' "$ENV_TXT"
@@ -563,6 +599,7 @@ opi_setup() {
 
     # 5. GPIO access (PTT, LEDs) + helpers + Dire Wolf pre-start I2C check.
     echo "-- [5/6] GPIO permissions and helpers"
+    istate dra_setup "Setting up the DRA-Pi-Zero: permissions (step 5 of 6)"
     groupadd -f gpio
     printf '%s\n' 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' \
         'SUBSYSTEM=="spidev", KERNEL=="spidev*", GROUP="gpio", MODE="0660"' > /etc/udev/rules.d/60-kp4pra-gpio.rules
@@ -589,6 +626,7 @@ EOF
 
     # 6. Mixer now if the card is already up, else on next boot.
     echo "-- [6/6] Mixer"
+    istate dra_setup "Setting up the DRA-Pi-Zero: audio levels (step 6 of 6)"
     if arecord -l 2>/dev/null | grep -q "$CARD"; then
         do_mixer
     else
@@ -600,6 +638,11 @@ EOF
     if [ "$NEED_REBOOT" -eq 1 ]; then
         echo "After the reboot, in the web UI Config page: Detect sound cards, select"
         echo "\"DRA-Pi-Zero (I2S)\" - PTT pre-fills to GPIOD \"${DRA_PTT_CHIP} ${DRA_PTT_LINE}\" - then Preview and Apply."
+        if [ "$NO_REBOOT" = 1 ]; then
+            istate dra_setup "DRA-Pi-Zero installed. Restart the board to finish"
+        else
+            istate dra_setup "DRA-Pi-Zero installed. Restarting to load it"
+        fi
         opi_auto_reboot
     fi
 }

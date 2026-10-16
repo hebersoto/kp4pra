@@ -28,6 +28,8 @@ log() {
     { mkdir -p "$(dirname "$LOGF")" && echo "$(date -Is) dra-autodetect: $*" >> "$LOGF"; } 2>/dev/null || true
 }
 finish() { { mkdir -p "$(dirname "$DONE")" && date -Is > "$DONE"; } 2>/dev/null || true; }
+# Progress for the web page / Mini PiTFT / login message.
+istate() { kp4pra-install-state set "$@" >/dev/null 2>&1 || true; }
 
 [ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
 if [ "${1:-}" = "--again" ]; then
@@ -35,19 +37,20 @@ if [ "${1:-}" = "--again" ]; then
     log "looking for a DRA-Pi-Zero again (asked by hand)"
 fi
 [ -f "$DONE" ] && exit 0
-if [ -f "$OFF" ]; then log "auto-detect turned off ($OFF)"; finish; exit 0; fi
+if [ -f "$OFF" ]; then log "auto-detect turned off ($OFF)"; finish; istate complete ""; exit 0; fi
 
 eval "$(kp4pra-dra-platform 2>/dev/null)"
 case "${DRA_PLATFORM:-unknown}" in
     rpi|opi-zero2w) ;;
-    *) log "board not supported - nothing to do"; finish; exit 0 ;;
+    *) log "board not supported - nothing to do"; finish; istate complete ""; exit 0 ;;
 esac
 
 if aplay -l 2>/dev/null | grep -q ": ${DRA_CARD} \["; then
     log "DRA-Pi-Zero already set up (card $DRA_CARD present)"
-    finish; exit 0
+    finish; istate complete ""; exit 0
 fi
 
+istate checking "Looking for a DRA-Pi-Zero"
 # Look for the codec on every I2C bus: quick probe of address 0x1a.
 modprobe i2c-dev 2>/dev/null || true
 found=""
@@ -64,14 +67,16 @@ done
 
 if [ -z "$found" ]; then
     log "no DRA-Pi-Zero found (no codec at I2C address 0x1a) - USB sound card setup unchanged"
-    finish; exit 0
+    finish; istate complete ""; exit 0
 fi
 
 log "DRA-Pi-Zero found on I2C bus $found - setting it up automatically"
 finish          # mark first: a reboot during the setup must not start it twice
+istate dra_setup "DRA-Pi-Zero found. Setting it up; the board restarts by itself (about 10 minutes)"
 
 if [ -z "$REPO" ] || [ ! -f "$REPO/scripts/setup-dra-pi-zero.sh" ]; then
     log "ERROR: KP4PRA repository not found (${REPO:-unset}) - run the setup by hand: sudo bash scripts/setup-dra-pi-zero.sh"
+    istate failed "DRA-Pi-Zero found but its setup could not start. Run the install command again."
     exit 1
 fi
 
@@ -93,7 +98,10 @@ rm -f /etc/.kp4pra-wtest
 SUDO_USER="$(stat -c %U "$REPO" 2>/dev/null || echo kp4pra)" bash "$REPO/scripts/setup-dra-pi-zero.sh" </dev/null
 rc=$?
 [ "$ro" = 1 ] && kp4pra-remount-ro >/dev/null 2>&1
-if [ $rc -eq 0 ] && [ "$(md5sum "$cfg" 2>/dev/null)" != "$before" ]; then
+if [ $rc -ne 0 ]; then
+    istate failed "The DRA-Pi-Zero setup stopped with an error. Open the Config page (DRA card) to see what to do."
+elif [ "$(md5sum "$cfg" 2>/dev/null)" != "$before" ]; then
+    istate dra_setup "DRA-Pi-Zero installed. Restarting to load it"
     log "DRA overlay enabled - rebooting once to load it"
     sync
     systemctl reboot

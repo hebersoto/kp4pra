@@ -1,3 +1,26 @@
+## Setup progress you can see: web banner, Mini PiTFT, login line - new in 1.4.21
+- New bin/kp4pra-install-state keeps /rw/kp4pra-tnc/install-state.json
+  (installing / checking / dra_setup / complete / failed + a short
+  message). bootstrap.sh, install.sh, kp4pra-dra-autodetect and
+  setup-dra-pi-zero.sh (each step, the kernel switch, the restarts, errors)
+  update it; the boot-time DRA mixer marks it complete when the DRA card is
+  up, or failed when it never appears.
+- Web: every page (also the landing page) shows a banner while setup runs
+  ("Setup in progress: ... the board may restart by itself"), keeps polling
+  through restarts ("The board is restarting. This page reconnects by
+  itself."), then "Setup complete"; "Setup stopped: <what to do>" on
+  errors. Public GET /api/install/state; a run not finished after an hour
+  is reported as stopped. The setup page refreshes its sound card list when
+  setup completes (the DRA appears without reloading).
+- Mini PiTFT: full-screen "Installing / Finishing setup / Setting up -
+  please wait, do not unplug", then "Setup complete" for 10 s; "Setup
+  stopped" closes with a button. Fix: a restart (reboot) no longer shows
+  the power-off text "disconnect power in 15 seconds" - it shows
+  "Restarting - please wait, do not unplug"; only a real power-off shows
+  the power-off text.
+- Login message (MOTD): "Setup: complete" or what it is doing now.
+- INSTALL.md: "How do I know it is finished?" - no log reading needed.
+
 ## Fix: one-command install stopped after building Dire Wolf - new in 1.4.20
 - bootstrap.sh reported "Dire Wolf was built without libgpiod support" for
   a correct build: "direwolf --help" exits non-zero after printing its

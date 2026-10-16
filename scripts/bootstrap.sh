@@ -35,7 +35,15 @@ TOTAL=5
 say()  { echo -e "\n\033[0;32m[KP4PRA]\033[0m $*"; }
 step() { say "[$1/$TOTAL] $2"; }
 fail() { echo -e "\n\033[0;31m[KP4PRA] ERROR:\033[0m $*" >&2
-         echo "The full output is in $LOG" >&2; exit 1; }
+         echo "The full output is in $LOG" >&2
+         istate failed "The install stopped: $*. Run the install command again."
+         exit 1; }
+# Progress for the web page / Mini PiTFT / login message (when installed).
+istate() {
+    local h="${REPO_DIR:-/nonexistent}/bin/kp4pra-install-state"
+    [ -x "$h" ] || h="$(command -v kp4pra-install-state || true)"
+    [ -n "$h" ] && "$h" set "$@" >/dev/null 2>&1 || true
+}
 
 main() {
     [ "$(id -u)" -eq 0 ] || fail "run it with sudo:  curl -fsSL <link> | sudo bash"
@@ -56,6 +64,7 @@ main() {
         kp4pra-remount-rw >/dev/null 2>&1 || true
     fi
 
+    istate installing "Updating the system and installing KP4PRA TNC"
     export DEBIAN_FRONTEND=noninteractive
     APT_OPTS=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 

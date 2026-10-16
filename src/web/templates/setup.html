@@ -188,5 +188,8 @@ async function saveSetup() {
 }
 
 loadSetup();
+// When the install banner sees setup finish (e.g. the DRA is ready), refresh
+// the sound card list so the DRA shows up without reloading the page.
+window.onInstallComplete = loadSetup;
 </script>
 {% endblock %}
