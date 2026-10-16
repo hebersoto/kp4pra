@@ -33,7 +33,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 log()  { echo -e "${GREEN}[KP4PRA TNC]${NC} $*"; }
-STEP=0; TOTAL_STEPS=10
+# Total = number of step lines in this script, so the [n/N] counter stays right.
+STEP=0; TOTAL_STEPS="$(grep -c '^[[:space:]]*step "' "${BASH_SOURCE[0]}" 2>/dev/null || echo 0)"
 step() { STEP=$((STEP+1)); echo -e "${GREEN}[KP4PRA TNC] [${STEP}/${TOTAL_STEPS}]${NC} $*"; }
 warn() { echo -e "${YELLOW}[KP4PRA TNC WARN]${NC} $*"; }
 err()  { echo -e "${RED}[KP4PRA TNC ERROR]${NC} $*" >&2; }
@@ -75,12 +76,12 @@ python3 -c "import ensurepip" >/dev/null 2>&1 || die "python3-venv (with ensurep
 command -v bt-agent >/dev/null 2>&1 || warn "bt-agent not found - install bluez-tools (required for Just Works pairing agent)"
 command -v nmcli >/dev/null 2>&1 || warn "NetworkManager (nmcli) not found - WiFi hotspot mode requires it: apt install network-manager"
 
-if ! mountpoint -q /rw 2>/dev/null && ! [ -d /rw/kp4pra-tnc ]; then
-    warn "/rw does not appear to be a separate writable partition."
-    warn "Configuration and Bluetooth state will use the root filesystem."
-    warn "For production use, mount a dedicated writable partition at /rw."
-    read -rp "Continue anyway? [y/N] " ans
-    [[ "$ans" =~ ^[Yy]$ ]] || exit 1
+# Writable area for config and Bluetooth state. Created automatically; a
+# dedicated partition mounted at /rw is optional (production layout, see
+# README.md "Read-Only Filesystem Deployment") - no question asked.
+mkdir -p /rw
+if ! mountpoint -q /rw 2>/dev/null; then
+    log "/rw is a folder on the root filesystem (fine for normal use; a separate /rw partition is optional - README.md \"Read-Only Filesystem Deployment\")"
 fi
 
 # ── System user ──────────────────────────────────────────────────────────────

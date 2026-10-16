@@ -258,7 +258,7 @@ password** on this board: the onboard WiFi (Unisoc UWE5622, Armbian driver
 `unisoc_wifi`) starts a WPA2 hotspot but phones never finish joining it, and
 hostapd cannot drive the chip. Set a Dashboard password before using AP mode
 in the field, or use client mode / USB Ethernet. Details: INSTALL.md section
-6b (`wifi.ap_security`).
+5b (`wifi.ap_security`).
 
 ### Troubleshooting (Orange Pi)
 

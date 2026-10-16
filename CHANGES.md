@@ -1,3 +1,16 @@
+## Installer: no /rw question, correct step counter - new in 1.4.17
+- install.sh no longer asks "Continue anyway? [y/N]" when /rw is not a
+  separate partition: it creates /rw itself (mkdir -p /rw) and prints one
+  informational line. A dedicated /rw partition stays optional (README.md,
+  "Read-Only Filesystem Deployment").
+- Step counter fixed: it showed [11/10]; the total is now counted from the
+  script itself ([1/11] ... [11/11]) so it cannot drift again.
+- INSTALL.md: step 4 "Writable partition" removed (the installer does it);
+  its production note moved into the install section. Later sections
+  renumbered: 4 KP4PRA TNC stage 1, 5 stage 2, 5b web interface, 5c
+  DRA-Pi-Zero, 6 first-boot verification, 7 production hardening; references
+  in INSTALL.md, README.md and docs/DRA_PI_ZERO.md updated.
+
 ## Shut Down on the Mini PiTFT - new in 1.4.16
 - Shut Down (Config page) now also clears the Mini PiTFT and shows the same
   10 -> 0 countdown (wakes the display from the screen saver / off; buttons

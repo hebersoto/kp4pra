@@ -41,7 +41,7 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
   between client and AP modes; NetworkManager-based. WPA2-protected on the
   Raspberry Pi; **open (no WiFi password) on the Orange Pi Zero 2W**, whose
   onboard WiFi cannot complete WPA2 hotspot joins - set a Dashboard
-  password there (INSTALL.md section 6b, `wifi.ap_security`).
+  password there (INSTALL.md section 5b, `wifi.ap_security`).
 - **Web UI** (FastAPI + Jinja2, mobile-friendly): dashboard with live
   status, Bluetooth pairing wizards for Android and iPhone, service
   control (bridges + Dire Wolf), live Dire Wolf traffic view, and a

@@ -8,7 +8,7 @@ Requires Python 3.11+ and BlueZ 5.6x+.
 - Orange Pi Zero 2W: Armbian Debian 13 (trixie) minimal/CLI image
   (https://dl.armbian.com/orangepizero2w/Trixie_current_minimal) written to
   the SD card. Armbian currently offers only "rolling" images for this
-  board; that is fine. If you add the DRA-Pi-Zero (section 6c), its setup
+  board; that is fine. If you add the DRA-Pi-Zero (section 5c), its setup
   script moves the board to Armbian's stable kernel automatically when the
   rolling kernel has no headers (one extra reboot). See
   docs/DRA_PI_ZERO.md, "Kernel headers".
@@ -30,11 +30,11 @@ Requires Python 3.11+ and BlueZ 5.6x+.
   > hotspot — **not both at once.** If you enter your WiFi here and the board
   > connects, its own hotspot will **not** be available. Leave WiFi blank for a
   > self-contained field unit: the board then starts its own KP4PRA hotspot at
-  > boot so a phone connects to it directly (see section 6b). You can switch
+  > boot so a phone connects to it directly (see section 5b). You can switch
   > between the two modes anytime with `sudo kp4pra-wifi-mode ap|client`.
   > **Orange Pi Zero 2W:** its hotspot has **no WiFi password** (the onboard
   > WiFi cannot complete WPA2 hotspot joins) - set a Dashboard password; see
-  > section 6b.
+  > section 5b.
 
 Boot the board — headless (no monitor or keyboard) is fine. Section 1b
 connects you to its command line and updates the system.
@@ -116,23 +116,17 @@ The `--help` banner must list `libgpiod` in optional support - the
 DRA-Pi-Zero's GPIOD PTT needs it, and on kernel 6.x legacy sysfs GPIO
 is unreliable. If it's missing, install libgpiod-dev and rebuild.
 
-## 4. Writable partition (production layout)
-Create a second partition on the SD card mounted at `/rw`
-(see README.md, "Read-Only Filesystem Deployment").
-
-For bench testing you can skip the extra partition and simply create the
-`/rw` directory on the root filesystem, then migrate to a real partition
-later (the rest of the install is identical either way). Enter this command:
-```bash
-sudo mkdir -p /rw
-```
-
-## 5. KP4PRA TNC — stage 1
+## 4. KP4PRA TNC — stage 1
 ```bash
 cd ~ && git clone -b dev https://github.com/hebersoto/kp4pra.git kp4pra-tnc
 cd kp4pra-tnc
 sudo bash scripts/install.sh
 ```
+The installer creates `/rw` (config and Bluetooth state) by itself - no
+question is asked. For a production unit you can instead mount a dedicated
+writable partition at `/rw` before installing (README.md, "Read-Only
+Filesystem Deployment").
+
 This installs the **development** branch (1.4.x). For the stable release
 (1.3.x, `main` branch) leave out `-b dev`. Already cloned `main`? Switch with
 `git fetch origin && git checkout dev` before running the installer.
@@ -142,18 +136,18 @@ helper scripts, tmpfiles rule, bluetoothd -C compat mode, volatile journald.
 
 At the end of the install the KP4PRA hotspot starts automatically
 (unless you are installing over a WiFi connection, in which case start
-it manually: `sudo kp4pra-wifi-mode ap`). See section 6b for the SSID,
+it manually: `sudo kp4pra-wifi-mode ap`). See section 5b for the SSID,
 password (none on the Orange Pi Zero 2W), and web UI address.
 
-When the installer finishes, **reboot** (`sudo reboot`) before section 6c:
+When the installer finishes, **reboot** (`sudo reboot`) before section 5c:
 the reboot puts the board in its normal read-only layout and starts every
 service from its saved state (and enables SPI if a Mini PiTFT was found).
 The scripts below handle the read-only root themselves - no
 `kp4pra-remount-rw` is needed before them.
 
-## 6. KP4PRA TNC — stage 2 (Dire Wolf integration)
+## 5. KP4PRA TNC — stage 2 (Dire Wolf integration)
 
-**Runs automatically at the end of step 5 install.sh.** Run it manually
+**Runs automatically at the end of step 4 install.sh.** Run it manually
 only if stage 2 reported errors, or after building Dire Wolf later
 (stage 2 tolerates a missing direwolf binary, but the direwolf service
 cannot start until step 3 is done):
@@ -165,7 +159,7 @@ ADEVICE self-heal at boot, direwolf.conf on /rw with symlink,
 group memberships (systemd-journal, audio, dialout), Dire Wolf
 control sudoers, port 80→8088 redirect.
 
-## 6b. Accessing the web interface — two ways
+## 5b. Accessing the web interface — two ways
 
 **On your home/shop network (client mode):** set the WiFi the TNC should
 join in the config (`wifi.client_ssid` / `wifi.client_password` in
@@ -220,7 +214,7 @@ Hotspot defaults (change them on the Config page / in
 > units), set `wifi.mode_at_boot: "ap"` in the config. Bluetooth
 > KISS (Android and iPhone) works the same in either mode.
 
-## 6c. DRA-Pi-Zero audio setup (I2S boards only)
+## 5c. DRA-Pi-Zero audio setup (I2S boards only)
 
 **DRA-Pi-Zero users only** (I2S board). USB (CM108) users skip this entirely.
 
@@ -270,7 +264,7 @@ The initial direwolf.conf is created automatically by the installer (a minimal
 config is seeded on /rw with a symlink at /home/kp4pra/direwolf.conf). Configure
 your station via the web UI after installation.
 
-## 7. First-boot verification
+## 6. First-boot verification
 - `http://<host>:8088` (or plain `http://<host>/`) → Dashboard all green.
 - Config page → Station Information → set callsign/grid/etc → Detect
   sound card → Preview → Apply to Dire Wolf.
@@ -281,7 +275,7 @@ your station via the web UI after installation.
 - iPhone: aprs.fi → BLE KISS → select the TNC (no iOS pairing).
 - Services page → Dire Wolf Traffic → Refresh: RF decodes appear.
 
-## 8. Production hardening (when ready for the field)
+## 7. Production hardening (when ready for the field)
 Read-only root, pre-flight checklist, and golden SD image creation: see **DEPLOYMENT.md**.
 Summary: fstab root `ro`, `/rw` partition `rw,noatime`; BlueZ state and
 config live on /rw; runtime state on /run (tmpfs); no persistent logs.
