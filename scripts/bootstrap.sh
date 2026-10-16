@@ -73,8 +73,12 @@ main() {
     # ---------------------------------------------------------------------------
     step 3 "Dire Wolf (the packet radio modem)"
     direwolf_ok() {
-        command -v direwolf >/dev/null 2>&1 && \
-            timeout 5 direwolf --help 2>&1 </dev/null | grep -qi libgpiod
+        # Capture first, then search: "direwolf --help" exits non-zero after
+        # printing its banner, which would fail a pipe under "set -o pipefail".
+        command -v direwolf >/dev/null 2>&1 || return 1
+        local banner
+        banner="$(timeout 5 direwolf --help 2>&1 </dev/null || true)"
+        grep -qi libgpiod <<<"$banner"
     }
     if direwolf_ok; then
         echo "Dire Wolf is already installed with libgpiod support - skipping the build."

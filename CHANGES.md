@@ -1,3 +1,11 @@
+## Fix: one-command install stopped after building Dire Wolf - new in 1.4.20
+- bootstrap.sh reported "Dire Wolf was built without libgpiod support" for
+  a correct build: "direwolf --help" exits non-zero after printing its
+  banner, and under "set -o pipefail" the pipe into grep failed even though
+  libgpiod was listed. The banner is now captured first and searched
+  afterwards. Same fix for the Dire Wolf warning in setup-dra-pi-zero.sh,
+  which also started a full Dire Wolf for 5 s instead of using --help.
+
 ## One-command install, DRA auto-detect, first-visit setup page - new in 1.4.19
 - scripts/bootstrap.sh: whole install in one command
   (`curl -fsSL .../scripts/bootstrap.sh | sudo bash`): system update, tools,

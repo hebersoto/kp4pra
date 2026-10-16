@@ -210,7 +210,11 @@ do_mixer() {
     mixlog "mixer applied on card $CARD"
 
     if command -v direwolf >/dev/null 2>&1; then
-        if ! timeout 5 direwolf 2>&1 </dev/null | grep -qi libgpiod; then
+        # Capture first: "direwolf --help" exits non-zero, which would fail
+        # a pipe under "set -o pipefail" even when libgpiod is listed.
+        local dw_banner
+        dw_banner="$(timeout 5 direwolf --help 2>&1 </dev/null || true)"
+        if ! grep -qi libgpiod <<<"$dw_banner"; then
             echo "WARNING: installed direwolf lacks libgpiod support."
             echo "         GPIOD PTT (used by the DRA-Pi-Zero) will fail."
             echo "         Rebuild direwolf with libgpiod-dev present."
