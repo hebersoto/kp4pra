@@ -53,7 +53,7 @@ log "Starting KP4PRA TNC installation..."
 # It is only a Recommends of network-manager, so minimal images (Armbian)
 # lack it and "kp4pra-wifi-mode ap" fails with "IP configuration could not
 # be reserved".
-PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils"
+PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils i2c-tools"
 if command -v apt-get >/dev/null 2>&1; then
     step "Installing prerequisite packages: $PREREQS"
     export DEBIAN_FRONTEND=noninteractive
@@ -208,6 +208,7 @@ install -m 755 "$PROJECT_DIR/bin/kp4pra-web-redirect" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-bt-led"       /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-platform" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-i2c-check" /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-autodetect" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-aprs-clock"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/scripts/setup-dra-pi-zero.sh" /usr/local/bin/
 
@@ -316,6 +317,38 @@ else
 fi
 
 # ── Enable and start services ────────────────────────────────────────────────
+
+# ── DRA-Pi-Zero auto-detect ──────────────────────────────────────────────────
+# Switch on the I2C bus on header pins 3/5 (harmless without a DRA) so that on
+# the next boot kp4pra-dra-autodetect can see the DRA's codec (address 0x1a)
+# and run the DRA setup by itself. The service runs once.
+step "DRA-Pi-Zero auto-detect (header I2C bus, runs once after the reboot)"
+echo i2c-dev > /etc/modules-load.d/kp4pra-i2c.conf
+DRA_PLAT="$("$PROJECT_DIR/bin/kp4pra-dra-platform" 2>/dev/null | sed -n 's/^DRA_PLATFORM=//p')"
+case "$DRA_PLAT" in
+    rpi)
+        PI_CFG=/boot/firmware/config.txt; [ -f "$PI_CFG" ] || PI_CFG=/boot/config.txt
+        if [ -f "$PI_CFG" ] && ! grep -qE '^[[:space:]]*dtparam=i2c_arm=on' "$PI_CFG"; then
+            printf '\n# KP4PRA: I2C on header pins 3/5 (DRA-Pi-Zero auto-detect)\ndtparam=i2c_arm=on\n' >> "$PI_CFG"
+            log "I2C enabled in $PI_CFG"
+        fi ;;
+    opi-zero2w)
+        ENV_TXT=/boot/armbianEnv.txt
+        if [ -f "$ENV_TXT" ]; then
+            if grep -qE '^overlays=' "$ENV_TXT"; then
+                grep -qE '^overlays=.*\bi2c1-pi\b' "$ENV_TXT" || sed -i -E 's/^(overlays=.*)$/\1 i2c1-pi/' "$ENV_TXT"
+            else
+                echo "overlays=i2c1-pi" >> "$ENV_TXT"
+            fi
+            log "I2C (i2c1-pi overlay) enabled in $ENV_TXT"
+        fi ;;
+    *) log "Board not recognised - DRA-Pi-Zero auto-detect skipped" ;;
+esac
+sed "s#@REPO_DIR@#$PROJECT_DIR#" "$PROJECT_DIR/systemd/kp4pra-dra-autodetect.service" \
+    > /etc/systemd/system/kp4pra-dra-autodetect.service
+systemctl daemon-reload
+systemctl enable kp4pra-dra-autodetect.service >/dev/null 2>&1 || true
+log "DRA-Pi-Zero auto-detect enabled (looks once, on the next boot)"
 
 step "Enabling KP4PRA TNC services"
 systemctl enable kp4pra-tnc-rms.service

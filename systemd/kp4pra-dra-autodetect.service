@@ -1,0 +1,16 @@
+[Unit]
+Description=KP4PRA TNC - find a DRA-Pi-Zero and set it up by itself (runs once)
+# The installer fills in the repository path. The script marks itself done
+# (/rw/kp4pra-tnc/.dra-autodetect-done) whatever it finds, so it runs once.
+ConditionPathExists=!/rw/kp4pra-tnc/.dra-autodetect-done
+Wants=network-online.target
+After=network-online.target local-fs.target sound.target
+
+[Service]
+Type=oneshot
+Environment=KP4PRA_REPO=@REPO_DIR@
+ExecStart=/usr/local/bin/kp4pra-dra-autodetect
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target

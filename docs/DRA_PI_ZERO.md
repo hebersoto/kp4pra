@@ -24,6 +24,17 @@ right column automatically (bin/kp4pra-dra-platform, src/common/dra_platform.py)
 with libgpiod-dev present, or GPIOD PTT crash-loops on kernel 6.x (legacy
 sysfs GPIO is unreliable and can leave the line locked).
 
+
+**Automatic setup:** a new install (INSTALL.md, one command) finds a
+DRA-Pi-Zero by itself. The installer switches on the I2C bus on header pins
+3/5, and on the next boot `kp4pra-dra-autodetect` (runs once) looks for the
+DRA's codec at I2C address 0x1a. If it is there, the DRA setup below runs on
+its own and the board restarts once (Raspberry Pi) or twice (Orange Pi). If
+not, nothing changes. Added a DRA later: `sudo kp4pra-dra-autodetect --again`.
+To switch the auto-detect off before the first boot, for example with another
+HAT that also uses address 0x1a (such as a WM8960 sound board), create
+`/rw/kp4pra-tnc/.dra-autodetect-off`. The manual steps below still work.
+
 ## Setup on a Raspberry Pi (web UI — recommended)
 
 The Config page has a **DRA-Pi-Zero (I²S) Setup** card. It shows whether a
@@ -257,8 +268,8 @@ The KP4PRA hotspot (AP mode, button 23 hold on the Mini PiTFT) has **no WiFi
 password** on this board: the onboard WiFi (Unisoc UWE5622, Armbian driver
 `unisoc_wifi`) starts a WPA2 hotspot but phones never finish joining it, and
 hostapd cannot drive the chip. Set a Dashboard password before using AP mode
-in the field, or use client mode / USB Ethernet. Details: INSTALL.md section
-5b (`wifi.ap_security`).
+in the field, or use client mode / USB Ethernet. Details: INSTALL.md, "WiFi: home network or
+hotspot" (`wifi.ap_security`).
 
 ### Troubleshooting (Orange Pi)
 

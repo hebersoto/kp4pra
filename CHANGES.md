@@ -1,3 +1,29 @@
+## One-command install, DRA auto-detect, first-visit setup page - new in 1.4.19
+- scripts/bootstrap.sh: whole install in one command
+  (`curl -fsSL .../scripts/bootstrap.sh | sudo bash`): system update, tools,
+  Dire Wolf build with libgpiod (skipped when already present), clone/update
+  ~/kp4pra-tnc, install.sh, reboot (10 s countdown). Safe to re-run (also the
+  way to update). Log: /root/kp4pra-install.log. Runs inside main() so the
+  piped script is read completely before anything runs. KP4PRA_BRANCH and
+  KP4PRA_NO_REBOOT environment options.
+- DRA-Pi-Zero auto-detect: install.sh switches on the header I2C bus (Pi:
+  dtparam=i2c_arm=on; Orange Pi: i2c1-pi overlay; i2c-dev), installs
+  bin/kp4pra-dra-autodetect and enables kp4pra-dra-autodetect.service
+  (runs once). On the next boot it probes address 0x1a on every I2C bus; if
+  the codec answers it runs setup-dra-pi-zero.sh by itself (Orange Pi:
+  automatic kernel switch/resume/reboots from 1.4.18; Raspberry Pi: one
+  reboot after config.txt). Opt-out file /rw/kp4pra-tnc/.dra-autodetect-off,
+  re-check with `kp4pra-dra-autodetect --again`. i2c-tools added to PREREQS.
+- Web: first-visit setup page /setup (callsign, SSID, grid, sound card with
+  the DRA or a USB interface preselected, Dashboard password; open-hotspot
+  warning). /admin redirects there until a real callsign is saved
+  (?skip_setup=1 skips). /api/direwolf/apply accepts use_dra=true to write
+  this board's DRA card by name while the DRA is still setting itself up.
+- INSTALL.md rewritten: four short steps (prepare the SD card, connect,
+  one install command, open the web page), troubleshooting, updating, WiFi,
+  manual install for experienced users. References in README.md and
+  docs/DRA_PI_ZERO.md updated; DRA_PI_ZERO.md explains the auto-detect.
+
 ## DRA setup on the Orange Pi: one command, automatic reboots - new in 1.4.18
 - setup-dra-pi-zero.sh (Orange Pi Zero 2W) no longer stops with "REBOOT
   REQUIRED, then run the same command again" after switching a rolling

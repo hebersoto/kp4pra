@@ -290,8 +290,28 @@ async def landing(request: Request):
     })
 
 
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request, _auth=Depends(check_auth)):
+    """First-visit setup: callsign, sound card, Dashboard password in one form.
+    Shown automatically by /admin until a real callsign is saved."""
+    cfg = get_config()
+    st = cfg.get("station", {}) or {}
+    call = str(st.get("callsign", "")).strip().upper()
+    return templates.TemplateResponse("setup.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "callsign": "" if call in ("", "N0CALL") else call,
+        "ssid": st.get("ssid", ""),
+        "mygrid": st.get("mygrid", ""),
+        "password_set": auth.dashboard_password_set(cfg),
+    })
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def dashboard(request: Request, _auth=Depends(check_auth)):
+    # First visit (no callsign yet): go to the one-page setup instead.
+    if not auth.callsign_valid(get_config()) and request.query_params.get("skip_setup") != "1":
+        return RedirectResponse("/setup", status_code=303)
     status_data = get_live_status()
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -1380,8 +1400,16 @@ async def api_direwolf_apply(request: Request, _auth=Depends(check_auth)):
     if not body.get("confirmed", False):
         return JSONResponse({"success": False, "message": "Confirmation required"}, status_code=400)
     station = body.get("station") or load_config().get("station", {})
+    adevice = None
+    if body.get("use_dra"):
+        # The DRA-Pi-Zero may still be setting itself up (card not loaded yet):
+        # use this board's DRA card by name; it works once the card appears.
+        from common.dra_platform import detect_platform, PLATFORMS
+        card = PLATFORMS.get(detect_platform() or "", {}).get("card")
+        if card:
+            adevice = f"plughw:{card},0"
     try:
-        text = generate_direwolf_conf(station)
+        text = generate_direwolf_conf(station, adevice=adevice)
         ok, msg = write_direwolf_conf(text)
         if not ok:
             return JSONResponse({"success": False, "message": msg})
