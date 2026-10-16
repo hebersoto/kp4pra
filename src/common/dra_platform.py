@@ -100,6 +100,7 @@ def foreign_dra_ptt_params(platform: Optional[str] = None) -> set:
 SETUP_CMD = "cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh"
 OPI_DTBO = "boot/overlay-user/kp4pra-dra-orangepi.dtbo"
 OPI_ENV = "boot/armbianEnv.txt"
+RESUME_MARK = "rw/kp4pra-tnc/.dra-setup-resume"   # setup continues after a reboot
 
 
 def _boot_time() -> float:
@@ -125,6 +126,8 @@ def setup_state(plat: Optional[str], kernel: Optional[str] = None,
 
     Returns (state, hint). state is one of:
       not_set_up      no sign of a DRA setup (USB-only boards land here)
+      in_progress     the setup switched kernels and finishes by itself after
+                      the reboot (kp4pra-dra-setup-resume.service)
       kernel_pending  setup started, but the running kernel was replaced
                       (kernel switch / update without reboot) -> reboot, run again
       incomplete      setup started but driver or overlay missing -> run again
@@ -141,6 +144,10 @@ def setup_state(plat: Optional[str], kernel: Optional[str] = None,
         dtbo = j(OPI_DTBO)
         started = (os.path.isdir(j("var/lib/dkms/kp4pra-wm8731"))
                    or os.path.isdir(j("var/backups/kp4pra")) or os.path.exists(dtbo))
+        if os.path.exists(j(RESUME_MARK)):
+            return ("in_progress", "DRA setup is finishing automatically: the board reboots, "
+                    "builds the codec driver (about 5 minutes) and reboots once more. "
+                    "Nothing to do - progress in /rw/kp4pra-tnc/logs/dra-setup.log.")
         if not started:
             return ("not_set_up", "Orange Pi Zero 2W: if a DRA-Pi-Zero is installed, run the "
                     f"one-time setup from SSH: {SETUP_CMD}")

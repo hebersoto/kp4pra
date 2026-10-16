@@ -930,6 +930,8 @@ async function refreshDRAStatus() {
     const el = document.getElementById('dra-status');
     if (d.dra_present) {
       el.textContent = `✅ DRA-Pi-Zero detected (${d.card} on ${d.board}).`;
+    } else if (d.setup_state === 'in_progress') {
+      el.textContent = '⏳ ' + d.hint;
     } else if (d.setup_state && d.setup_state !== 'not_set_up' && d.hint) {
       // A DRA setup was started on this board: say exactly what is missing.
       el.textContent = '⚠️ DRA-Pi-Zero not detected. ' + d.hint;

@@ -224,8 +224,7 @@ command is used on both boards:
 cd ~/kp4pra-tnc
 sudo bash scripts/setup-dra-pi-zero.sh
 ```
-It is normal for this to take **two runs with a reboot after each**. Follow
-the last lines the script prints:
+Follow the last lines the script prints:
 
 **Raspberry Pi**
 1. Run the command. It enables the I2S overlay, disables onboard audio and
@@ -233,23 +232,22 @@ the last lines the script prints:
 2. `sudo reboot`, reconnect, run the same command again. It now finds the
    card and sets the WM8731 mixer levels (`Mixer configured and stored`).
 
-**Orange Pi Zero 2W (Armbian)** - needs internet, about 5 minutes per run.
-1. Run the command. On Armbian's **rolling** images (the only ones currently
-   offered for this board) the running kernel usually has no headers, so the
-   script moves the board to Armbian's stable repository and stable kernel
-   and stops with `== Kernel changed to the stable Armbian kernel ... ==` /
-   `REBOOT REQUIRED, then run the same command again`. **This is expected,
-   not a failure.**
-2. `sudo reboot`, reconnect, run the same command again. It now goes through
-   all six steps (`[1/6]` ... `[6/6]`), builds the codec driver (DKMS,
-   rebuilt automatically after later kernel updates), installs the DRA
-   overlay and ends with `== DRA-Pi-Zero setup finished for Orange Pi Zero 2W ==` /
-   `REBOOT REQUIRED`.
-3. `sudo reboot` once more. The card is then loaded and the mixer is applied
-   automatically at boot.
+**Orange Pi Zero 2W (Armbian)** - needs internet for the first part, about
+10 minutes in total. **Run the command once; the rest is automatic.**
+1. Run the command. If the board runs one of Armbian's **rolling** kernels
+   (the only images currently offered for this board), the script switches it
+   to Armbian's stable kernel, downloads everything the rest needs, shows
+   `== Kernel changed to the stable Armbian kernel ... ==` and **reboots by
+   itself** after a 10-second countdown (Ctrl-C cancels; the setup then
+   continues at your next reboot).
+2. After that reboot the setup **finishes by itself** (about 5 minutes - the
+   codec driver is built) and the board **reboots once more**. The Config
+   page DRA card shows "⏳ DRA setup is finishing automatically" meanwhile.
+3. Done: the card is loaded and the mixer is applied at every boot.
 
-On a board that is already on a stable kernel, Orange Pi step 1 goes
-straight to the full run (steps 2-3).
+On a board already on a stable kernel, step 1 does the full setup directly
+and then reboots by itself once. Add `--no-reboot` to the command to reboot
+by hand instead. Every run is logged to `/rw/kp4pra-tnc/logs/dra-setup.log`.
 
 **Both boards - finish in the web UI:** Config page -> Detect sound cards ->
 select "DRA-Pi-Zero (I2S)" (PTT pre-fills to GPIOD) -> Preview -> Apply.

@@ -1,3 +1,19 @@
+## DRA setup on the Orange Pi: one command, automatic reboots - new in 1.4.18
+- setup-dra-pi-zero.sh (Orange Pi Zero 2W) no longer stops with "REBOOT
+  REQUIRED, then run the same command again" after switching a rolling
+  image to Armbian's stable kernel. It installs the build tools, caches the
+  WM8731 source for the new kernel (offline-safe), schedules
+  kp4pra-dra-setup-resume.service and reboots by itself (10 s countdown,
+  Ctrl-C cancels). After the reboot the service finishes the setup and the
+  board reboots once more. The service runs once and removes itself even on
+  failure (no reboot loops).
+- The full run also reboots by itself at the end (was "REBOOT REQUIRED:
+  sudo reboot"). --no-reboot keeps the manual behaviour.
+- Config page DRA card: "⏳ DRA setup is finishing automatically ..." while
+  the resume is pending (setup_state in_progress, test added).
+- Raspberry Pi path unchanged.
+- Docs: INSTALL.md 5c (Orange Pi: run once), DRA_PI_ZERO.md.
+
 ## Installer: no /rw question, correct step counter - new in 1.4.17
 - install.sh no longer asks "Continue anyway? [y/N]" when /rw is not a
   separate partition: it creates /rw itself (mkdir -p /rw) and prints one

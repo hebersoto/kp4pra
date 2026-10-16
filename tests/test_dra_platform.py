@@ -134,6 +134,10 @@ class SetupState(unittest.TestCase):
         self.mk("boot/overlay-user/kp4pra-dra-orangepi.dtbo", mtime=mtime)
         self.mk("boot/armbianEnv.txt", "user_overlays=kp4pra-dra-orangepi\n")
 
+    def test_opi_resume_pending(self):
+        self.mk("rw/kp4pra-tnc/.dra-setup-resume", "2026-10-16T10:00:00")
+        self.assertEqual(self.state(), "in_progress")
+
     def test_opi_never_set_up(self):
         self.assertEqual(self.state(), "not_set_up")
 

@@ -16,6 +16,15 @@
 #                   is not detected, log and exit 0 (no damage to USB setups).
 #   (no flag)     : full run - config, then mixer if the card is already up.
 #                   Preserves the original CLI behavior (run, reboot, re-run).
+#
+# Orange Pi Zero 2W only (Raspberry Pi unchanged):
+#   The full run reboots by itself when it is done (10 s countdown, Ctrl-C
+#   cancels). If it first has to switch to Armbian's stable kernel (rolling
+#   images have no kernel headers), it schedules kp4pra-dra-setup-resume.service,
+#   reboots, finishes the setup automatically after the reboot and reboots once
+#   more - one command, no second run by hand.
+#   --no-reboot   : do not reboot automatically (print the instructions instead)
+#   --resume      : used by kp4pra-dra-setup-resume.service (runs once)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,13 +42,19 @@ CARD="audioinjectorpi"
 MARKER="# KP4PRA DRA-Pi-Zero"
 RUN_USER="${SUDO_USER:-kp4pra}"
 
+ORIG_ARGS=("$@")
 MODE="full"
-case "${1:-}" in
-    --config-only) MODE="config" ;;
-    --mixer-only)  MODE="mixer" ;;
-    "")            MODE="full" ;;
-    *) echo "Usage: $0 [--config-only|--mixer-only]" >&2; exit 2 ;;
-esac
+NO_REBOOT=0
+RESUME=0
+for arg in "$@"; do
+    case "$arg" in
+        --config-only) MODE="config" ;;
+        --mixer-only)  MODE="mixer" ;;
+        --no-reboot)   NO_REBOOT=1 ;;
+        --resume)      RESUME=1 ;;
+        *) echo "Usage: $0 [--config-only|--mixer-only|--no-reboot]" >&2; exit 2 ;;
+    esac
+done
 
 # --- locate config.txt ---
 find_cfg() {
@@ -288,8 +303,111 @@ EOF
     apt-get update -qq || true
 }
 
+# --- automatic continue / reboot (Orange Pi) ---------------------------------
+RESUME_MARK="/rw/kp4pra-tnc/.dra-setup-resume"
+RESUME_UNIT="kp4pra-dra-setup-resume.service"
+RO_RESTORE=0
+REBOOT_AFTER=0
+
+opi_packages() {   # build + runtime tools (needs internet the first time)
+    apt-get install -y dkms gcc make device-tree-compiler i2c-tools gpiod curl alsa-utils python3
+}
+
+# Download (and cache) the WM8731 source for a kernel release now, so the
+# automatic run after the reboot also works without internet (e.g. when the
+# board comes up as its own WiFi hotspot).
+opi_prefetch_source() {
+    local tmp; tmp="$(mktemp -d)"
+    cp -r "$OPI_DIR/wm8731-dkms/." "$tmp/"
+    if bash "$tmp/prepare.sh" "$1" >/dev/null 2>&1; then
+        echo "  OK  : codec driver source for kernel $1 downloaded and cached"
+    else
+        echo "  WARN: could not pre-download the codec driver source for $1 (the automatic run will try again)"
+    fi
+    rm -rf "$tmp"
+}
+
+# Run this script once more, automatically, at the next boot.
+opi_schedule_resume() {
+    mkdir -p "$(dirname "$RESUME_MARK")"
+    date -Is > "$RESUME_MARK"
+    cat > "/etc/systemd/system/$RESUME_UNIT" <<EOF
+[Unit]
+Description=KP4PRA TNC - finish the DRA-Pi-Zero setup after the kernel change (runs once)
+ConditionPathExists=$RESUME_MARK
+Wants=network-online.target
+After=network-online.target local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash $REPO_DIR/scripts/setup-dra-pi-zero.sh --resume
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable "$RESUME_UNIT" >/dev/null 2>&1
+    echo "  OK  : setup will continue automatically after the reboot ($RESUME_UNIT)"
+}
+
+# The resume runs only once, whatever happens (no reboot loops).
+opi_clear_resume() {
+    rm -f "$RESUME_MARK"
+    if [ -f "/etc/systemd/system/$RESUME_UNIT" ]; then
+        systemctl disable "$RESUME_UNIT" >/dev/null 2>&1 || true
+        rm -f "/etc/systemd/system/$RESUME_UNIT"
+        systemctl daemon-reload || true
+    fi
+}
+
+opi_on_exit() {
+    local rc=$?
+    if [ "$RESUME" = 1 ]; then
+        [ "$rc" -ne 0 ] && echo "ERROR: the automatic DRA setup failed (exit $rc). Run it again from SSH: cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh"
+        opi_clear_resume
+    fi
+    if [ "$RO_RESTORE" = 1 ]; then
+        echo "Restoring read-only root"
+        kp4pra-remount-ro || echo "WARN: run sudo kp4pra-remount-ro"
+    fi
+    if [ "$REBOOT_AFTER" = 1 ]; then
+        echo "Rebooting now."
+        sync
+        systemctl reboot
+    fi
+}
+
+# Reboot at the end of the script: 10 s countdown when run by hand
+# (Ctrl-C cancels), immediately when run by the resume service.
+opi_auto_reboot() {
+    if [ "$NO_REBOOT" = 1 ]; then
+        echo "REBOOT REQUIRED (--no-reboot given): sudo reboot"
+        return 0
+    fi
+    if [ "$RESUME" = 1 ] || [ ! -t 0 ]; then
+        REBOOT_AFTER=1
+        return 0
+    fi
+    local i cancelled=0
+    trap 'cancelled=1' INT
+    echo "Rebooting automatically in 10 seconds - press Ctrl-C to cancel."
+    for i in $(seq 10 -1 1); do
+        printf '\r  %2d ' "$i"
+        sleep 1 || true
+        [ "$cancelled" = 1 ] && break
+    done
+    trap - INT
+    echo
+    if [ "$cancelled" = 1 ]; then
+        echo "Reboot cancelled. Reboot when ready: sudo reboot"
+    else
+        REBOOT_AFTER=1
+    fi
+}
+
 opi_setup() {
-    [ "$(id -u)" -eq 0 ] || exec sudo bash "$0"
+    [ "$(id -u)" -eq 0 ] || exec sudo bash "$0" "${ORIG_ARGS[@]}"
     # Never stop silently: report where an unexpected failure happened.
     set -E
     trap 'echo "ERROR: DRA setup stopped unexpectedly at line $LINENO (command: $BASH_COMMAND)." >&2; echo "Please report this output." >&2' ERR
@@ -302,17 +420,27 @@ opi_setup() {
     # Keep a copy of every run on the writable partition, so a tester can
     # send it: /rw/kp4pra-tnc/logs/dra-setup.log
     if mkdir -p "$SETUP_LOG_DIR" 2>/dev/null && touch "$SETUP_LOG" 2>/dev/null; then
-        exec > >(tee -a "$SETUP_LOG") 2>&1
+        # tee ignores Ctrl-C, so cancelling the reboot countdown cannot cut
+        # the script's output (and kill it with SIGPIPE).
+        exec > >(trap '' INT; exec tee -a "$SETUP_LOG") 2>&1
         echo "--- $(date -Is) setup-dra-pi-zero.sh (mode: $MODE) ---"
     fi
     echo "== DRA-Pi-Zero setup for ${DRA_BOARD} (kernel $K, KP4PRA $VER) =="
+    trap opi_on_exit EXIT
+    if [ "$RESUME" = 1 ]; then
+        if [ ! -f "$RESUME_MARK" ]; then
+            echo "Nothing to resume."
+            RESUME=0; opi_clear_resume; exit 0
+        fi
+        echo "Continuing the DRA setup automatically after the kernel change."
+    fi
 
     # Read-only root: remount rw for the install, restore on exit.
     if ! ( : > /usr/src/.kp4pra-wtest ) 2>/dev/null; then
         command -v kp4pra-remount-rw >/dev/null || opi_die "root filesystem is read-only and kp4pra-remount-rw is missing."
         echo "Root filesystem is read-only - remounting rw for the setup"
         kp4pra-remount-rw
-        trap 'echo "Restoring read-only root"; kp4pra-remount-ro || echo "WARN: run sudo kp4pra-remount-ro"' EXIT
+        RO_RESTORE=1
     fi
     rm -f /usr/src/.kp4pra-wtest
 
@@ -367,11 +495,25 @@ opi_setup() {
                 [ -n "$PICK" ] || opi_die "no Armbian kernel with matching headers found for $IMG in your apt sources. Check the internet connection and 'apt-cache policy $HDR', then report this output."
                 echo "  switching to stable kernel $PICK (image + device tree + headers)"
                 apt-get install -y --allow-downgrades "$IMG=$PICK" "$DTB=$PICK" "$HDR=$PICK"
+                local NEWK
+                NEWK="$(dpkg -L "$IMG" 2>/dev/null | sed -n 's#^/boot/vmlinuz-##p' | head -1)"
+                # Everything that needs the internet, now.
+                echo "  installing build tools and caching the driver source for the new kernel"
+                opi_packages
+                [ -n "$NEWK" ] && opi_prefetch_source "$NEWK"
                 echo
                 echo "== Kernel changed to the stable Armbian kernel $PICK =="
-                echo "REBOOT REQUIRED, then run the same command again to finish the DRA setup:"
-                echo "  sudo reboot"
-                echo "  cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh"
+                if [ "$NO_REBOOT" = 1 ]; then
+                    echo "REBOOT REQUIRED (--no-reboot given), then run the same command again:"
+                    echo "  sudo reboot"
+                    echo "  cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh"
+                    exit 0
+                fi
+                opi_schedule_resume
+                echo "After the reboot the setup finishes by itself (about 5 minutes) and the"
+                echo "board reboots once more. Then the DRA-Pi-Zero is ready - nothing else to run."
+                echo "Progress: Config page (DRA card) or /rw/kp4pra-tnc/logs/dra-setup.log"
+                opi_auto_reboot
                 exit 0
             fi
         fi
@@ -379,7 +521,7 @@ opi_setup() {
 
     # 2. Build tools and runtime tools.
     echo "-- [2/6] Packages: dkms, compiler, device-tree compiler, i2c-tools, gpiod"
-    apt-get install -y dkms gcc make device-tree-compiler i2c-tools gpiod curl alsa-utils python3
+    opi_packages
 
     # 3. Patched WM8731 driver via DKMS (downloads the matching kernel source).
     echo "-- [3/6] WM8731 driver (DKMS package $DKMS_NAME/$VER)"
@@ -452,9 +594,9 @@ EOF
     echo
     echo "== DRA-Pi-Zero setup finished for ${DRA_BOARD} =="
     if [ "$NEED_REBOOT" -eq 1 ]; then
-        echo "REBOOT REQUIRED: sudo reboot"
         echo "After the reboot, in the web UI Config page: Detect sound cards, select"
         echo "\"DRA-Pi-Zero (I2S)\" - PTT pre-fills to GPIOD \"${DRA_PTT_CHIP} ${DRA_PTT_LINE}\" - then Preview and Apply."
+        opi_auto_reboot
     fi
 }
 

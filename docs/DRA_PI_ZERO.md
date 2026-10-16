@@ -196,15 +196,15 @@ trunk kernels. Step [1/6] of the setup script handles this by itself:
    and the running kernel's headers are tried again.
 3. Still not available (a rolling kernel) -> the newest **stable** kernel
    that has image, device tree and headers is installed
-   (`linux-image/dtb/headers-current-sunxi64`). The script then says:
-   **reboot and run the same command again**:
-
-   ```bash
-   sudo reboot
-   cd ~/kp4pra-tnc && sudo bash scripts/setup-dra-pi-zero.sh
-   ```
-
-   The second run finds the stable kernel's headers and finishes the setup.
+   (`linux-image/dtb/headers-current-sunxi64`), the build tools are
+   installed and the WM8731 source for the new kernel is downloaded into
+   `/var/cache/kp4pra-wm8731` (so the rest also works offline), and
+   `kp4pra-dra-setup-resume.service` is scheduled. The board **reboots by
+   itself** (10 s countdown, Ctrl-C cancels), the service finishes the setup
+   on the new kernel and the board **reboots once more**. The service runs
+   only once (it removes itself even if the build fails - then run the
+   command again by hand). `--no-reboot` restores the old behaviour (reboot
+   and run again by hand).
 
 The board stays on the stable repository afterwards, so `apt upgrade` keeps
 kernel and headers in step and DKMS rebuilds the driver for each new kernel.
@@ -262,6 +262,9 @@ in the field, or use client mode / USB Ethernet. Details: INSTALL.md section
 
 ### Troubleshooting (Orange Pi)
 
+- Automatic continue after the kernel change:
+  `journalctl -b -u kp4pra-dra-setup-resume` (pending while
+  `/rw/kp4pra-tnc/.dra-setup-resume` exists).
 - **Send this file when reporting a problem:**
   `/rw/kp4pra-tnc/logs/dra-setup.log`. It keeps the output of every
   `setup-dra-pi-zero.sh` run plus one line per boot from the mixer service
