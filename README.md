@@ -35,6 +35,11 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
   KISS-over-BLE UUIDs.
 - **Both bridges** pass raw KISS binary, auto-reconnect if Dire Wolf
   restarts, and survive idle periods (no traffic ≠ disconnect).
+- **APRS TOCALL:** the hourly beacon KP4PRA TNC sends for its AX.25
+  digipeater alias goes to **APKPPR**, its assigned APRS software
+  identifier. It is built in, not a setting. Frames from phone and PC apps
+  (Bluetooth, BLE, WiFi KISS) are sent as the app made them, with the
+  app's own TOCALL.
 - **WiFi access point (field mode)**: the TNC can broadcast its own
   network (default SSID KP4PRA) so a phone joins it directly and reaches
   the web UI at http://172.16.0.1/ - no home WiFi needed. Switchable

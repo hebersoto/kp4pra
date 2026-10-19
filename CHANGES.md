@@ -1,3 +1,14 @@
+## APRS TOCALL APKPPR (assigned) - new in 1.3.24
+- KP4PRA TNC now has its own APRS software identifier, APKPPR. The hourly
+  Dire Wolf beacon that announces the AX.25 digipeater alias is sent to it
+  (CBEACON dest=APKPPR; before it went to BEACON). Built in, not a setting.
+- Frames from other APRS apps connected over Bluetooth, BLE or WiFi KISS
+  are not changed and keep their own TOCALL.
+- Updating (running the installer again) also fixes the beacon line in an
+  existing direwolf.conf, so no Apply is needed.
+- Same change as dev 1.4.23 (dev also uses APKPPR for its APRS chat and
+  beacons, which main does not have).
+
 ## WiFi fixes (backport from 1.4.11/1.4.12) - new in 1.3.23
 - Docs/UI for the open Orange Pi hotspot: INSTALL.md (WiFi note in step 1,
   end of install, first-boot check), README.md (features, validated
