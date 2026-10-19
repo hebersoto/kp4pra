@@ -110,7 +110,7 @@ class AprsChat:
     messages. Retries are surfaced via due_retries()/mark_retried() so the
     driving loop stays in control (and tests stay deterministic)."""
 
-    def __init__(self, mycall, transport, store=None, tocall="APKP41",
+    def __init__(self, mycall, transport, store=None, tocall=aprs.TOCALL,
                  digipath=None, path_label="rf", retry_interval=30,
                  max_retries=3, match_ssid=False, clock=time.time):
         self.mycall = aprs.normalize_call(mycall)

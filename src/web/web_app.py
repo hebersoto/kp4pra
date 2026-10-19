@@ -55,6 +55,7 @@ import mailbuilder
 import b2fsend
 import rfsend
 import aprssession
+from aprs import TOCALL as APRS_TOCALL
 from rms import ax25 as _aprs_ax25
 
 PRODUCT_NAME = "KP4PRA TNC"
@@ -197,7 +198,7 @@ async def aprs_page(request: Request, _auth=Depends(check_auth)):
         "request": request,
         "product_name": PRODUCT_NAME,
         "mycall": mycall,
-        "tocall": a.get("tocall", "APKP41"),
+        "tocall": APRS_TOCALL,
     })
 
 

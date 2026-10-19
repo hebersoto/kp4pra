@@ -18,6 +18,9 @@ from common.dra_platform import (
 # directly. /home/kp4pra/direwolf.conf is a symlink to this file, used only
 # by Direwolf's -c flag; the service user cannot traverse /home/kp4pra.
 DIREWOLF_CONF_PATH = "/rw/kp4pra-tnc/direwolf.conf"
+# KP4PRA TNC's assigned APRS TOCALL (same value as web/aprs.py TOCALL;
+# a test keeps the two equal). Used as the destination of the beacon below.
+APRS_TOCALL = "APKPPR"
 
 # label shown in UI -> keyword patterns matched against `aplay -l` card names
 CARD_SIGNATURES = [
@@ -209,7 +212,7 @@ def generate_direwolf_conf(station: dict, adevice: str = None) -> str:
         *ptt_lines,
         *dcd_lines,
         f"CDIGIPEAT 0 0 {alias}",
-        (f'CBEACON delay=1:00 every=59:00 INFO="{mycall} - BLUETOOTH TNC '
+        (f'CBEACON dest={APRS_TOCALL} delay=1:00 every=59:00 INFO="{mycall} - BLUETOOTH TNC '
          f'Android/Iphone - {alias} alias for AX.25 by KP4PRA"'),
         "",
     ]

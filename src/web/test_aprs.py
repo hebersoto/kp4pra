@@ -92,20 +92,20 @@ t("login with filter",
   aprs.aprsis_login("KP3M", filt="g/KP3M").endswith("filter g/KP3M"))
 
 # ---- TNC2 build / parse ----
-line = aprs.tnc2_line("KP3M", "APKP41", aprs.format_message("KP4DOG", "hi", "5"),
+line = aprs.tnc2_line("KP3M", "APKPPR", aprs.format_message("KP4DOG", "hi", "5"),
                       path=["TCPIP*"])
-t("tnc2 build", line == "KP3M>APKP41,TCPIP*::KP4DOG   :hi{5")
+t("tnc2 build", line == "KP3M>APKPPR,TCPIP*::KP4DOG   :hi{5")
 
-d = aprs.parse_tnc2("KP4DOG-10>APKP41,WIDE1-1,WIDE2-1::KP3M     :Hello back{9")
+d = aprs.parse_tnc2("KP4DOG-10>APKPPR,WIDE1-1,WIDE2-1::KP3M     :Hello back{9")
 t("tnc2 parse source", d["source"] == "KP4DOG-10")
-t("tnc2 parse dest", d["dest"] == "APKP41")
+t("tnc2 parse dest", d["dest"] == "APKPPR")
 t("tnc2 parse path", d["path"] == ["WIDE1-1", "WIDE2-1"])
 t("tnc2 parse info is message",
   aprs.parse_message(d["info"])["kind"] == "message")
 t("tnc2 comment ignored", aprs.parse_tnc2("# aprsc 2.1.0") is None)
 
 # ---- full RX scenario: incoming message -> we build the ack ----
-d = aprs.parse_tnc2("KP4DOG-10>APKP41,TCPIP*::KP3M     :Need status{17")
+d = aprs.parse_tnc2("KP4DOG-10>APKPPR,TCPIP*::KP3M     :Need status{17")
 info = aprs.parse_message(d["info"])
 t("incoming addressed to us", info["addressee"] == "KP3M" and info["kind"] == "message")
 ack = aprs.format_ack(d["source"], info["msgno"])   # ack goes back to the sender

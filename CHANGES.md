@@ -1,3 +1,17 @@
+## APRS TOCALL APKPPR (assigned) - new in 1.4.23
+- KP4PRA TNC now has its own APRS software identifier, APKPPR. Every frame
+  the application builds uses it as the AX.25 destination: APRS chat
+  messages and acks (RF and APRS-IS), the web "Beacon now" and periodic
+  beacons, the Mini PiTFT beacon (button 24), and the hourly Dire Wolf
+  beacon that announces the AX.25 digipeater alias (CBEACON dest=APKPPR;
+  before it went to BEACON).
+- Built in, not a setting: aprs.tocall is gone from the defaults and the
+  config check; an old value in config.yaml (APKP41) is ignored.
+- Frames from other APRS apps connected over Bluetooth, BLE or WiFi KISS
+  are not changed and keep their own TOCALL.
+- Updating (running the install command again) also fixes the beacon line
+  in an existing direwolf.conf, so no Apply is needed.
+
 ## Fix: running the installer again (update) stopped at the BlueZ step - new in 1.4.22
 - install.sh copied /var/lib/bluetooth into /rw/kp4pra-tnc/bluetooth on
   every run. On an installed board the first is a bind mount of the second,

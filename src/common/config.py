@@ -143,7 +143,6 @@ DEFAULT_CONFIG = {
     },
     "aprs": {
         "enabled": True,
-        "tocall": "APKP41",        # APRS software identifier (AX.25 dest addr)
         "mycall": "",              # TX callsign; blank = station.callsign
         "digipath": ["WIDE1-1", "WIDE2-1"],  # RF digipeater path
         "retry_interval": 30,      # seconds before an un-acked resend

@@ -71,7 +71,7 @@ def send_beacon(cfg: dict, host: str = "127.0.0.1", port: int = AGW_PORT) -> str
     """Send the beacon; returns the info field sent. Raises on socket error."""
     a = cfg.get("aprs", {}) or {}
     info = beacon_info(cfg)
-    frame = agw_frame(beacon_call(cfg), a.get("tocall") or "APKP41", info,
+    frame = agw_frame(beacon_call(cfg), aprs.TOCALL, info,
                       a.get("digipath") or [])
     with socket.create_connection((host, port), timeout=5) as s:
         s.sendall(frame)

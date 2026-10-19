@@ -25,6 +25,13 @@ Field rules enforced here:
 
 import re
 
+# APRS TOCALL (AX.25 destination) of KP4PRA TNC, assigned in the APRS
+# software identifier list (aprsorg/aprs-deviceid). Fixed, not a setting:
+# every frame this application builds (chat, ack, beacon, APRS-IS) uses it.
+# Frames from other APRS apps (phones over Bluetooth/BLE/WiFi KISS) pass
+# through unchanged and keep their own TOCALL.
+TOCALL = "APKPPR"
+
 DTI = ":"                      # message data type identifier
 ADDRESSEE_LEN = 9
 MAX_TEXT = 67

@@ -37,6 +37,11 @@ MYCALL N0CALL
 MODEM 1200
 DWCONF
 fi
+# 2b. The KP4PRA beacon goes to KP4PRA TNC's assigned TOCALL (APKPPR). An
+#     update fixes a conf written by an older version (no dest= or another
+#     one) without waiting for the next Apply. Only the line KP4PRA writes
+#     ("... by KP4PRA") is touched.
+sed -i -E '/^CBEACON .*by KP4PRA/{s/ dest=[^ ]+//; s/^CBEACON /CBEACON dest=APKPPR /}' "$RW_CONF"
 chown kp4pra-tnc:kp4pra-tnc "$RW_CONF"
 # 3. ALWAYS ensure the symlink exists (this was the fresh-install bug:
 #    previously the link was only made when $CONF pre-existed).

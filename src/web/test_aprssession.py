@@ -47,7 +47,7 @@ async def main():
     cfg = {
         "station": {"callsign": "KP3M"},
         "direwolf": {"host": "127.0.0.1", "port": 8001},
-        "aprs": {"enabled": True, "tocall": "APKP41",
+        "aprs": {"enabled": True, "tocall": "APKP41",   # old setting: must be ignored
                  "digipath": ["WIDE1-1"], "retry_interval": 30,
                  "max_retries": 3, "aprsis": {"enabled": False}},
     }
@@ -66,7 +66,7 @@ async def main():
     assert r["ok"], r
     frames = kiss_frames(writer.sent)
     dest, src, digis, ctrl, pid, payload = ax25.split_frame(frames[-1])
-    assert dest == "APKP41" and src == "KP3M" and digis == ["WIDE1-1"]
+    assert dest == "APKPPR" and src == "KP3M" and digis == ["WIDE1-1"]
     assert (ctrl & 0xEF) == UI and pid == 0xF0
     assert payload.decode() == ":KP4DOG   :Need status{1"
     print("PASS send emits correct UI frame")
@@ -74,7 +74,7 @@ async def main():
     # --- inbound message from a peer -> stored + auto-ack transmitted ---
     before = len(writer.sent)
     info = aprs.format_message("KP3M", "On my way", "7")
-    inbound = ax25.kiss_encode(ax25.make_frame("APKP41", "KP4DOG-10", UI,
+    inbound = ax25.kiss_encode(ax25.make_frame("APKPPR", "KP4DOG-10", UI,
                                                info.encode(), ax25.PID_NO_L3))
     reader.push(inbound)
     await asyncio.sleep(0.1)                     # let RX loop process
@@ -90,7 +90,7 @@ async def main():
 
     # --- peer acks OUR message -> status flips to acked ---
     ackframe = ax25.kiss_encode(ax25.make_frame(
-        "APKP41", "KP4DOG", UI, aprs.format_ack("KP3M", "1").encode(),
+        "APKPPR", "KP4DOG", UI, aprs.format_ack("KP3M", "1").encode(),
         ax25.PID_NO_L3))
     reader.push(ackframe)
     await asyncio.sleep(0.1)
@@ -141,7 +141,7 @@ async def beacon_tests():
     cfg = {
         "station": {"callsign": "KP3M", "mygrid": "FK68wd"},
         "direwolf": {"host": "127.0.0.1", "port": 8001},
-        "aprs": {"enabled": True, "tocall": "APKP41",
+        "aprs": {"enabled": True, "tocall": "APKP41",   # old setting: must be ignored
                  "digipath": ["WIDE1-1", "WIDE2-2"],
                  "aprsis": {"enabled": False},
                  "beacon": {"enabled": False, "interval_min": 0,
@@ -163,7 +163,7 @@ async def beacon_tests():
     # a UI frame carrying the position report went out to the wire
     frames = kiss_frames(writer.sent[before:])
     dest, src, digis, ctrl, pid, payload = ax25.split_frame(frames[-1])
-    assert dest == "APKP41" and src == "KP3M"
+    assert dest == "APKPPR" and src == "KP3M"
     assert digis == ["WIDE1-1", "WIDE2-2"], digis          # multi-hop path
     assert (ctrl & 0xEF) == UI and pid == 0xF0
     body = payload.decode()

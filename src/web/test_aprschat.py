@@ -36,7 +36,7 @@ class Clock:
 # ---- outgoing with ack, then peer acks ----
 def test_send_and_ack():
     tr = MockTransport()
-    chat = ac.AprsChat("KP3M", tr, tocall="APKP41", digipath=["WIDE1-1"])
+    chat = ac.AprsChat("KP3M", tr, tocall="APKPPR", digipath=["WIDE1-1"])
     m = run(chat.send_text("KP4DOG", "Need status"))
     t("send stored as out/sending", m.direction == "out" and m.status == ac.ST_SENDING)
     t("send assigned msgno", m.msgno == "1")

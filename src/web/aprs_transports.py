@@ -23,7 +23,7 @@ UI = 0x03                       # AX.25 UI control byte (P/F bit is 0x10)
 class RfTransport:
     """APRS over Dire Wolf KISS. `ax25` is the rms.ax25 module (injected)."""
 
-    def __init__(self, ax25, mycall, tocall="APKP41", digipath=None,
+    def __init__(self, ax25, mycall, tocall=aprs.TOCALL, digipath=None,
                  host="127.0.0.1", port=8001, opener=None):
         self.ax25 = ax25
         self.mycall = aprs.normalize_call(mycall)
@@ -84,7 +84,7 @@ class RfTransport:
 class AprsIsTransport:
     """APRS-IS (internet) transport over TCP using TNC2 lines."""
 
-    def __init__(self, mycall, tocall="APKP41", host="rotate.aprs2.net",
+    def __init__(self, mycall, tocall=aprs.TOCALL, host="rotate.aprs2.net",
                  port=14580, appname="KP4PRA", version="1.0", filt=None,
                  opener=None):
         self.mycall = aprs.normalize_call(mycall)

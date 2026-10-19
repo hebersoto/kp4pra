@@ -183,12 +183,12 @@ class Beacon(unittest.TestCase):
         self.assertEqual(beacon.beacon_info(cfg), ">KP4PRA")
 
     def test_agw_v_frame(self):
-        fr = beacon.agw_frame("KP3M-10", "APKP41", "=x", ["WIDE1-1", "WIDE2-1"])
+        fr = beacon.agw_frame("KP3M-10", "APKPPR", "=x", ["WIDE1-1", "WIDE2-1"])
         h = beacon.AGW_HEADER.unpack(fr[:beacon.AGW_HEADER.size])
         self.assertEqual(chr(h[4]), "V")
         self.assertEqual(h[6], 0xF0)
         self.assertEqual(h[8].rstrip(b"\0"), b"KP3M-10")
-        self.assertEqual(h[9].rstrip(b"\0"), b"APKP41")
+        self.assertEqual(h[9].rstrip(b"\0"), b"APKPPR")
         data = fr[beacon.AGW_HEADER.size:]
         self.assertEqual(len(data), h[10])
         self.assertEqual(data[0], 2)
@@ -196,7 +196,7 @@ class Beacon(unittest.TestCase):
         self.assertEqual(data[21:], b"=x")
 
     def test_agw_m_frame_without_path(self):
-        fr = beacon.agw_frame("KP3M-10", "APKP41", ">hi", [])
+        fr = beacon.agw_frame("KP3M-10", "APKPPR", ">hi", [])
         h = beacon.AGW_HEADER.unpack(fr[:beacon.AGW_HEADER.size])
         self.assertEqual(chr(h[4]), "M")
         self.assertEqual(fr[beacon.AGW_HEADER.size:], b">hi")

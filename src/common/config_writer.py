@@ -237,8 +237,8 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
         import re as _re
         _C = _re.compile(r"^[A-Z0-9]{1,6}(-[A-Z0-9]{1,3})?$")
         _T = _re.compile(r"^[A-Z0-9]{1,6}(-[0-9]{1,2})?$")
-        if ap.get("tocall") and not _T.match(str(ap["tocall"]).upper()):
-            errors.append("aprs.tocall must be an APRS TOCALL like APKP41")
+        # aprs.tocall is fixed (APKPPR) and no longer a setting; an old value
+        # in config.yaml is ignored.
         if ap.get("mycall") and not _C.match(str(ap["mycall"]).upper()):
             errors.append("aprs.mycall must be CALLSIGN or CALLSIGN-SSID")
         if "digipath" in ap:

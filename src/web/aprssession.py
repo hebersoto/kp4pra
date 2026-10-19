@@ -112,7 +112,7 @@ class AprsSession:
             dw = self.cfg.get("direwolf", {})
             host = dw.get("host", "127.0.0.1")
             port = int(dw.get("port", 8001))
-            tocall = a.get("tocall", "APKP41")
+            tocall = aprs.TOCALL
             digipath = a.get("digipath", []) or []
 
             self.rf = RfTransport(self.ax25, mycall, tocall=tocall,
@@ -264,7 +264,7 @@ class AprsSession:
     def status(self):
         return {"active": self.active,
                 "mycall": self._mycall(),
-                "tocall": self._acfg().get("tocall", "APKP41"),
+                "tocall": aprs.TOCALL,
                 "aprsis": bool(self.aprsis),
                 "started_at": self.started_at,
                 "head": self.store.head}
