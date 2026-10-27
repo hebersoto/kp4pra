@@ -1,0 +1,154 @@
+# KP4PRA TNC - registered Xara builds.
+#
+# Xara (https://github.com/x0rro/xara) has "registered" VARA speeds only when
+# it is built with the `registered` feature, and its official release files
+# are built without it. KP4PRA users are registered VARA users, so this
+# workflow builds Xara with that feature ONCE per Xara version, for every
+# board KP4PRA supports, and publishes the files as a release of this repo
+# (tag xara-v<version>). Boards download them with `kp4pra-xara` - no board
+# ever builds Xara from source.
+#
+# Runs every Monday and when started by hand (Actions > "Registered Xara
+# builds" > Run workflow, optionally with a version). A version that already
+# has a release here is skipped, so a run only does work when Xara has a new
+# version. The build steps follow Xara's own .github/workflows/release.yml.
+name: Registered Xara builds
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Xara version to build (e.g. 0.1.1). Empty = newest.'
+        required: false
+        default: ''
+      rebuild:
+        description: 'Build again even if the release exists'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  XARA_REPO: x0rro/xara
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.version }}
+          REBUILD: ${{ inputs.rebuild }}
+        run: |
+          set -euo pipefail
+          ver="${WANT#v}"
+          if [ -z "$ver" ]; then
+            ver=$(git ls-remote --tags --refs "https://github.com/$XARA_REPO" 'v*' \
+                  | sed -n 's#.*refs/tags/v##p' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+          fi
+          echo "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$' || { echo "bad version '$ver'"; exit 1; }
+          build=true
+          if gh release view "xara-v$ver" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && [ "$REBUILD" != true ]; then
+            build=false
+            echo "Registered Xara $ver is already published - nothing to do."
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  bins:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ${{ matrix.runner }}
+    container: ubuntu:22.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      VER: ${{ needs.check.outputs.version }}
+    strategy:
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-24.04 }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm }
+          - { target: armv7-unknown-linux-gnueabihf, runner: ubuntu-24.04, cross: armhf, cc: arm-linux-gnueabihf }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.XARA_REPO }}
+          ref: v${{ needs.check.outputs.version }}
+      - name: deps
+        shell: bash
+        run: |
+          pkgs=(ca-certificates curl gcc libc6-dev pkg-config xz-utils)
+          if [ -n '${{ matrix.cross }}' ]; then
+            dpkg --add-architecture '${{ matrix.cross }}'
+            sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+            for s in jammy jammy-updates jammy-security; do
+              echo "deb [arch=${{ matrix.cross }}] http://ports.ubuntu.com/ubuntu-ports $s main universe"
+            done > /etc/apt/sources.list.d/ports.list
+            pkgs+=(gcc-${{ matrix.cc }} libc6-dev-${{ matrix.cross }}-cross
+                   libpulse-dev:${{ matrix.cross }} libasound2-dev:${{ matrix.cross }})
+            t=$(echo '${{ matrix.target }}' | tr a-z- A-Z_)
+            echo "CARGO_TARGET_${t}_LINKER=${{ matrix.cc }}-gcc" >> "$GITHUB_ENV"
+            echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
+            echo "PKG_CONFIG_LIBDIR=/usr/lib/${{ matrix.cc }}/pkgconfig:/usr/share/pkgconfig" >> "$GITHUB_ENV"
+          else
+            pkgs+=(libpulse-dev libasound2-dev)
+          fi
+          apt-get update
+          apt-get install -y --no-install-recommends "${pkgs[@]}"
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+            sh -s -- -y --profile minimal --default-toolchain stable --target '${{ matrix.target }}'
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: build (registered)
+        shell: bash
+        run: |
+          set -euo pipefail
+          t='${{ matrix.target }}'
+          cargo build --locked --release --target "$t" -p xara --features registered
+          name="xara-$VER-$t"
+          mkdir -p "stage/$name" target/dist
+          cp "target/$t/release/xara" "target/$t/release/xara-monitor" LICENSE README.md "stage/$name/"
+          cp -r dist "stage/$name/"
+          printf 'registered\nsource: https://github.com/%s tag v%s\ntarget: %s\n' \
+            "$XARA_REPO" "$VER" "$t" > "stage/$name/BUILD-FEATURES"
+          tar -C stage --sort=name --owner=0 --group=0 --numeric-owner -cf - "$name" | xz -9 > "target/dist/$name.tar.xz"
+          ls -l target/dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bins-${{ matrix.target }}
+          path: target/dist/*.tar.xz
+          if-no-files-found: error
+
+  release:
+    needs: [check, bins]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ needs.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd out && sha256sum -- *.tar.xz > SHA256SUMS && cat SHA256SUMS
+          tag="xara-v$VER"
+          gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          printf '%s\n' \
+            "Xara $VER built with registered VARA speeds, for KP4PRA TNC boards." \
+            "" \
+            "Unchanged source: https://github.com/$XARA_REPO/releases/tag/v$VER (MIT license, included)." \
+            "Installed and upgraded by \`sudo kp4pra-xara update\` - see docs/XARA.md." > notes.md
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "Xara $VER (registered build)" \
+            --notes-file notes.md --latest=false -- *.tar.xz SHA256SUMS
