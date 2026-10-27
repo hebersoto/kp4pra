@@ -1157,6 +1157,105 @@ async def api_wifi_mode(request: Request, _auth=Depends(check_auth)):
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# API: Xara (VARA-compatible modem) - bin/kp4pra-xara, docs/XARA.md
+# ─────────────────────────────────────────────────────────────────────────────
+
+XARA_TOOL = "/usr/local/bin/kp4pra-xara"
+
+
+def _run(cmd, timeout=30):
+    import subprocess
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        return (r.returncode,
+                r.stdout.decode(errors="replace").strip(),
+                r.stderr.decode(errors="replace").strip())
+    except FileNotFoundError:
+        return 127, "", f"{cmd[0]} not found"
+    except Exception as e:
+        return 1, "", str(e)
+
+
+@app.get("/api/xara/status")
+async def api_xara_status(_auth=Depends(check_auth)):
+    from common import xara_conf
+    rc, out, err = _run([XARA_TOOL, "status", "--json"], timeout=15)
+    try:
+        st = json.loads(out) if rc == 0 else {}
+    except ValueError:
+        st = {}
+    if not st:
+        st = {"installed": False, "running": False, "modem": "packet",
+              "tool_missing": rc == 127, "error": err}
+    x = xara_conf.settings(get_config())
+    st.update({
+        "settings": x,
+        "mode_label": xara_conf.MODE_LABELS.get(x["mode"], x["mode"]),
+        "call": xara_conf.xara_call(get_config()),
+        "modes": xara_conf.MODE_LABELS,
+    })
+    return JSONResponse(st)
+
+
+@app.get("/api/xara/latest")
+async def api_xara_latest(_auth=Depends(check_auth)):
+    rc, out, err = _run([XARA_TOOL, "latest"], timeout=40)
+    if rc == 0 and out:
+        return JSONResponse({"success": True, "latest": out.splitlines()[-1]})
+    return JSONResponse({"success": False,
+                         "message": err or "Could not reach GitHub to check for a new version."})
+
+
+@app.post("/api/xara/preview")
+async def api_xara_preview(request: Request, _auth=Depends(check_auth)):
+    """The Xara config the current form values would produce (not saved)."""
+    from common import xara_conf
+    from common.config_writer import _deep_merge
+    body = await request.json()
+    cfg = _deep_merge(get_config(), {"xara": body.get("xara") or {}})
+    try:
+        text, plan = xara_conf.generate(cfg)
+        return JSONResponse({"success": True, "conf": text, "ptt": plan["describe"]})
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
+@app.post("/api/xara/modem")
+async def api_xara_modem(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    modem = body.get("modem", "")
+    if modem not in ("xara", "packet"):
+        return JSONResponse({"success": False, "message": "modem must be 'xara' or 'packet'"},
+                            status_code=400)
+    rc, out, err = _run(["sudo", "-n", XARA_TOOL, "modem", modem], timeout=60)
+    return JSONResponse({"success": rc == 0, "message": (out + ("\n" + err if err else "")).strip()},
+                        status_code=200 if rc == 0 else 500)
+
+
+@app.post("/api/xara/apply")
+async def api_xara_apply(_auth=Depends(check_auth)):
+    """Use saved Xara settings now (restarts Xara if it is running)."""
+    import os as _os
+    if not _os.path.exists(XARA_TOOL):
+        return JSONResponse({"success": True, "message": "Saved. Xara is not set up on this board yet."})
+    rc, out, err = _run(["sudo", "-n", XARA_TOOL, "restart"], timeout=60)
+    return JSONResponse({"success": rc == 0, "message": (out or err or "").strip()},
+                        status_code=200 if rc == 0 else 500)
+
+
+@app.post("/api/xara/update")
+async def api_xara_update(_auth=Depends(check_auth)):
+    """Install or upgrade Xara in the background (kp4pra-xara-update.service)."""
+    rc, out, err = _run(["sudo", "-n", "/bin/systemctl", "start", "--no-block",
+                         "kp4pra-xara-update.service"], timeout=15)
+    if rc == 0:
+        return JSONResponse({"success": True,
+                             "message": "Downloading Xara. This page shows the result when it is done."})
+    return JSONResponse({"success": False, "message": err or out or "could not start the update"},
+                        status_code=500)
+
+
 @app.post("/api/service/restart")
 async def api_service_restart(request: Request, _auth=Depends(check_auth)):
     body = await request.json()

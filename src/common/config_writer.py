@@ -232,6 +232,45 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
                 except (TypeError, ValueError):
                     errors.append("webmail.delivery.rf.%s must be an integer" % k)
 
+    if "xara" in updates:
+        x = updates["xara"] or {}
+        import re as _re
+        from common.xara_conf import MODES, valid_vara_call
+        if "mode" in x and x["mode"] not in MODES:
+            errors.append("xara.mode must be one of: " + ", ".join(MODES))
+        if x.get("call") and not valid_vara_call(str(x["call"])):
+            errors.append("xara.call must be a callsign with an optional VARA SSID (1-19)")
+        v = str(x.get("version", "latest"))
+        if v != "latest" and not _re.match(r"^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$", v.lstrip("v")):
+            errors.append("xara.version must be 'latest' or a version like 0.1.1")
+        def _num(k, lo, hi, cast=int):
+            if k in x:
+                try:
+                    val = cast(x[k])
+                except (TypeError, ValueError):
+                    errors.append("xara.%s must be a number" % k)
+                    return
+                if not lo <= val <= hi:
+                    errors.append("xara.%s must be %s to %s" % (k, lo, hi))
+        _num("drive_db", -40, 0, float)
+        _num("ptt_lead_ms", 0, 1000)
+        _num("ptt_tail_ms", 0, 1000)
+        _num("port", 1024, 65534)
+        _num("ui_port", 1024, 65535)
+        if "kiss_port" in x and str(x["kiss_port"]).lower() != "off":
+            _num("kiss_port", 1024, 65535)
+        if "network" in x and not isinstance(x["network"], bool):
+            errors.append("xara.network must be true or false")
+        used = {8088: "the KP4PRA web page", 8001: "Dire Wolf KISS", 8000: "Dire Wolf AGW",
+                8772: "the RMS gateway telnet port"}
+        for k in ("port", "ui_port", "kiss_port"):
+            try:
+                p_ = int(x.get(k))
+            except (TypeError, ValueError):
+                continue
+            if p_ in used or (k == "port" and p_ + 1 in used):
+                errors.append("xara.%s %d is already used by %s" % (k, p_, used.get(p_) or used.get(p_ + 1)))
+
     if "aprs" in updates:
         ap = updates["aprs"] or {}
         import re as _re

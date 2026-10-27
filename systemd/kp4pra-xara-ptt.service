@@ -1,0 +1,23 @@
+[Unit]
+Description=KP4PRA TNC - GPIO push-to-talk for Xara (DRA-Pi-Zero)
+Documentation=file:///opt/kp4pra-tnc/docs/XARA.md
+# Started with Xara, stopped with Xara. Holds the PTT GPIO line, so it must
+# never run together with Dire Wolf (which uses the same line).
+PartOf=xara@kp4pra.service
+Conflicts=direwolf.service
+After=direwolf.service kp4pra-xara-prep.service
+Requires=kp4pra-xara-prep.service
+
+[Service]
+# Reports ready once listening; exits right away when PTT is not GPIO.
+Type=notify
+ExecStart=/usr/local/bin/kp4pra-xara-ptt
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+DevicePolicy=closed
+DeviceAllow=char-gpiochip rw
+RestrictAddressFamilies=AF_INET AF_UNIX

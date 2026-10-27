@@ -139,23 +139,67 @@ def _call_with_ssid(call: str, ssid) -> str:
     return f"{call}-{s}" if s else call
 
 
+def resolve_adevice(station: dict) -> str:
+    """ALSA device (plughw:...) of the sound card chosen in the web UI.
+    Prefers the selected card matched against live detection; falls back to
+    the CM108 hidraw mapping, then to the historical default. Shared by
+    Dire Wolf and Xara so both modems always use the same card."""
+    selected = (station.get("sound") or "").strip()
+    if selected:
+        for card in detect_sound_cards():
+            if card["label"] == selected or card["name"] == selected:
+                return card["plughw"]
+    return detect_cm108_adevice() or "plughw:1,0"
+
+
+def gpiod_chip_line(ptt_param: str, adevice: str) -> tuple:
+    """(chip, line) for GPIOD PTT. ptt_param may be "gpiochip0 12" (chip +
+    line) or just "12" (line; default chip). With the DRA-Pi-Zero selected,
+    an empty param or another board's DRA default (e.g. a Pi's
+    "gpiochip0 12" on an Orange Pi) is replaced by THIS board's DRA PTT
+    line. A line written "-12" is active-low (Dire Wolf syntax)."""
+    ptt_param = (ptt_param or "").strip()
+    if is_dra_adevice(adevice) and (
+            not ptt_param or " ".join(ptt_param.split()) in foreign_dra_ptt_params()):
+        ptt_param = dra_ptt_param()
+    toks = ptt_param.split()
+    if len(toks) >= 2:
+        return toks[0], toks[1]
+    if len(toks) == 1 and toks[0].lstrip("-").isdigit():
+        return "gpiochip0", toks[0]
+    return "gpiochip0", "12"
+
+
+def find_cm108_hidraw(adevice: str = "") -> Optional[str]:
+    """/dev/hidrawN of the CM108-type PTT that belongs to `adevice` (from
+    Dire Wolf's `cm108` tool). The hidraw number changes between boots, so
+    this is looked up each time Xara starts. Falls back to the first CM108
+    device found; None when there is none."""
+    try:
+        out = subprocess.run(["cm108"], capture_output=True, timeout=5
+                             ).stdout.decode(errors="replace")
+    except Exception:
+        return None
+    first = None
+    want = (adevice or "").strip()
+    for line in out.splitlines():
+        toks = line.split()
+        hid = next((t for t in toks if t.startswith("/dev/hidraw")), None)
+        if not hid:
+            continue
+        first = first or hid
+        if want and want in toks:
+            return hid
+    return first
+
+
 def generate_direwolf_conf(station: dict, adevice: str = None) -> str:
     """Render direwolf.conf text from the station config section."""
     mycall = _call_with_ssid(station.get("callsign", ""), station.get("ssid", ""))
     alias  = _call_with_ssid(station.get("calias", "") or "CDIGI",
                              station.get("aliasssid", ""))
     if not adevice:
-        # Prefer the ADEVICE of the sound card selected in the web UI,
-        # matched against live detection; fall back to CM108 hidraw
-        # mapping, then to the historical default.
-        selected = (station.get("sound") or "").strip()
-        if selected:
-            for card in detect_sound_cards():
-                if card["label"] == selected or card["name"] == selected:
-                    adevice = card["plughw"]
-                    break
-        if not adevice:
-            adevice = detect_cm108_adevice() or "plughw:1,0"
+        adevice = resolve_adevice(station)
 
     ptt = (station.get("ptt") or "CM108").upper()
     ptt_param = (station.get("ptt_param") or "").strip()
@@ -175,16 +219,7 @@ def generate_direwolf_conf(station: dict, adevice: str = None) -> str:
         # With the DRA-Pi-Zero selected, an empty param or another board's
         # DRA default (e.g. a Pi's "gpiochip0 12" on an Orange Pi) is
         # replaced by THIS board's DRA PTT line.
-        if is_dra_adevice(adevice) and (
-                not ptt_param or " ".join(ptt_param.split()) in foreign_dra_ptt_params()):
-            ptt_param = dra_ptt_param()
-        toks = ptt_param.split()
-        if len(toks) >= 2:
-            chip, line = toks[0], toks[1]
-        elif len(toks) == 1 and toks[0].isdigit():
-            chip, line = "gpiochip0", toks[0]
-        else:
-            chip, line = "gpiochip0", "12"
+        chip, line = gpiod_chip_line(ptt_param, adevice)
         ptt_lines.append(f"PTT GPIOD {chip} {line}")
     elif ptt in ("RTS", "DTR"):
         dev = ptt_param if ptt_param.startswith("/dev/") else "/dev/ttyUSB0"

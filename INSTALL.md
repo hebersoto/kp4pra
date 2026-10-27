@@ -132,7 +132,14 @@ To connect a phone:
 ## Updating
 
 Run the install command from step 3 again. It downloads the latest version
-and installs it, then restarts the board.
+of KP4PRA (and of Xara) and installs it, then restarts the board.
+
+## VARA (Xara)
+
+The install also sets up Xara, a VARA FM/HF modem for Winlink Express and Pat
+(not on the original Pi Zero W). To use it, open the Services page and click
+**Use Xara (VARA)**. Running the install command again also updates Xara.
+Details: docs/XARA.md.
 
 ## WiFi: home network or hotspot
 

@@ -85,6 +85,22 @@ or other third-party Winlink software required.
   exchanges against production CMS. See [CHANGES.md](CHANGES.md) for
   the AX.25 protocol fixes found and resolved during testing.
 
+## VARA modem (Xara)
+
+KP4PRA TNC can also run [Xara](https://github.com/x0rro/xara), a free VARA
+FM/HF compatible modem, so Winlink Express, Pat and other VARA programs can
+use the TNC as their VARA modem over the network. Xara and Dire Wolf share
+the radio, so one runs at a time; you switch on the Services page.
+
+- Installed and upgraded from Xara's official releases (checksum checked),
+  by the install command or `sudo kp4pra-xara update`; the previous version
+  is kept for `sudo kp4pra-xara rollback`.
+- Uses the station sound card and PTT, including the DRA-Pi-Zero (GPIO PTT
+  through a small rigctld-style helper).
+- Settings on the Config page; Xara's own status page on port 8080.
+
+See docs/XARA.md.
+
 ## APRS Clock Fallback
 
 When NTP is unavailable (for example a field deployment with no internet),

@@ -1,0 +1,12 @@
+[Unit]
+Description=KP4PRA TNC - start Xara at boot if it was the chosen modem
+Documentation=file:///opt/kp4pra-tnc/docs/XARA.md
+After=direwolf.service var-lib-xara.mount sound.target
+ConditionPathExists=/usr/local/bin/xara
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kp4pra-xara boot
+
+[Install]
+WantedBy=multi-user.target

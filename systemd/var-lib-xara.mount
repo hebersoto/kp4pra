@@ -1,0 +1,19 @@
+[Unit]
+Description=KP4PRA TNC - Xara state on the writable /rw partition
+Documentation=file:///opt/kp4pra-tnc/docs/XARA.md
+# Xara keeps its web UI token in /var/lib/xara/<station>. The root
+# filesystem may be read-only, so that directory lives on /rw.
+ConditionPathIsDirectory=/rw/xara/state
+# Wait for the /rw partition. (Not After=local-fs.target: mounts are part
+# of local-fs.target, so that line made an ordering loop at boot.)
+RequiresMountsFor=/rw/xara/state
+
+[Mount]
+What=/rw/xara/state
+Where=/var/lib/xara
+Type=none
+Options=bind,rw
+TimeoutSec=10
+
+[Install]
+WantedBy=multi-user.target

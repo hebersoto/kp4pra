@@ -57,7 +57,7 @@ istate installing "Installing KP4PRA TNC"
 # It is only a Recommends of network-manager, so minimal images (Armbian)
 # lack it and "kp4pra-wifi-mode ap" fails with "IP configuration could not
 # be reserved".
-PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils i2c-tools"
+PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils i2c-tools curl git xz-utils python3-libgpiod"
 if command -v apt-get >/dev/null 2>&1; then
     step "Installing prerequisite packages: $PREREQS"
     export DEBIAN_FRONTEND=noninteractive
@@ -373,6 +373,37 @@ if [ -f /rw/kp4pra-tnc/.dra-autodetect-done ] || [ -z "$DRA_PLAT" ] || [ "$DRA_P
     INSTALL_END_STATE=complete
 else
     INSTALL_END_STATE=checking
+fi
+
+# ── Xara (VARA-compatible modem) ─────────────────────────────────────────────
+# Xara runs instead of Dire Wolf when chosen on the Services page (same radio
+# and sound card). kp4pra-xara downloads the ready-made Xara release for this
+# board (checked against its SHA256SUMS) into /opt/xara/<version>. Running this
+# installer again also upgrades Xara to the newest release (or the version set
+# in config.yaml xara.version). KP4PRA_XARA=0 skips the download.
+step "Xara VARA modem (install or upgrade)"
+install -m 755 "$PROJECT_DIR/bin/kp4pra-xara"     /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-xara-ptt" /usr/local/bin/
+for u in kp4pra-xara-prep.service kp4pra-xara-ptt.service kp4pra-xara-boot.service \
+         kp4pra-xara-update.service var-lib-xara.mount; do
+    cp "$PROJECT_DIR/systemd/$u" /etc/systemd/system/
+done
+mkdir -p /etc/systemd/system/xara@kp4pra.service.d
+cp "$PROJECT_DIR/systemd/xara@kp4pra.service.d/kp4pra.conf" /etc/systemd/system/xara@kp4pra.service.d/
+cp "$PROJECT_DIR/sudoers.d/kp4pra-tnc-xara" /etc/sudoers.d/kp4pra-tnc-xara
+chmod 0440 /etc/sudoers.d/kp4pra-tnc-xara
+visudo -c -f /etc/sudoers.d/kp4pra-tnc-xara >/dev/null || {
+    warn "Xara sudoers validation failed - removed (Xara buttons on the web page will not work)"
+    rm -f /etc/sudoers.d/kp4pra-tnc-xara
+}
+systemctl daemon-reload
+if [ "${KP4PRA_XARA:-1}" = 0 ]; then
+    log "Xara download skipped (KP4PRA_XARA=0). Later: sudo kp4pra-xara install"
+elif /usr/local/bin/kp4pra-xara update --auto; then
+    log "Xara: $(/usr/local/bin/kp4pra-xara status | head -1)"
+else
+    warn "Xara was not installed or upgraded (see above). Everything else works;"
+    warn "  try again later with: sudo kp4pra-xara install"
 fi
 
 step "Enabling KP4PRA TNC services"

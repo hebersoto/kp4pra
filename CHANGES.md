@@ -1,3 +1,36 @@
+## Xara VARA modem - new in 1.4.24
+- KP4PRA TNC can run Xara (https://github.com/x0rro/xara), a VARA FM/HF
+  compatible modem, instead of Dire Wolf, so Winlink Express, Pat and other
+  VARA programs use the TNC as their VARA modem (ports 8300/8301, KISS 8100,
+  Xara page 8080). One modem at a time; Services page "VARA Modem (Xara)":
+  Use Xara / Back to Dire Wolf (kept across restarts), Install, Check for
+  update, Xara log. Config page "Xara VARA Modem": mode (FM narrow/wide,
+  HF 500/2300/2750), callsign, TX level, PTT lead/tail, network access,
+  ports, version.
+- Easy upgrades: new bin/kp4pra-xara installs Xara's official release for
+  the board (aarch64, armv7, x86_64; checked against the release's
+  SHA256SUMS) into /opt/xara/<version>, switches /opt/xara/current, keeps
+  the previous version (rollback). Xara's own service file, udev rule and
+  system user come from each release's dist/ and are reinstalled on every
+  upgrade; KP4PRA only adds a drop-in (xara@kp4pra.service.d). The install
+  command installs/upgrades Xara (KP4PRA_XARA=0 skips it); xara.version in
+  config.yaml can hold a board on one version. If the newest tag has no
+  binaries yet (Xara releases start as drafts), the newest version that has
+  them is used. --build builds from source (Rust 1.85+).
+- Xara's config (/rw/xara/kp4pra.conf) is written from the KP4PRA settings
+  right before each start (kp4pra-xara-prep): same sound card and PTT as
+  Dire Wolf; CM108 hidraw looked up each time; VARA SSID rules (no -0,
+  max -19). Xara state on /rw (var-lib-xara.mount).
+- DRA-Pi-Zero / GPIO PTT: Xara has no GPIO PTT, so the new kp4pra-xara-ptt
+  answers Xara's rigctld commands and drives the line with libgpiod (v1 or
+  v2). PTT drops if Xara disconnects, after 2 minutes on, or on stop.
+- Shared helpers in direwolf_conf.py (resolve_adevice, gpiod_chip_line,
+  find_cm108_hidraw) so both modems always pick the same card and PTT line.
+- Fix: var-lib-bluetooth.mount had After=local-fs.target, an ordering loop
+  (mounts are part of local-fs.target) that systemd breaks at boot by
+  dropping a job; it now uses RequiresMountsFor= on its /rw source.
+- New prerequisites: python3-libgpiod, curl, git, xz-utils.
+
 ## APRS TOCALL APKPPR (assigned) - new in 1.4.23
 - KP4PRA TNC now has its own APRS software identifier, APKPPR. Every frame
   the application builds uses it as the AX.25 destination: APRS chat

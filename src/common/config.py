@@ -141,6 +141,20 @@ DEFAULT_CONFIG = {
         "telnet_enabled": True,
         "telnet_port": 8772,  # Winlink Express "Telnet Winlink" defaults to 8772
     },
+    "xara": {
+        # Xara, the VARA-compatible modem (docs/XARA.md). Runs instead of
+        # Dire Wolf when chosen on the Services page.
+        "version": "latest",       # Xara version to install/keep: latest or e.g. "0.1.1"
+        "mode": "fm-narrow",       # fm-narrow | fm-wide | hf-500 | hf-2300 | hf-2750
+        "call": "",                # blank = station callsign-SSID
+        "drive_db": -5,            # TX audio level, dB (<= 0)
+        "ptt_lead_ms": 0,          # PTT on before audio (0-1000)
+        "ptt_tail_ms": 100,        # PTT held after audio (0-1000)
+        "network": True,           # VARA apps on other devices may connect
+        "port": 8300,              # VARA command port (data port = port + 1)
+        "kiss_port": 8100,         # VARA KISS port, or "off"
+        "ui_port": 8080,           # Xara's own web page (status, waterfall)
+    },
     "aprs": {
         "enabled": True,
         "mycall": "",              # TX callsign; blank = station.callsign

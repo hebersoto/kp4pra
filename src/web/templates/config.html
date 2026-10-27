@@ -399,6 +399,84 @@
   </p>
 </div>
 
+<!-- Xara (VARA modem) -->
+<div class="card" id="xara-settings">
+  <div class="card-title"><span class="icon">📶</span> Xara VARA Modem</div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    Settings for Xara, the VARA FM/HF compatible modem. Xara uses the sound card and
+    push-to-talk from Station Information above (same as Dire Wolf). Switch between
+    Dire Wolf and Xara on the Services page.
+  </p>
+  {% set _x = config.xara or {} %}
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="xara-mode">VARA mode</label>
+      <select class="form-select" id="xara-mode">
+        {% for k, lbl in [("fm-narrow","VARA FM narrow (most FM stations)"),("fm-wide","VARA FM wide"),
+                          ("hf-500","VARA HF 500 Hz"),("hf-2300","VARA HF 2300 Hz"),("hf-2750","VARA HF 2750 Hz")] %}
+        <option value="{{ k }}" {% if (_x.mode or 'fm-narrow') == k %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-hint">Use the mode the station you connect to uses.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-call">Callsign</label>
+      <input class="form-input" id="xara-call" maxlength="10" value="{{ _x.call or '' }}" placeholder="(blank = station callsign)">
+      <div class="form-hint">VARA SSIDs are -1 to -19 (or none).</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-drive">TX audio level (dB)</label>
+      <input class="form-input" id="xara-drive" type="number" min="-40" max="0" step="1" value="{{ _x.drive_db if _x.drive_db is not none else -5 }}">
+      <div class="form-hint">0 is loudest. Lower it if the radio over-deviates.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-network">VARA apps on other devices</label>
+      <select class="form-select" id="xara-network">
+        <option value="true" {% if _x.network is not sameas false %}selected{% endif %}>Allowed (phone, PC on this network)</option>
+        <option value="false" {% if _x.network is sameas false %}selected{% endif %}>Only on this board</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-lead">PTT lead (ms)</label>
+      <input class="form-input" id="xara-lead" type="number" min="0" max="1000" value="{{ _x.ptt_lead_ms if _x.ptt_lead_ms is not none else 0 }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-tail">PTT tail (ms)</label>
+      <input class="form-input" id="xara-tail" type="number" min="0" max="1000" value="{{ _x.ptt_tail_ms if _x.ptt_tail_ms is not none else 100 }}">
+    </div>
+  </div>
+  <details style="margin-top:0.4rem">
+    <summary style="cursor:pointer;font-size:0.85rem">Ports and version</summary>
+    <div class="grid-2" style="margin-top:0.6rem">
+      <div class="form-group">
+        <label class="form-label" for="xara-port">VARA command port</label>
+        <input class="form-input" id="xara-port" type="number" min="1024" max="65534" value="{{ _x.port or 8300 }}">
+        <div class="form-hint">The data port is this + 1 (VARA standard: 8300/8301).</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="xara-kiss">VARA KISS port</label>
+        <input class="form-input" id="xara-kiss" value="{{ _x.kiss_port if _x.kiss_port is not none else 8100 }}">
+        <div class="form-hint">A number, or off.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="xara-uiport">Xara web page port</label>
+        <input class="form-input" id="xara-uiport" type="number" min="1024" max="65535" value="{{ _x.ui_port or 8080 }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="xara-version">Xara version</label>
+        <input class="form-input" id="xara-version" value="{{ _x.version or 'latest' }}" placeholder="latest">
+        <div class="form-hint">latest = always upgrade to the newest release. A version (e.g. 0.1.1) keeps this board on it.</div>
+      </div>
+    </div>
+  </details>
+  <div class="card-actions" style="margin-top:0.75rem">
+    <button class="btn btn-primary btn-sm" onclick="saveXara()">Save Xara settings</button>
+    <button class="btn btn-secondary btn-sm" onclick="previewXara()">Preview</button>
+  </div>
+  <div id="xara-save-result" style="margin-top:0.6rem;font-size:0.85rem"></div>
+  <pre id="xara-preview" style="display:none;white-space:pre-wrap;background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.6rem;font-size:0.78rem;margin-top:0.6rem"></pre>
+</div>
+
 <!-- TFT display -->
 <div class="card">
   <div class="card-title"><span class="icon">🖥️</span> TFT Display (Mini PiTFT 1.3")</div>
@@ -847,6 +925,48 @@ function collectConfig() {
   const wpass = document.getElementById('wifi-client-pass').value;
   if (wpass) cfg.wifi.client_password = wpass;
   return cfg;
+}
+
+function collectXara() {
+  const v = id => document.getElementById(id).value.trim();
+  const kiss = v('xara-kiss').toLowerCase();
+  return {
+    mode: v('xara-mode'),
+    call: v('xara-call').toUpperCase(),
+    drive_db: Number(v('xara-drive')),
+    network: v('xara-network') === 'true',
+    ptt_lead_ms: Number(v('xara-lead')),
+    ptt_tail_ms: Number(v('xara-tail')),
+    port: Number(v('xara-port')),
+    kiss_port: kiss === 'off' ? 'off' : Number(kiss),
+    ui_port: Number(v('xara-uiport')),
+    version: v('xara-version') || 'latest',
+  };
+}
+
+async function previewXara() {
+  const el = document.getElementById('xara-preview');
+  try {
+    const r = await fetch('/api/xara/preview', {method:'POST', headers:{'Content-Type':'application/json'},
+                                               body: JSON.stringify({xara: collectXara()})});
+    const d = await r.json();
+    el.textContent = d.success ? d.conf : ('Error: ' + d.message);
+  } catch (e) { el.textContent = 'Error: ' + e; }
+  el.style.display = '';
+}
+
+async function saveXara() {
+  const out = document.getElementById('xara-save-result');
+  out.textContent = 'Saving…';
+  try {
+    let r = await fetch('/api/config/save', {method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({config: {xara: collectXara()}, confirmed: true})});
+    let d = await r.json();
+    if (!d.success) { out.textContent = '✗ ' + d.message; return; }
+    r = await fetch('/api/xara/apply', {method:'POST'});
+    d = await r.json();
+    out.textContent = (d.success ? '✓ ' : '✗ ') + (d.message || 'Saved.');
+  } catch (e) { out.textContent = '✗ ' + e; }
 }
 
 function saveConfig() {

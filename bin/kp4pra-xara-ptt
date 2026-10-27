@@ -1,0 +1,196 @@
+#!/usr/bin/python3 -I
+"""KP4PRA TNC - GPIO push-to-talk for Xara (DRA-Pi-Zero and other GPIO PTT).
+
+Xara keys radios by serial RTS/DTR, CM108 HID, VOX or a rigctld server, but
+not by a GPIO line. This small server speaks the part of the hamlib rigctld
+protocol Xara uses ("T 1" / "T 0" -> "RPRT 0", plus "t") and drives the GPIO
+line through libgpiod, the same line Dire Wolf uses (PTT GPIOD chip line).
+
+The line comes from /run/kp4pra-xara/ptt.json, written by
+`kp4pra-xara apply-conf` (common/xara_conf.py). When the station does not use
+GPIO PTT the service reports ready and exits: nothing to do.
+
+Safety: PTT drops when Xara disconnects, after MAX_ON seconds keyed, and when
+the service stops. Listens on 127.0.0.1 only.
+"""
+import json
+import os
+import signal
+import socket
+import sys
+import threading
+import time
+
+PLAN = os.environ.get("KP4PRA_XARA_PTT_PLAN", "/run/kp4pra-xara/ptt.json")
+HOST, PORT = "127.0.0.1", int(os.environ.get("KP4PRA_XARA_PTT_PORT", "4539"))
+MAX_ON = float(os.environ.get("KP4PRA_XARA_PTT_MAX_S", "120"))
+
+
+def log(msg):
+    print(f"kp4pra-xara-ptt: {msg}", flush=True)
+
+
+def sd_notify(state: str):
+    addr = os.environ.get("NOTIFY_SOCKET")
+    if not addr:
+        return
+    if addr.startswith("@"):
+        addr = "\0" + addr[1:]
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+            s.connect(addr)
+            s.sendall(state.encode())
+    except OSError:
+        pass
+
+
+class GpioLine:
+    """One output line held for the life of the service (libgpiod v1 or v2
+    Python bindings, whichever the system has)."""
+
+    def __init__(self, chip: str, line: int, active_low: bool):
+        import gpiod
+        self.line = line
+        self.low = active_low
+        path = chip if chip.startswith("/dev/") else f"/dev/{chip}"
+        if hasattr(gpiod, "request_lines"):          # libgpiod 2.x
+            from gpiod.line import Direction, Value
+            self._on, self._off = Value.ACTIVE, Value.INACTIVE
+            self.req = gpiod.request_lines(
+                path, consumer="kp4pra-xara-ptt",
+                config={line: gpiod.LineSettings(direction=Direction.OUTPUT,
+                                                 active_low=active_low,
+                                                 output_value=Value.INACTIVE)})
+            self._set = lambda on: self.req.set_value(line, self._on if on else self._off)
+            self._close = self.req.release
+        else:                                        # libgpiod 1.x
+            c = gpiod.Chip(path)
+            ln = c.get_line(line)
+            flags = gpiod.LINE_REQ_FLAG_ACTIVE_LOW if active_low else 0
+            ln.request(consumer="kp4pra-xara-ptt", type=gpiod.LINE_REQ_DIR_OUT,
+                       flags=flags, default_vals=[0])
+            self._set = lambda on: ln.set_value(1 if on else 0)
+            self._close = ln.release
+        self.on = False
+
+    def set(self, on: bool):
+        self._set(on)
+        self.on = on
+
+    def close(self):
+        try:
+            self.set(False)
+        finally:
+            self._close()
+
+
+class Ptt:
+    def __init__(self, line):
+        self.line = line
+        self.lock = threading.Lock()
+        self.since = 0.0
+
+    def set(self, on: bool):
+        with self.lock:
+            if on and not self.line.on:
+                self.since = time.monotonic()
+            self.line.set(on)
+
+    def watchdog(self):
+        while True:
+            time.sleep(1)
+            with self.lock:
+                if self.line.on and time.monotonic() - self.since > MAX_ON:
+                    log(f"PTT on for more than {MAX_ON:.0f} s - released")
+                    self.line.set(False)
+
+
+def answer(ptt: Ptt, cmd: str):
+    """One rigctld command -> reply line (or None to close)."""
+    c = cmd.strip()
+    if c in ("q", "Q", "\\quit"):
+        return None
+    parts = c.split()
+    if parts and parts[0] in ("T", "\\set_ptt") and len(parts) == 2 and parts[1] in "0123":
+        try:
+            ptt.set(parts[1] != "0")
+            return "RPRT 0\n"
+        except OSError as e:
+            log(f"GPIO error: {e}")
+            return "RPRT -6\n"
+    if c in ("t", "\\get_ptt"):
+        return f"{1 if ptt.line.on else 0}\n"
+    return "RPRT -11\n"          # not implemented
+
+
+def serve_client(ptt: Ptt, conn: socket.socket):
+    buf = b""
+    try:
+        conn.settimeout(None)
+        while True:
+            data = conn.recv(256)
+            if not data:
+                break
+            buf += data
+            while b"\n" in buf:
+                raw, buf = buf.split(b"\n", 1)
+                reply = answer(ptt, raw.decode(errors="replace"))
+                if reply is None:
+                    return
+                conn.sendall(reply.encode())
+            if len(buf) > 1024:
+                break
+    except OSError:
+        pass
+    finally:
+        try:
+            ptt.set(False)       # never leave the radio keyed
+        except OSError:
+            pass
+        conn.close()
+
+
+def main() -> int:
+    try:
+        with open(PLAN) as f:
+            plan = json.load(f)
+    except (OSError, ValueError) as e:
+        log(f"no PTT plan ({PLAN}: {e}) - run: sudo kp4pra-xara apply-conf")
+        return 1
+    gpio = plan.get("gpio")
+    if not gpio:
+        log(f"station PTT is not GPIO ({plan.get('describe', '?')}) - nothing to do")
+        sd_notify("READY=1")
+        return 0
+    try:
+        line = GpioLine(gpio["chip"], int(gpio["line"]), bool(gpio.get("active_low")))
+    except ImportError:
+        log("python3-libgpiod is missing - install it: sudo apt install python3-libgpiod")
+        return 1
+    except OSError as e:
+        log(f"cannot use {gpio['chip']} line {gpio['line']}: {e} "
+            "(is Dire Wolf still holding it?)")
+        return 1
+    ptt = Ptt(line)
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind((HOST, PORT))
+    srv.listen(4)
+
+    def stop(*_):
+        try:
+            line.close()
+        finally:
+            os._exit(0)
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    threading.Thread(target=ptt.watchdog, daemon=True).start()
+    log(f"PTT on {gpio['chip']} line {gpio['line']}, rigctld protocol on {HOST}:{PORT}")
+    sd_notify("READY=1")
+    while True:
+        conn, _ = srv.accept()
+        threading.Thread(target=serve_client, args=(ptt, conn), daemon=True).start()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
