@@ -61,6 +61,7 @@ DEFAULTS = {
     "ptt_lead_ms": 0,
     "ptt_tail_ms": 100,
     "network": True,
+    "auto_switch": True,
     "ui_port": 8080,
     "port": 8300,
     "kiss_port": 8100,

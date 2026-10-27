@@ -1,3 +1,18 @@
+## RadioMail finds the TNC and starts Xara by itself - new in 1.4.29
+- New kp4pra-vara-launcher service (src/vara_launcher.py), compatible with
+  varanny (github.com/islandmagic/varanny), which RadioMail uses to find and
+  start VARA modems: announces "<call> VARA FM|HF" as _vara-modem._tcp (and
+  the older _varafm-/_varahf-modem._tcp) with TXT launchport=8273; type=fm;
+  through avahi-publish, and answers varanny's commands on port 8273.
+  "start" switches the TNC to Xara when it is not on (and back to Dire Wolf
+  when that session ends); Xara chosen on the Services page stays on.
+- New setting xara.auto_switch (default on; Config page "RadioMail and other
+  VARA apps"). Not announced when network access is off or Xara is not
+  installed. The Services page shows the name RadioMail finds.
+- Docs: VARA apps connect over WiFi (VARA has no Bluetooth link); RadioMail
+  (automatic) and WoAD (IP + port 8300) steps in docs/XARA.md; Services card
+  text names RadioMail and WoAD.
+
 ## Xara's libraries in the main package list - new in 1.4.28
 - install.sh now installs everything Xara needs with the other
   prerequisites, before anything else: libpulse0 (confirmed on an Orange Pi

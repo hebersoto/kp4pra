@@ -151,7 +151,8 @@ DEFAULT_CONFIG = {
         "drive_db": -5,            # TX audio level, dB (<= 0)
         "ptt_lead_ms": 0,          # PTT on before audio (0-1000)
         "ptt_tail_ms": 100,        # PTT held after audio (0-1000)
-        "network": True,           # VARA apps on other devices may connect
+        "network": True,           # VARA apps on other devices may connect (and find it)
+        "auto_switch": True,       # a VARA app (RadioMail) may switch the TNC to Xara
         "port": 8300,              # VARA command port (data port = port + 1)
         "kiss_port": 8100,         # VARA KISS port, or "off"
         "ui_port": 8080,           # Xara's own web page (status, waterfall)

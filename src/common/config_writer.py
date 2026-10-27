@@ -259,7 +259,7 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
         _num("ui_port", 1024, 65535)
         if "kiss_port" in x and str(x["kiss_port"]).lower() != "off":
             _num("kiss_port", 1024, 65535)
-        for _b in ("network", "registered"):
+        for _b in ("network", "registered", "auto_switch"):
             if _b in x and not isinstance(x[_b], bool):
                 errors.append("xara.%s must be true or false" % _b)
         used = {8088: "the KP4PRA web page", 8001: "Dire Wolf KISS", 8000: "Dire Wolf AGW",

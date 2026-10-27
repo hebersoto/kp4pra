@@ -1189,7 +1189,13 @@ async def api_xara_status(_auth=Depends(check_auth)):
         st = {"installed": False, "running": False, "modem": "packet",
               "tool_missing": rc == 127, "error": err}
     x = xara_conf.settings(get_config())
+    import vara_launcher
+    disc = vara_launcher.modem_info(get_config())
+    lrc, lout, _ = _run(["systemctl", "is-active", "kp4pra-vara-launcher.service"], timeout=5)
     st.update({
+        "discovery": {"name": disc["name"], "active": lout == "active",
+                      "announced": lout == "active" and disc["network"] and st.get("installed", False),
+                      "auto_switch": disc["auto_switch"]},
         "settings": x,
         "mode_label": xara_conf.MODE_LABELS.get(x["mode"], x["mode"]),
         "call": xara_conf.xara_call(get_config()),

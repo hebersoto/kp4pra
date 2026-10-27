@@ -389,7 +389,7 @@ step "Xara VARA modem (install or upgrade)"
 install -m 755 "$PROJECT_DIR/bin/kp4pra-xara"     /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-xara-ptt" /usr/local/bin/
 for u in kp4pra-xara-prep.service kp4pra-xara-ptt.service kp4pra-xara-boot.service \
-         kp4pra-xara-update.service var-lib-xara.mount; do
+         kp4pra-xara-update.service var-lib-xara.mount kp4pra-vara-launcher.service; do
     cp "$PROJECT_DIR/systemd/$u" /etc/systemd/system/
 done
 mkdir -p /etc/systemd/system/xara@kp4pra.service.d
@@ -401,6 +401,10 @@ visudo -c -f /etc/sudoers.d/kp4pra-tnc-xara >/dev/null || {
     rm -f /etc/sudoers.d/kp4pra-tnc-xara
 }
 systemctl daemon-reload
+# RadioMail finds the TNC (DNS-SD _vara-modem._tcp) and starts Xara through
+# this varanny-compatible service (port 8273).
+systemctl enable kp4pra-vara-launcher.service >/dev/null 2>&1 || true
+systemctl restart kp4pra-vara-launcher.service || warn "VARA launcher did not start (RadioMail auto-discovery)"
 if [ "${KP4PRA_XARA:-1}" = 0 ]; then
     log "Xara download skipped (KP4PRA_XARA=0). Later: sudo kp4pra-xara install"
 elif /usr/local/bin/kp4pra-xara update --auto; then

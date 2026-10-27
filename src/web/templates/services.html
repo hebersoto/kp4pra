@@ -130,8 +130,8 @@
   <div class="card" id="xara-card">
     <div class="card-title"><span class="icon">📶</span> VARA Modem (Xara)</div>
     <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
-      Xara is a VARA FM/HF compatible modem for Winlink Express, Pat and
-      other VARA apps. It uses the same radio as Dire Wolf, so one of them runs at a
+      Xara is a VARA FM/HF compatible modem for RadioMail, WoAD and other
+      VARA apps (they connect over WiFi). It uses the same radio as Dire Wolf, so one of them runs at a
       time. Settings are on the Config page.
     </div>
     <div class="status-row">
@@ -145,6 +145,10 @@
     <div class="status-row">
       <span class="status-label">Mode / PTT</span>
       <span class="status-value" id="xara-mode">—</span>
+    </div>
+    <div class="status-row" id="xara-disc-row" style="display:none">
+      <span class="status-label">RadioMail finds it as</span>
+      <span class="status-value" id="xara-disc"></span>
     </div>
     <div class="status-row" id="xara-connect-row" style="display:none">
       <span class="status-label">VARA apps connect to</span>
@@ -385,6 +389,12 @@ async function loadXara() {
         : (d.modem === 'xara' ? 'Xara (starting…)' : 'Dire Wolf (packet)'));
   xaraSet('xara-mode', (d.mode_label || '') + (d.ptt ? ' · PTT: ' + d.ptt : ''));
   xaraShow('xara-connect-row', running);
+  const disc = d.discovery || {};
+  xaraShow('xara-disc-row', d.installed);
+  xaraSet('xara-disc', disc.announced
+    ? '"' + disc.name + '" (VARA ' + (String(x.mode || '').startsWith('hf') ? 'HF' : 'FM') + ')' +
+      (disc.auto_switch ? ' - starts Xara by itself' : '')
+    : (disc.active ? 'not announced (network access is off)' : 'discovery service not running'));
   if (running) {
     xaraSet('xara-connect', (x.network ? host : '127.0.0.1') + ' port ' + x.port +
             ' (data ' + (Number(x.port) + 1) + ')' +

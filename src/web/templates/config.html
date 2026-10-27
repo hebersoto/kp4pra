@@ -437,6 +437,14 @@
       </select>
     </div>
     <div class="form-group">
+      <label class="form-label" for="xara-auto">RadioMail and other VARA apps</label>
+      <select class="form-select" id="xara-auto">
+        <option value="true" {% if _x.auto_switch is not sameas false %}selected{% endif %}>Can switch the TNC to Xara by themselves</option>
+        <option value="false" {% if _x.auto_switch is sameas false %}selected{% endif %}>Only when Xara is chosen on the Services page</option>
+      </select>
+      <div class="form-hint">The app finds the TNC on WiFi. When its session ends, the TNC goes back to Dire Wolf.</div>
+    </div>
+    <div class="form-group">
       <label class="form-label" for="xara-registered">VARA speeds</label>
       <select class="form-select" id="xara-registered">
         <option value="true" {% if _x.registered is not sameas false %}selected{% endif %}>Registered (needs a VARA registration)</option>
@@ -944,6 +952,7 @@ function collectXara() {
     drive_db: Number(v('xara-drive')),
     network: v('xara-network') === 'true',
     registered: v('xara-registered') === 'true',
+    auto_switch: v('xara-auto') === 'true',
     ptt_lead_ms: Number(v('xara-lead')),
     ptt_tail_ms: Number(v('xara-tail')),
     port: Number(v('xara-port')),

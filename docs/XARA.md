@@ -2,8 +2,12 @@
 
 [Xara](https://github.com/x0rro/xara) is a free VARA FM / VARA HF compatible
 modem for Linux, written by x0rro (MIT license). With Xara, your KP4PRA TNC
-can be the VARA modem for Winlink Express, Pat and other programs that talk to
-VARA over the network.
+is the VARA modem for RadioMail (iPhone), WoAD (Android) and other Winlink
+programs that use VARA.
+
+VARA programs talk to the modem over the network (WiFi), not over Bluetooth.
+So for VARA the phone joins the same WiFi as the TNC (your home WiFi, or the
+TNC's own KP4PRA hotspot). Bluetooth/BLE stays for packet (Dire Wolf).
 
 KP4PRA does not change Xara's code. It installs Xara with **registered VARA
 speeds** turned on (see "Registered speeds" below) and keeps it up to date.
@@ -41,29 +45,44 @@ sudo kp4pra-xara install
 
 ## Using Xara
 
-1. **Config page, "Xara VARA Modem" card:** pick the VARA mode (FM narrow is
-   what most FM Winlink stations use) and click **Save Xara settings**.
-   Xara uses the sound card and push-to-talk you set in Station Information,
-   the same as Dire Wolf. A DRA-Pi-Zero works too.
-2. **Services page, "VARA Modem (Xara)" card:** click **Use Xara (VARA)**.
-3. In your Winlink program, point the VARA modem at the board instead of a
-   VARA program on your PC. The Services page shows the address to use while
-   Xara runs.
-   - **Winlink Express:** open a VARA FM (or VARA HF) session, then Settings,
-     VARA TNC Setup. Set the TNC address to the board's IP address and the
-     port to **8300**. Leave the box that starts VARA on this computer
-     unchecked.
-   - **Pat:** in Pat's config, set the `varafm` (or `varahf`) `addr` to
-     `<board IP>:8300`.
-4. To go back to APRS and Bluetooth, click **Back to Dire Wolf (packet)**.
+**Settings, once:** on the Config page, "Xara VARA Modem" card, pick the VARA
+mode (FM narrow is what most FM Winlink gateways use) and click **Save Xara
+settings**. Xara uses the sound card and push-to-talk from Station
+Information, the same as Dire Wolf. A DRA-Pi-Zero works too.
+
+**RadioMail (iPhone)** finds the TNC by itself:
+
+1. Put the iPhone on the same WiFi as the TNC (or on the KP4PRA hotspot), and
+   allow RadioMail "Local Network" access (iPhone Settings, RadioMail).
+2. In RadioMail, add a VARA FM device. The TNC shows up as
+   "**<your callsign> VARA FM**" (the Services page shows the exact name).
+3. Open a session and connect. The TNC switches to Xara by itself (Dire Wolf
+   stops), and goes back to Dire Wolf when the session ends.
+
+The TNC announces itself the same way as varanny, the helper RadioMail's
+authors made for VARA computers (DNS-SD `_vara-modem._tcp`, launcher port
+8273). To keep the TNC on Dire Wolf unless you choose Xara yourself, set
+"RadioMail and other VARA apps" to "Only when Xara is chosen on the Services
+page".
+
+**WoAD (Android) and other VARA programs** connect to an address you type:
+
+1. On the Services page, "VARA Modem (Xara)" card, click **Use Xara (VARA)**.
+2. In the program, choose VARA FM (or HF) and enter the TNC's IP address,
+   port **8300** (data port 8301 if it asks). On the KP4PRA hotspot the TNC is
+   `172.16.0.1`. The Services page shows the address while Xara runs.
+   Winlink Express (VARA TNC setup) and Pat (`varafm` `addr`) work the same
+   way; in Winlink Express leave "start VARA on this computer" off.
+3. To go back to APRS and Bluetooth, click **Back to Dire Wolf (packet)**.
 
 Xara has its own status page with a waterfall: **Open Xara page** on the
 Services page (port 8080). It only shows information; you change settings on
 the KP4PRA Config page.
 
-Ports while Xara runs: 8300 (VARA commands), 8301 (VARA data), 8100 (VARA
-KISS), 8080 (Xara page). To keep VARA programs on other devices out, set
-"VARA apps on other devices" to "Only on this board".
+Ports: 8300 (VARA commands), 8301 (VARA data), 8100 (VARA KISS), 8080 (Xara
+page) while Xara runs, and 8273 (launcher for RadioMail) always. To keep VARA
+programs on other devices out, set "VARA apps on other devices" to "Only on
+this board" (the TNC then is not announced either).
 
 ## Registered speeds
 
@@ -184,4 +203,11 @@ registered version. Normal installs and updates never build.
   starts Xara at boot when it says `xara`.
 - `registered = on` is written to Xara's config only when the installed
   build has registered speeds (Xara refuses the option otherwise).
+- `kp4pra-vara-launcher.service` (`src/vara_launcher.py`) announces
+  `_vara-modem._tcp` (and the older `_varafm-modem._tcp` /
+  `_varahf-modem._tcp`) through `avahi-publish`, port = Xara's command port,
+  TXT `launchport=8273;` `type=fm;`, and answers varanny's commands on port
+  8273 (`start <name>`, `stop`, `list`, `version`, `config`). `start` runs
+  `kp4pra-xara modem xara` when Xara is not on; when that session ends it
+  runs `kp4pra-xara modem packet`.
 - Settings: the `xara:` section of `/rw/kp4pra-tnc/config.yaml`.

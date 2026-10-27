@@ -1,0 +1,27 @@
+[Unit]
+Description=KP4PRA TNC - VARA launcher (RadioMail finds and starts Xara)
+Documentation=file:///opt/kp4pra-tnc/docs/XARA.md
+After=network.target avahi-daemon.service
+Wants=avahi-daemon.service
+ConditionPathExists=/usr/local/bin/kp4pra-xara
+
+[Service]
+Type=simple
+User=kp4pra-tnc
+Group=kp4pra-tnc
+WorkingDirectory=/opt/kp4pra-tnc/src
+ExecStart=/opt/kp4pra-tnc/venv/bin/python /opt/kp4pra-tnc/src/vara_launcher.py
+Environment=KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml
+Environment=PYTHONPATH=/opt/kp4pra-tnc/src
+Restart=always
+RestartSec=5
+# sudo is needed for "kp4pra-xara modem xara|packet" (sudoers.d/kp4pra-tnc-xara)
+NoNewPrivileges=false
+PrivateTmp=true
+ReadOnlyPaths=/opt/kp4pra-tnc
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kp4pra-vara-launcher
+
+[Install]
+WantedBy=multi-user.target
