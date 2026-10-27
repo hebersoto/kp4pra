@@ -1,3 +1,10 @@
+## Xara's libraries in the main package list - new in 1.4.28
+- install.sh now installs everything Xara needs with the other
+  prerequisites, before anything else: libpulse0 (confirmed on an Orange Pi
+  Zero 2W: with it Xara 0.1.1 installs and starts) and alsa-utils (brings
+  libasound under the name the system uses). kp4pra-xara still checks them
+  itself, for boards updated with `kp4pra-xara install` alone.
+
 ## Fix: Xara "does not run on this board" on Armbian - new in 1.4.27
 - Xara's release program is linked against libpulse (PulseAudio) and
   libasound even when it uses ALSA only. Minimal images (Armbian on the

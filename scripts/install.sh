@@ -57,7 +57,11 @@ istate installing "Installing KP4PRA TNC"
 # It is only a Recommends of network-manager, so minimal images (Armbian)
 # lack it and "kp4pra-wifi-mode ap" fails with "IP configuration could not
 # be reserved".
-PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils i2c-tools curl git xz-utils python3-libgpiod"
+# Xara (VARA modem): its program is linked against libpulse0 and libasound
+# (alsa-utils brings libasound under whichever name the system uses:
+# libasound2t64 on Debian 13, libasound2 before), plus curl/git/xz-utils to
+# download it and python3-libgpiod for the DRA-Pi-Zero PTT helper.
+PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils i2c-tools alsa-utils curl git xz-utils python3-libgpiod libpulse0"
 if command -v apt-get >/dev/null 2>&1; then
     step "Installing prerequisite packages: $PREREQS"
     export DEBIAN_FRONTEND=noninteractive
