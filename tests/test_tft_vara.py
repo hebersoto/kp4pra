@@ -111,22 +111,27 @@ class FakeXara(threading.Thread):
         key = [l.split(b":", 1)[1].strip() for l in self.request.split(b"\r\n")
                if l.lower().startswith(b"sec-websocket-key")][0]
         acc = base64.b64encode(hashlib.sha1(key + b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest())
-        c.sendall(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
-                  b"Connection: Upgrade\r\nSec-WebSocket-Accept: " + acc + b"\r\n\r\n")
-        op, data = xf.read_frame(c)        # client text, must be masked (read_frame unmasks)
-        self.got.append((op, data))
 
-        def send(op, payload):
+        def frame(op, payload):
             n = len(payload)
             head = bytes([0x80 | op]) + (bytes([n]) if n < 126 else bytes([126]) + struct.pack(">H", n))
-            c.sendall(head + payload)
-        send(1, json.dumps({"t": "hello", "mode": "FM wide"}).encode())
-        send(1, json.dumps(STATUS).encode())
-        send(2, row_frame([20] * 512))
-        send(9, b"hi")                      # ping
+            return head + payload
+        # Like Xara: the 101 reply, the hello and a replay of past events go
+        # out at once, usually in one TCP packet.
+        burst = (b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+                 b"Connection: Upgrade\r\nSec-WebSocket-Accept: " + acc + b"\r\n\r\n")
+        burst += frame(1, json.dumps({"t": "hello", "v": 1, "mode": "fm", "replay": 2}).encode())
+        burst += frame(1, b'{"t":"trace","ts":0,"text":"expect [0] x1"}')
+        burst += frame(1, b'{"t":"host","ts":60,"line":"IAMALIVE","kind":"alive"}')
+        burst += frame(1, json.dumps(dict(STATUS, bw="wide")).encode())
+        c.sendall(burst)
+        op, data = xf.read_frame(c)        # client text, must be masked (read_frame unmasks)
+        self.got.append((op, data))
+        c.sendall(frame(2, row_frame([20] * 512)) + frame(9, b"hi"))
         op, data = xf.read_frame(c)
         self.pong = (op, data)
-        send(8, b"\x03\xe8")                # close
+        self.snap_before_close = None
+        c.sendall(frame(8, b"\x03\xe8"))  # close
         c.close()
 
 
@@ -152,7 +157,8 @@ class Client(unittest.TestCase):
         self.assertEqual(fake.pong, (0xA, b"hi"))
         t.join(2)
         snap = state.snapshot()
-        self.assertEqual(snap["mode"], "FM wide")
+        self.assertEqual(snap["mode"], "fm")
+        self.assertEqual(render.vara_title({"mode": "fm", "status": {"bw": "wide"}}), "VARA FM wide")
         # the rows are cleared when the fake closes; the counter is not
         self.assertEqual(state.rows_seen, 1)
         self.assertFalse(snap["connected"])          # closed -> not connected

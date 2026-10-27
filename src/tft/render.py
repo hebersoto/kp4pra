@@ -239,6 +239,14 @@ def screen2(state, t=0.0):
 #     AP 172.16.0.1
 
 ORANGE = (0xFF, 0x9F, 0x1C)
+
+
+def vara_title(v):
+    """'VARA FM wide', 'VARA HF 2300' (hello mode + the link's bandwidth)."""
+    s = v.get("status") or {}
+    mode = str(v.get("mode") or "").strip().upper()
+    bw = str(s.get("bw") or "").strip()
+    return " ".join(x for x in ("VARA", mode, bw) if x)
 VARA_KIND_COLOR = {"idle": GREY, "calling": YELLOW, "connected": RX_GREEN, "closing": ORANGE}
 
 
@@ -355,7 +363,7 @@ def vara_screen(state, t=0.0):
         x -= w
         _pill(d, x, 5, text, on, color)
         x -= 3
-    title = ("VARA " + mode).strip()
+    title = vara_title(v)
     size = 17
     while size > 11 and _text_w(d, title, font(size, True)) > x - 6:
         size -= 1
@@ -401,7 +409,7 @@ def vara_log(state, t=0.0):
     d = ImageDraw.Draw(img)
     d.rectangle([0, 0, W - 1, 25], fill=BAR_BG)
     _fit_row(d, 3, 2, "VARA log", WHITE, 17, True)
-    mode = (v.get("mode") or "").strip()
+    mode = vara_title(v)[5:]
     f = font(14)
     d.text((W - 4 - _text_w(d, mode, f), 5), mode, font=f, fill=GREY)
     lines = (v.get("log") or [])[-6:]

@@ -1,3 +1,17 @@
+## Fix: Mini PiTFT stuck on "Xara starting..." - new in 1.4.32
+- Xara sends its hello and a replay of past events right after the
+  WebSocket handshake, usually in the same packet as the HTTP reply. The
+  display's feed client threw away everything after the reply header, lost
+  the hello, then read every following message out of step and waited
+  forever for a "frame" that never came - the screen stayed on "Xara
+  starting..." for the whole session, with no error logged. It now keeps
+  those bytes, rejects absurd frame sizes (reconnects instead of waiting),
+  and logs and reconnects on any unexpected error instead of stopping.
+- Title shows "VARA FM wide" / "VARA FM narrow" / "VARA HF 2300" (Xara's
+  hello says "fm"; the bandwidth comes from the link status).
+- The test's fake Xara now sends like the real one (reply + hello + replay
+  at once); the old client fails it, the new one passes.
+
 ## VARA monitor on the Mini PiTFT - new in 1.4.31
 - While Xara is the modem, screen 1 is a VARA monitor: TX / RX / BUSY
   lights, link state (Listening, Calling, Linked <call>, Disconnecting),

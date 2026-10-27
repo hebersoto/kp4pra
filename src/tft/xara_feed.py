@@ -183,7 +183,44 @@ def _frame(op: int, payload: bytes) -> bytes:
     return head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
 
 
+MAX_FRAME = 1 << 20          # Xara's messages are small; anything bigger is garbage
+
+
+class Conn:
+    """A socket plus the bytes already received but not used yet. Xara sends
+    its hello and a replay of past events right after the handshake, often in
+    the same TCP packet as the HTTP reply, so nothing after the header may be
+    thrown away."""
+
+    def __init__(self, sock, pending=b""):
+        self.sock = sock
+        self.buf = pending
+
+    def read_exact(self, n):
+        while len(self.buf) < n:
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                raise ConnectionError("closed")
+            self.buf += chunk
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def recv(self, n):          # for code that wants a socket-like object
+        return self.read_exact(n)
+
+    def sendall(self, data):
+        self.sock.sendall(data)
+
+    def settimeout(self, t):
+        self.sock.settimeout(t)
+
+    def close(self):
+        self.sock.close()
+
+
 def _read_exact(sock, n):
+    if isinstance(sock, Conn):
+        return sock.read_exact(n)
     buf = b""
     while len(buf) < n:
         chunk = sock.recv(n - len(buf))
@@ -201,6 +238,8 @@ def read_frame(sock):
         n = struct.unpack(">H", _read_exact(sock, 2))[0]
     elif n == 127:
         n = struct.unpack(">Q", _read_exact(sock, 8))[0]
+    if n > MAX_FRAME:
+        raise ConnectionError("frame of %d bytes - out of step, reconnecting" % n)
     if h[1] & 0x80:
         mask = _read_exact(sock, 4)
         data = _read_exact(sock, n)
@@ -214,18 +253,19 @@ def connect(port: int, host="127.0.0.1", timeout=5.0):
     sock.sendall(("GET /ws HTTP/1.1\r\nHost: localhost:%d\r\nUpgrade: websocket\r\n"
                   "Connection: Upgrade\r\nSec-WebSocket-Key: %s\r\n"
                   "Sec-WebSocket-Version: 13\r\n\r\n" % (port, key)).encode())
-    head = b""
-    while b"\r\n\r\n" not in head:
-        chunk = sock.recv(1024)
+    data = b""
+    while b"\r\n\r\n" not in data:
+        chunk = sock.recv(4096)
         if not chunk:
             raise ConnectionError("closed during handshake")
-        head += chunk
-        if len(head) > 8192:
+        data += chunk
+        if len(data) > 65536:
             raise ConnectionError("bad handshake")
-    if b" 101 " not in head.split(b"\r\n", 1)[0]:
+    head, rest = data.split(b"\r\n\r\n", 1)
+    if b" 101 " not in head.split(b"\r\n", 1)[0] + b" ":
         raise ConnectionError(head.split(b"\r\n", 1)[0].decode(errors="replace"))
     sock.settimeout(None)
-    return sock
+    return Conn(sock, rest)
 
 
 def run_feed(state: XaraState, port_fn, stop: threading.Event, waterfall=True, log=print):
@@ -258,6 +298,8 @@ def run_feed(state: XaraState, port_fn, stop: threading.Event, waterfall=True, l
             if not announced:
                 log("VARA feed not available (%s) - Xara not running?" % e)
                 announced = True
+        except Exception as e:                  # never let the feed thread die
+            log("VARA feed error: %r - reconnecting" % e)
         finally:
             if sock:
                 try:
