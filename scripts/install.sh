@@ -389,9 +389,13 @@ step "Xara VARA modem (install or upgrade)"
 install -m 755 "$PROJECT_DIR/bin/kp4pra-xara"     /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-xara-ptt" /usr/local/bin/
 for u in kp4pra-xara-prep.service kp4pra-xara-ptt.service kp4pra-xara-boot.service \
-         kp4pra-xara-update.service var-lib-xara.mount kp4pra-vara-launcher.service; do
+         kp4pra-xara-update.service var-lib-xara.mount kp4pra-vara-launcher.service \
+         kp4pra-xara-keepalive.service kp4pra-xara-fallback.service; do
     cp "$PROJECT_DIR/systemd/$u" /etc/systemd/system/
 done
+# Shared playback for Xara on the DRA-Pi-Zero (I2S): see the file's comments.
+mkdir -p /etc/alsa/conf.d
+install -m 644 "$PROJECT_DIR/config/alsa/60-kp4pra-xara.conf" /etc/alsa/conf.d/
 mkdir -p /etc/systemd/system/xara@kp4pra.service.d
 cp "$PROJECT_DIR/systemd/xara@kp4pra.service.d/kp4pra.conf" /etc/systemd/system/xara@kp4pra.service.d/
 cp "$PROJECT_DIR/sudoers.d/kp4pra-tnc-xara" /etc/sudoers.d/kp4pra-tnc-xara

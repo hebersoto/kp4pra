@@ -1,3 +1,21 @@
+## Fix: Xara on the DRA-Pi-Zero ("capture (no audio)"), fallback - new in 1.4.30
+- On the Orange Pi Zero 2W the DRA-Pi-Zero's I2S recording delivers no audio
+  while playback is open but idle, which is how Xara leaves playback while
+  listening; Xara stopped with "capture (no audio): timed out" (confirmed
+  with aplay/arecord: recording fails while an idle playback stream is open,
+  and stays broken until playback runs again). With a DRA, Xara now plays
+  through the shared ALSA device kp4pra_out (plug -> dmix -> card,
+  /etc/alsa/conf.d/60-kp4pra-xara.conf) and the new kp4pra-xara-keepalive
+  plays silence into it while Xara runs. Recording stays direct. USB cards
+  are unchanged.
+- If Xara keeps failing (systemd stops restarting it), the new
+  kp4pra-xara-fallback (OnFailure) switches the TNC back to Dire Wolf, so it
+  is never left without a modem; the Services page shows it.
+- "kp4pra-xara modem xara" now reports success only when Xara listens on
+  its port and is still running 8 seconds later (it reported success after
+  2 seconds before, while Xara failed shortly after).
+- At boot, Xara starts after the DRA's mixer setup (kp4pra-dra-mixer).
+
 ## RadioMail finds the TNC and starts Xara by itself - new in 1.4.29
 - New kp4pra-vara-launcher service (src/vara_launcher.py), compatible with
   varanny (github.com/islandmagic/varanny), which RadioMail uses to find and

@@ -1234,7 +1234,7 @@ async def api_xara_modem(request: Request, _auth=Depends(check_auth)):
     if modem not in ("xara", "packet"):
         return JSONResponse({"success": False, "message": "modem must be 'xara' or 'packet'"},
                             status_code=400)
-    rc, out, err = _run(["sudo", "-n", XARA_TOOL, "modem", modem], timeout=60)
+    rc, out, err = _run(["sudo", "-n", XARA_TOOL, "modem", modem], timeout=120)
     return JSONResponse({"success": rc == 0, "message": (out + ("\n" + err if err else "")).strip()},
                         status_code=200 if rc == 0 else 500)
 

@@ -385,6 +385,11 @@ async function loadXara() {
          : (d.supported === false ? 'no Xara build for this board' : 'not installed')));
   }
   const running = d.running;
+  if (d.fallback_at && !running && !document.getElementById('xara-result').textContent) {
+    document.getElementById('xara-result').textContent =
+      '⚠ Xara stopped after repeated errors (' + d.fallback_at.replace('T', ' ').slice(0, 19) +
+      ') and the TNC went back to Dire Wolf. See the Xara log below.';
+  }
   xaraSet('xara-modem', running ? 'Xara (VARA) - Dire Wolf is stopped'
         : (d.modem === 'xara' ? 'Xara (starting…)' : 'Dire Wolf (packet)'));
   xaraSet('xara-mode', (d.mode_label || '') + (d.ptt ? ' · PTT: ' + d.ptt : ''));

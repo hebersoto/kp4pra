@@ -1,0 +1,9 @@
+[Unit]
+Description=KP4PRA TNC - Xara failed: go back to Dire Wolf
+Documentation=file:///opt/kp4pra-tnc/docs/XARA.md
+# OnFailure= of xara@kp4pra: runs when systemd gives up restarting Xara, so
+# the TNC is never left without a modem.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kp4pra-xara fallback

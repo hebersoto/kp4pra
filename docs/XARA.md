@@ -144,7 +144,22 @@ Xara does not drive GPIO pins itself, so for the DRA-Pi-Zero KP4PRA runs a
 helper that Xara talks to like a rigctld. The helper lets go of PTT if Xara
 stops or if PTT stays on for more than 2 minutes.
 
+## DRA-Pi-Zero: shared playback
+
+On the Orange Pi Zero 2W, the DRA-Pi-Zero's recording delivers no audio while
+its playback side is open but idle, and that is exactly how Xara leaves
+playback while it listens (Xara's log then says "capture (no audio): timed
+out"). So with a DRA, Xara plays through a shared ALSA device
+(`kp4pra_out`, in `/etc/alsa/conf.d/60-kp4pra-xara.conf`), and
+`kp4pra-xara-keepalive` plays silence into it the whole time Xara runs.
+Silence does not change Xara's signal, and push-to-talk is separate, so
+nothing extra is transmitted. USB sound cards are used directly.
+
 ## If something goes wrong
+
+- **Xara keeps failing:** after systemd gives up restarting it, the TNC goes
+  back to Dire Wolf by itself, and the Services page says so. The reason is in
+  the Xara log.
 
 - **"Xara did not start - going back to Dire Wolf":** the Services page shows
   Xara's messages under "Xara log". The board is back on Dire Wolf, so

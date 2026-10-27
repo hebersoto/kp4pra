@@ -28,6 +28,7 @@ import sys
 from common.direwolf_conf import (
     _call_with_ssid, resolve_adevice, gpiod_chip_line, find_cm108_hidraw,
 )
+from common.dra_platform import is_dra_adevice
 
 CONF_PATH = "/rw/xara/kp4pra.conf"
 PTT_PLAN_PATH = "/run/kp4pra-xara/ptt.json"
@@ -147,6 +148,25 @@ def build_is_registered(path: str = BUILD_FEATURES) -> bool:
         return False
 
 
+def alsa_card_id(adevice: str) -> str:
+    """'plughw:DRAPiZero,0' / 'plughw:CARD=DRAPiZero,DEV=0' -> 'DRAPiZero'."""
+    body = (adevice or "").split(":", 1)[-1]
+    first = body.split(",", 1)[0]
+    return first.split("=", 1)[-1]
+
+
+def shared_playback(adevice: str) -> str:
+    """Xara's playback device. For the DRA-Pi-Zero (I2S) it is the shared
+    kp4pra_out device (config/alsa/60-kp4pra-xara.conf): its recording only
+    works while playback really plays, so a keep-alive plays silence next to
+    Xara. USB sound cards are used directly."""
+    if is_dra_adevice(adevice):
+        card = alsa_card_id(adevice)
+        if card and (card.isalnum() or card.replace("_", "").isalnum()):
+            return f"kp4pra_out:CARD={card}"
+    return adevice
+
+
 def generate(cfg: dict, adevice: str = None, hidraw_lookup=find_cm108_hidraw,
              registered_build=None) -> tuple:
     """Return (config text, ptt plan)."""
@@ -155,6 +175,9 @@ def generate(cfg: dict, adevice: str = None, hidraw_lookup=find_cm108_hidraw,
     adevice = adevice or resolve_adevice(st)
     band, value = MODES.get(str(x["mode"]), MODES["fm-narrow"])
     plan = ptt_plan(st, adevice, hidraw_lookup)
+    playback = shared_playback(adevice)
+    # kp4pra-xara-keepalive plays silence into this while Xara runs
+    plan["keepalive_pcm"] = playback if playback != adevice else None
     addr = "0.0.0.0" if x.get("network") else "127.0.0.1"
     kiss = x.get("kiss_port")
     lines = [
@@ -164,7 +187,7 @@ def generate(cfg: dict, adevice: str = None, hidraw_lookup=find_cm108_hidraw,
         f"{band} = {value}",
         "audio = alsa",
         f"capture = {adevice}",
-        f"playback = {adevice}",
+        f"playback = {playback}",
     ]
     if plan["ptt"]:
         lines += [

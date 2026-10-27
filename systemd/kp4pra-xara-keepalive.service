@@ -1,0 +1,27 @@
+[Unit]
+Description=KP4PRA TNC - keep the DRA-Pi-Zero playback running for Xara
+Documentation=file:///opt/kp4pra-tnc/docs/XARA.md
+# The DRA's recording gets no audio while playback is open but idle, which is
+# how Xara leaves it while listening. This plays silence into the shared
+# playback device next to Xara (config/alsa/60-kp4pra-xara.conf). Exits at
+# once for USB sound cards. Started and stopped with Xara.
+PartOf=xara@kp4pra.service
+Conflicts=direwolf.service
+After=direwolf.service kp4pra-xara-prep.service kp4pra-dra-mixer.service
+Requires=kp4pra-xara-prep.service
+
+[Service]
+Type=simple
+# Same user as Xara, so both share the dmix (System V shared memory).
+User=xara
+Group=xara
+SupplementaryGroups=audio
+ExecStart=/usr/local/bin/kp4pra-xara keepalive
+# give aplay a moment to open the device before Xara does
+ExecStartPost=/bin/sleep 1
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes

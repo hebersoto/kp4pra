@@ -96,6 +96,16 @@ def gen(c, adevice="plughw:Device,0", hid="/dev/hidraw2", registered_build=True)
 
 
 class Generate(unittest.TestCase):
+    def test_usb_card_no_keepalive(self):
+        text, plan = gen(cfg())
+        self.assertIn("playback = plughw:Device,0\n", text)
+        self.assertIsNone(plan["keepalive_pcm"])
+
+    def test_dra_orange_pi_shared_playback(self):
+        self.assertEqual(xc.shared_playback("plughw:DRAPiZero,0"), "kp4pra_out:CARD=DRAPiZero")
+        self.assertEqual(xc.shared_playback("plughw:CARD=DRAPiZero,DEV=0"), "kp4pra_out:CARD=DRAPiZero")
+        self.assertEqual(xc.alsa_card_id("plughw:1,0"), "1")
+
     def test_cm108_default(self):
         text, plan = gen(cfg())
         self.assertEqual(xara_accepts(text), [], text)
@@ -119,6 +129,10 @@ class Generate(unittest.TestCase):
         text, plan = gen(cfg(ptt="GPIOD"), adevice="plughw:audioinjectorpi,0")
         self.assertEqual(xara_accepts(text), [], text)
         self.assertIn("ptt = rigctld:127.0.0.1:4539\n", text)
+        # DRA: capture direct, playback through the shared (kept-alive) device
+        self.assertIn("capture = plughw:audioinjectorpi,0\n", text)
+        self.assertIn("playback = kp4pra_out:CARD=audioinjectorpi\n", text)
+        self.assertEqual(plan["keepalive_pcm"], "kp4pra_out:CARD=audioinjectorpi")
         self.assertEqual(plan["gpio"], {"chip": "gpiochip0", "line": 12, "active_low": False})
 
     def test_dra_on_orange_pi_remaps_pi_line(self):
