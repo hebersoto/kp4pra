@@ -1,3 +1,13 @@
+## Fix: Xara "does not run on this board" on Armbian - new in 1.4.27
+- Xara's release program is linked against libpulse (PulseAudio) and
+  libasound even when it uses ALSA only. Minimal images (Armbian on the
+  Orange Pi) have no libpulse, so the downloaded xara could not start and
+  the install step reported "the downloaded xara does not run on this
+  board". kp4pra-xara now installs libpulse0 and libasound2t64 (or
+  libasound2 on older systems) before checking the program.
+- If xara still does not start, the real error (and any missing library
+  from ldd) is printed instead of only "does not run".
+
 ## Fix: an update without a reboot kept running the old program - new in 1.4.26
 - install.sh copied the new program to /opt/kp4pra-tnc but only *started*
   the KP4PRA services; services already running kept the old code until the

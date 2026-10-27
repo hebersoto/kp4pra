@@ -198,6 +198,20 @@ build_source() {  # VERSION DEST [registered]
     rm -rf "$BUILD_DIR"
 }
 
+# Libraries the Xara program loads at start. It is linked against both
+# libpulse and libasound (ALSA), even when it uses ALSA only; minimal images
+# (Armbian) have no libpulse, and then xara cannot start at all.
+runtime_libs() {
+    local pkgs=(libpulse0)
+    if apt-cache show libasound2t64 >/dev/null 2>&1; then pkgs+=(libasound2t64); else pkgs+=(libasound2); fi
+    dpkg -s "${pkgs[@]}" >/dev/null 2>&1 && return 0
+    say "installing libraries Xara needs: ${pkgs[*]}"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}" >/dev/null 2>&1 \
+        || { apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive \
+             apt-get install -y --no-install-recommends "${pkgs[@]}" >/dev/null 2>&1; } \
+        || warn "could not install ${pkgs[*]}"
+}
+
 # ---------------------------------------------------------------------------
 # System files from the active version's dist/ + KP4PRA's own pieces
 setup_system() {
@@ -349,9 +363,15 @@ do_install() {  # install|update, args...
         return 1
     fi
     want="$got"
-    if ! "$OPT/$want/xara" --version >/dev/null 2>&1; then
+    runtime_libs
+    local out
+    if ! out="$("$OPT/$want/xara" --version 2>&1)"; then
+        warn "the downloaded xara does not start on this board - not installed. It said:"
+        printf '    %s\n' "$out" | head -5 >&2
+        if command -v ldd >/dev/null 2>&1; then
+            ldd "$OPT/$want/xara" 2>&1 | grep -E "not found|version .* not found" | sed 's/^/    /' >&2
+        fi
         rm -rf "${OPT:?}/$want"
-        warn "the downloaded xara does not run on this board - not installed"
         return 1
     fi
     switch_to "$want"
