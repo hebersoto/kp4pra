@@ -10,6 +10,10 @@ Behavior
               AP/CL + IP on the bottom row.
   - Screen 2: Winlink pending, WiFi devices, BT/BLE devices, last 4 frames,
               AP/CL + IP on the bottom row.
+  - While Xara (VARA) is the modem instead of Dire Wolf, screen 1 is the
+    VARA monitor (link state, S/N, speed level, bps and BPM, RX/TX levels,
+    TX/RX/BUSY lights, waterfall, S/N graph) and screen 2 the VARA log
+    (tft/xara_feed.py reads Xara's live feed on its page port, 8080).
   - Button 23: switch screen 1 <-> 2 (wakes the screen if it is off).
   - Button 23 held >= 3 s: switch WiFi between Client and Access Point mode
     (kp4pra-wifi-mode via its sudoers rule); shows "WiFi Access Point Mode"
@@ -43,7 +47,7 @@ import time
 
 from common.config import load_config, reload_config
 from common.runtime_status import read_status, write_status
-from tft import beacon, hw, monitor, render, saver, status
+from tft import beacon, hw, monitor, render, saver, status, xara_feed
 
 SPLASH_S = 10
 LONG_PRESS_S = 3.0
@@ -56,6 +60,8 @@ SAVER_BLANK_S = 120          # centipede for 2 min -> black screen
 SAVER_FRAME_S = 0.1          # centipede animation, 10 frames/s
 SHUTDOWN_POLL_S = 0.5        # how often to look for /run/kp4pra-tnc/shutdown.json
 SHUTDOWN_STALE_S = 60        # ignore a shutdown file this long past its deadline
+VARA_FRAME_S = 0.25          # VARA screens redraw at most 4x/s (waterfall)
+MODEM_FILE = "/rw/kp4pra-tnc/modem"    # "xara" while Xara is the chosen modem
 
 _TERM = threading.Event()    # SIGTERM received (service stop / system power-off)
 
@@ -146,6 +152,9 @@ class Display:
         self._install_drawn = None
         self._install_poll = 0.0
         self._failed_dismissed = None  # "updated" of a failed state closed by a button
+        self.vara = xara_feed.XaraState()
+        self.vara_snap = {"connected": False}
+        self.modem = "packet"
 
     # ---- data feeds ----
     def journal_reader(self):
@@ -173,6 +182,11 @@ class Display:
         while not self.stop.is_set():
             try:
                 snap = status.snapshot(load_config())
+                try:
+                    with open(MODEM_FILE) as f:
+                        self.modem = f.read().strip() or "packet"
+                except OSError:
+                    self.modem = "packet"
                 with self.lock:
                     if snap != self.sys:
                         self.sys = snap
@@ -180,6 +194,23 @@ class Display:
             except Exception as e:
                 log("status: %s" % e)
             self.stop.wait(STATUS_POLL_S)
+
+    def vara_active(self):
+        return bool(self.vara_snap.get("connected")) or self.modem == "xara"
+
+    def vara_port(self):
+        try:
+            return int(((load_config().get("xara") or {}).get("ui_port")) or 8080)
+        except (TypeError, ValueError):
+            return 8080
+
+    def vara_tick(self):
+        """Take the latest VARA data; VARA activity counts as traffic."""
+        snap = self.vara.snapshot()
+        if snap.get("activity"):
+            with self.lock:
+                self.traffic_seen = True
+        self.vara_snap = snap
 
     # ---- actions ----
     def send_beacon(self):
@@ -348,7 +379,11 @@ class Display:
             state["frames"] = list(self.frames)
             state["current"] = self.current
             toast = self.toast
-        img = render.screen1(state, t) if self.screen == 1 else render.screen2(state, t)
+        if self.vara_active():
+            state["vara"] = self.vara_snap
+            img = render.vara_screen(state, t) if self.screen == 1 else render.vara_log(state, t)
+        else:
+            img = render.screen1(state, t) if self.screen == 1 else render.screen2(state, t)
         if toast and time.time() < toast[2]:
             from PIL import ImageDraw
             d = ImageDraw.Draw(img)
@@ -421,6 +456,9 @@ class Display:
         self.dev.show(render.splash())
         threading.Thread(target=self.journal_reader, daemon=True).start()
         threading.Thread(target=self.status_poller, daemon=True).start()
+        threading.Thread(target=xara_feed.run_feed, daemon=True,
+                         args=(self.vara, self.vara_port, self.stop),
+                         kwargs={"log": log}).start()
         self.splash_until = time.time() + SPLASH_S
         last_draw = 0.0
         last_cfg = time.time()
@@ -482,6 +520,7 @@ class Display:
                     log("display.tft_rotation changed - restarting display")
                     return
 
+            self.vara_tick()
             self.saver_tick(now)
             if self.saver == "worm":
                 if now - last_draw >= SAVER_FRAME_S:
@@ -492,7 +531,8 @@ class Display:
                     last_draw = now
             # Redraw on new data, and 4x/s for the scrolling (marquee) rows.
             elif self.saver is None and not self.off and now >= self.splash_until:
-                if self.dirty or now - last_draw >= 0.25:
+                vara = self.vara_active()
+                if (self.dirty and not vara) or now - last_draw >= (VARA_FRAME_S if vara else 0.25):
                     self.dirty = False
                     self.draw(now)
                     last_draw = now

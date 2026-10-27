@@ -1,3 +1,17 @@
+## VARA monitor on the Mini PiTFT - new in 1.4.31
+- While Xara is the modem, screen 1 is a VARA monitor: TX / RX / BUSY
+  lights, link state (Listening, Calling, Linked <call>, Disconnecting),
+  S/N, speed level, link rate in bps and BPM (bytes per minute,
+  bps x 60 / 8), RX/TX audio levels, a waterfall (last ~5 s) and an S/N
+  graph (last 90 s). Screen 2 is the VARA log (linked / disconnected with the
+  session's top BPM / unable to connect / timed out, retries, bytes to send).
+  The packet screens come back with Dire Wolf.
+- New tft/xara_feed.py reads Xara's live feed (WebSocket /ws on its page
+  port, read-only, standard library only) and keeps the state; VARA activity
+  wakes the screen saver. VARA screens redraw at most 4 times a second.
+- docs/TFT_DISPLAY.md "VARA screens (Xara)"; tests/test_tft_vara.py (state,
+  WebSocket client against a fake Xara, rendering).
+
 ## Fix: Xara on the DRA-Pi-Zero ("capture (no audio)"), fallback - new in 1.4.30
 - On the Orange Pi Zero 2W the DRA-Pi-Zero's I2S recording delivers no audio
   while playback is open but idle, which is how Xara leaves playback while

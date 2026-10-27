@@ -223,3 +223,197 @@ def screen2(state, t=0.0):
     _traffic(d, state.get("frames", []), 3, 4, t)
     _status_bar(d, state)
     return img
+
+
+# ---------------------------------------------------------------------------
+# VARA screens (Xara running instead of Dire Wolf). Data: tft/xara_feed.py.
+#
+#   VARA monitor                          VARA log
+#     VARA FM wide        [TX][RX][BSY]     VARA log            FM wide
+#     Linked KP3M-12   (state, colored)     15:41 Linked KP3M>KP3M-12 wide
+#     S/N 12.3 dB          speed lvl 7      15:43 Disconnected (top 18090 BPM)
+#     2412 bps        18090 BPM             ...
+#     RX ████████   TX ██                   Retries 2   to send 1.2 kB
+#     waterfall (last ~5 s)                 AP 172.16.0.1
+#     S/N graph (last 90 s)
+#     AP 172.16.0.1
+
+ORANGE = (0xFF, 0x9F, 0x1C)
+VARA_KIND_COLOR = {"idle": GREY, "calling": YELLOW, "connected": RX_GREEN, "closing": ORANGE}
+
+
+def _wf_palette():
+    """black -> blue -> cyan -> yellow -> red -> white, 256 entries."""
+    stops = [(0, (0, 0, 0)), (60, (0, 0, 140)), (120, (0, 170, 220)),
+             (170, (250, 230, 40)), (220, (255, 60, 30)), (255, (255, 255, 255))]
+    pal = []
+    for i in range(256):
+        for (a, ca), (b, cb) in zip(stops, stops[1:]):
+            if a <= i <= b:
+                f = (i - a) / float(b - a or 1)
+                pal.extend(int(ca[k] + (cb[k] - ca[k]) * f) for k in range(3))
+                break
+    return pal
+
+
+_WF_PAL = _wf_palette()
+
+
+def _pill(d, x, y, text, on, color):
+    f = font(12, True)
+    w = int(_text_w(d, text, f)) + 8
+    d.rounded_rectangle([x, y, x + w, y + 16], radius=4,
+                        fill=color if on else BAR_BG, outline=None)
+    d.text((x + 4, y + 1), text, font=f, fill=BLACK if on else GREY)
+    return w
+
+
+def _fit_row(d, x, y, text, color, size, bold=False, maxw=W - 4, t=0.0):
+    f = font(size, bold)
+    width = _text_w(d, text, f)
+    if width <= maxw:
+        d.text((x, y), text, font=f, fill=color)
+        return
+    span = width + SCROLL_GAP
+    off = int((t * SCROLL_PX_PER_S) % span)
+    d.text((x - off, y), text, font=f, fill=color)
+    d.text((x - off + span, y), text, font=f, fill=color)
+
+
+def _meter(d, x, y, w, h, dbfs, color, label):
+    f = font(11, True)
+    d.text((x, y - 1), label, font=f, fill=GREY)
+    bx = x + 18
+    d.rectangle([bx, y, bx + w, y + h], fill=BAR_BG)
+    try:
+        v = max(0.0, min(1.0, (float(dbfs) + 60.0) / 60.0))   # -60..0 dBFS
+    except (TypeError, ValueError):
+        v = 0.0
+    if v > 0:
+        d.rectangle([bx, y, bx + int(w * v), y + h], fill=color)
+
+
+def _waterfall(img, rows, y, h, floor=-130.0, step=0.5):
+    """Newest row at the bottom. Values are steps of `step` dB above `floor`;
+    shown from -110 to -50 dB for contrast."""
+    if not rows:
+        return
+    rows = rows[-h:]
+    width = len(rows[0]) or 1
+    lo = int((-110.0 - floor) / step)
+    hi = int((-50.0 - floor) / step)
+    scale = 255.0 / max(1, hi - lo)
+    lut = bytes(max(0, min(255, int((v - lo) * scale))) for v in range(256))
+    data = b"".join(r[:width].ljust(width, b"\0").translate(lut) for r in rows)
+    pic = Image.frombytes("L", (width, len(rows)), data).convert("P")
+    pic.putpalette(_WF_PAL)
+    pic = pic.resize((W, len(rows)), Image.NEAREST).convert("RGB")
+    img.paste(pic, (0, y + h - len(rows)))
+
+
+def _sn_graph(d, hist, y, h):
+    d.rectangle([0, y, W - 1, y + h], fill=(10, 14, 18))
+    f = font(10)
+    d.text((2, y), "S/N", font=f, fill=GREY)
+    lo, hi = -10.0, 30.0
+    for db, c in ((0, (40, 48, 56)), (10, (40, 48, 56)), (20, (40, 48, 56))):
+        yy = y + h - int((db - lo) / (hi - lo) * h)
+        d.line([22, yy, W - 1, yy], fill=c)
+    n = len(hist)
+    if not n:
+        return
+    x0 = W - n * (W - 24) / float(max(n, 90))
+    prev = None
+    for i, v in enumerate(hist):
+        x = int(x0 + i * (W - 24) / float(max(n, 90)))
+        if v is None:
+            prev = None
+            continue
+        yy = y + h - int((max(lo, min(hi, v)) - lo) / (hi - lo) * h)
+        if prev:
+            d.line([prev, (x, yy)], fill=RX_GREEN, width=2)
+        prev = (x, yy)
+
+
+def vara_screen(state, t=0.0):
+    """VARA monitor: state, S/N, speed, BPM, levels, waterfall, S/N graph."""
+    from tft.xara_feed import link_label, bpm, TX_STATES
+    v = state.get("vara") or {}
+    s = v.get("status") or {}
+    img = Image.new("RGB", (W, H), BLACK)
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, W - 1, 25], fill=BAR_BG)
+    mode = (v.get("mode") or "").strip()
+    st = s.get("state", "")
+    ptt = bool(s.get("ptt"))
+    rx = st in ("Receiving", "Answering") or (not ptt and st not in ("", "Listen")
+                                              and st not in TX_STATES)
+    x = W - 3
+    for text, on, color in (("BSY", s.get("busy"), YELLOW), ("RX", rx, RX_GREEN),
+                            ("TX", ptt, TX_RED)):
+        w = int(_text_w(d, text, font(12, True))) + 8
+        x -= w
+        _pill(d, x, 5, text, on, color)
+        x -= 3
+    title = ("VARA " + mode).strip()
+    size = 17
+    while size > 11 and _text_w(d, title, font(size, True)) > x - 6:
+        size -= 1
+    d.text((3, 2 + (17 - size) // 2), title, font=font(size, True), fill=WHITE)
+    if not v.get("connected"):
+        _fit_row(d, 4, 40, "Xara starting...", GREY, 22, True)
+        _fit_row(d, 4, 76, "VARA monitor appears", GREY, 17)
+        _fit_row(d, 4, 98, "when Xara is up", GREY, 17)
+        _status_bar(d, state)
+        return img
+    label, kind = link_label(st, s.get("peer", ""))
+    _fit_row(d, 4, 29, label, VARA_KIND_COLOR.get(kind, WHITE), 22, True, t=t)
+    sn = s.get("sn")
+    _fit_row(d, 4, 58, "S/N %s dB" % ("%.1f" % sn if sn is not None and kind == "connected"
+                                       else "--"), WHITE, 18)
+    lvl = s.get("level") or 0
+    if kind == "connected" and lvl:
+        f = font(16, True)
+        txt = "SL %d" % lvl
+        d.text((W - 4 - _text_w(d, txt, f), 60), txt, font=f, fill=YELLOW)
+    br = s.get("bitrate") or {}
+    bps = br.get("bps") or 0
+    if kind == "connected" and bps:
+        _fit_row(d, 4, 82, "%d bps" % bps, WHITE, 18)
+        f = font(18, True)
+        txt = "%d BPM" % bpm(bps)
+        d.text((W - 4 - _text_w(d, txt, f), 82), txt, font=f, fill=RX_GREEN)
+    else:
+        _fit_row(d, 4, 82, "bps --    BPM --", GREY, 18)
+    _meter(d, 2, 108, 96, 7, (s.get("rx") or {}).get("rms"), RX_GREEN, "RX")
+    _meter(d, 122, 108, 96, 7, (s.get("tx") or {}).get("rms"), TX_RED, "TX")
+    _waterfall(img, v.get("rows") or [], 120, 52, v.get("wf_floor", -130.0), v.get("wf_step", 0.5))
+    _sn_graph(d, v.get("sn_hist") or [], 174, 34)
+    _status_bar(d, state)
+    return img
+
+
+def vara_log(state, t=0.0):
+    """Screen 2 with Xara: session log and counters."""
+    v = state.get("vara") or {}
+    s = v.get("status") or {}
+    img = Image.new("RGB", (W, H), BLACK)
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, W - 1, 25], fill=BAR_BG)
+    _fit_row(d, 3, 2, "VARA log", WHITE, 17, True)
+    mode = (v.get("mode") or "").strip()
+    f = font(14)
+    d.text((W - 4 - _text_w(d, mode, f), 5), mode, font=f, fill=GREY)
+    lines = (v.get("log") or [])[-6:]
+    if not lines:
+        _fit_row(d, 4, 32, "no VARA sessions yet", GREY, 17)
+    for i, (hhmm, text) in enumerate(lines):
+        color = RX_GREEN if text.startswith("Linked") else (
+            TX_RED if text.startswith(("Unable", "Link timed")) else WHITE)
+        _fit_row(d, 4, 30 + i * 24, "%s %s" % (hhmm, text), color, 16, t=t)
+    buf = s.get("buffer") or 0
+    info = "Retries %s   to send %s" % (s.get("retries", 0),
+                                         ("%.1f kB" % (buf / 1000.0)) if buf >= 1000 else "%d B" % buf)
+    _fit_row(d, 4, 180, info, GREY, 15)
+    _status_bar(d, state)
+    return img

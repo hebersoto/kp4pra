@@ -74,6 +74,36 @@ never shown, and path entries not yet used (e.g. our own beacon going out
 with `WIDE2-2`, or a connect request via a digipeater before it repeats it)
 show no `via`.
 
+## VARA screens (Xara)
+
+While Xara (the VARA modem, docs/XARA.md) is the modem instead of Dire Wolf,
+the two screens change to VARA. Button 23 still switches between them, and
+they go back to the packet screens when the TNC goes back to Dire Wolf.
+
+**Screen 1 - VARA monitor**
+
+- Top bar: "VARA FM wide" (or narrow / HF) and three lights: **TX** (red,
+  transmitting), **RX** (green, receiving the other station), **BSY**
+  (yellow, the channel is busy).
+- Link state: Listening (grey), Calling KP3M-12 (yellow), Linked KP3M-12
+  (green), Disconnecting (orange).
+- **S/N** in dB and the speed level (**SL 7**) while linked.
+- Speed: link rate in **bps** and the same in **BPM** (bytes per minute, the
+  unit Winlink programs use: bps x 60 / 8). This is the modem's current
+  speed, not the average a whole session achieved.
+- RX and TX audio levels.
+- Waterfall: the last few seconds of the audio spectrum, newest at the
+  bottom; VARA bursts show as bright blocks.
+- S/N graph: the last 90 seconds.
+
+**Screen 2 - VARA log:** connected / disconnected (with the top speed of the
+session in BPM) / unable to connect / timed out, with the time, plus the
+retries and the bytes still waiting to be sent.
+
+The data comes from Xara's own live feed (its page port, 8080), the same
+data as the Xara web page. VARA activity (calling, linked, transmitting,
+busy) wakes the screen like packet traffic does.
+
 ## Screen saver
 
 - No RX/TX traffic for **3 minutes**: the station callsign (without SSID,

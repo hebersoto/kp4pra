@@ -223,7 +223,8 @@ class Generate(unittest.TestCase):
                  patch.object(xc, "build_is_registered", return_value=False):
                 xc.write(cfg(ptt="GPIOD"), conf_path=conf, plan_path=plan)
             self.assertEqual(oct(os.stat(conf).st_mode & 0o777), "0o640")
-            self.assertEqual(json.load(open(plan))["gpio"]["line"], 12)
+            with open(plan) as f:
+                self.assertEqual(json.load(f)["gpio"]["line"], 12)
 
 
 class Validation(unittest.TestCase):
@@ -272,7 +273,8 @@ class PttHelper(unittest.TestCase):
         open(os.path.join(d, "gpiod", "line.py"), "w").write(FAKE_LINE)
         self.log = os.path.join(d, "gpio.log")
         planf = os.path.join(d, "ptt.json")
-        json.dump(plan, open(planf, "w"))
+        with open(planf, "w") as f:
+            json.dump(plan, f)
         env = dict(os.environ, PYTHONPATH=d, FAKE_GPIO_LOG=self.log,
                    KP4PRA_XARA_PTT_PLAN=planf, KP4PRA_XARA_PTT_PORT=str(port),
                    KP4PRA_XARA_PTT_MAX_S=max_s)
