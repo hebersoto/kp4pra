@@ -444,10 +444,14 @@ systemctl start kp4pra-tnc-agent.service  || warn "Pairing agent start failed (b
 systemctl start kp4pra-bt-perms.service   || warn "BlueZ perms fix failed"
 /usr/local/bin/kp4pra-fix-bt-perms 2>/dev/null || true
 usermod -aG bluetooth "$SERVICE_USER" 2>/dev/null || true
-systemctl start kp4pra-tnc-rfcomm.service || warn "RFCOMM bridge start failed (may need Bluetooth adapter)"
-systemctl start kp4pra-tnc-ble.service    || warn "BLE bridge start failed (may need Bluetooth adapter)"
-systemctl start kp4pra-tnc-web.service    || warn "Web interface start failed"
-systemctl start kp4pra-tnc-aprs-clock.service || warn "APRS clock fallback start failed"
+# restart, not start: on an update the services are already running and
+# would keep the old program in memory until the next reboot (an update
+# without the reboot kept sending the old APRS TOCALL, for example).
+systemctl restart kp4pra-tnc-rfcomm.service || warn "RFCOMM bridge start failed (may need Bluetooth adapter)"
+systemctl restart kp4pra-tnc-ble.service    || warn "BLE bridge start failed (may need Bluetooth adapter)"
+systemctl restart kp4pra-tnc-web.service    || warn "Web interface start failed"
+systemctl restart kp4pra-tnc-aprs-clock.service || warn "APRS clock fallback start failed"
+systemctl try-restart kp4pra-tnc-rms.service 2>/dev/null || true   # only if it is running
 
 # ── journald: ensure volatile-only ─────────────────────────────────────────
 

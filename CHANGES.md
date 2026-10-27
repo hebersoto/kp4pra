@@ -1,3 +1,14 @@
+## Fix: an update without a reboot kept running the old program - new in 1.4.26
+- install.sh copied the new program to /opt/kp4pra-tnc but only *started*
+  the KP4PRA services; services already running kept the old code until the
+  next reboot. Seen as beacons still sent to the old TOCALL APKP41 after
+  updating to 1.4.23+ without the reboot (e.g. KP4PRA_NO_REBOOT=1 or running
+  install.sh by hand). It now restarts the web, RFCOMM, BLE and APRS clock
+  services, and the RMS gateway if it is running. (The Mini PiTFT service
+  was already restarted by setup-tft.sh.)
+- No code in 1.4.23+ sends APKP41: every APRS frame the application builds
+  uses APKPPR.
+
 ## Xara registered speeds, no builds on the board - new in 1.4.25
 - New GitHub workflow .github/workflows/xara-registered.yml (also on main,
   where GitHub runs schedules): every Monday, or by hand, it builds the
