@@ -376,7 +376,7 @@ async function loadXara() {
     if (!xaraPoll) xaraPoll = setInterval(loadXara, 4000);
   } else {
     if (xaraPoll) { clearInterval(xaraPoll); xaraPoll = null; loadXaraLog(true); }
-    xaraSet('xara-version', d.installed ? ('version ' + d.version)
+    xaraSet('xara-version', d.installed ? ('version ' + d.version + (d.registered_build ? ' (registered)' : ''))
       : (d.tool_missing ? 'not set up - run the install command again'
          : (d.supported === false ? 'no Xara build for this board' : 'not installed')));
   }

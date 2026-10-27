@@ -1,3 +1,24 @@
+## Xara registered speeds, no builds on the board - new in 1.4.25
+- New GitHub workflow .github/workflows/xara-registered.yml (also on main,
+  where GitHub runs schedules): every Monday, or by hand, it builds the
+  newest Xara version with Xara's `registered` feature for x86_64, aarch64
+  and armv7 (same steps as Xara's own release workflow) and publishes it as
+  release xara-v<version> of hebersoto/kp4pra, with SHA256SUMS and a
+  BUILD-FEATURES marker. A version that is already published is skipped:
+  one build per Xara version.
+- kp4pra-xara downloads the registered build first; a newer Xara version
+  without a registered build does not replace a registered one (the board
+  waits for it); a first install before any registered build gets Xara's
+  standard build and upgrades with the next update. Builds not marked
+  registered are refused. Boards never build from source (only with
+  --build, which now builds the registered version).
+- New setting xara.registered (default on; Config page "VARA speeds").
+  `registered = on` goes into Xara's config only when the installed build
+  has it, so Xara never refuses to start over it. Services and Config pages
+  show whether the installed Xara is the registered build.
+- Callsign: Xara uses the Station Information callsign and SSID (the Xara
+  card's Callsign field overrides it), as in 1.4.24.
+
 ## Xara VARA modem - new in 1.4.24
 - KP4PRA TNC can run Xara (https://github.com/x0rro/xara), a VARA FM/HF
   compatible modem, instead of Dire Wolf, so Winlink Express, Pat and other

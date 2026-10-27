@@ -437,6 +437,14 @@
       </select>
     </div>
     <div class="form-group">
+      <label class="form-label" for="xara-registered">VARA speeds</label>
+      <select class="form-select" id="xara-registered">
+        <option value="true" {% if _x.registered is not sameas false %}selected{% endif %}>Registered (needs a VARA registration)</option>
+        <option value="false" {% if _x.registered is sameas false %}selected{% endif %}>Standard</option>
+      </select>
+      <div class="form-hint" id="xara-registered-hint"></div>
+    </div>
+    <div class="form-group">
       <label class="form-label" for="xara-lead">PTT lead (ms)</label>
       <input class="form-input" id="xara-lead" type="number" min="0" max="1000" value="{{ _x.ptt_lead_ms if _x.ptt_lead_ms is not none else 0 }}">
     </div>
@@ -935,6 +943,7 @@ function collectXara() {
     call: v('xara-call').toUpperCase(),
     drive_db: Number(v('xara-drive')),
     network: v('xara-network') === 'true',
+    registered: v('xara-registered') === 'true',
     ptt_lead_ms: Number(v('xara-lead')),
     ptt_tail_ms: Number(v('xara-tail')),
     port: Number(v('xara-port')),
@@ -943,6 +952,18 @@ function collectXara() {
     version: v('xara-version') || 'latest',
   };
 }
+
+(async function xaraRegisteredHint() {
+  const el = document.getElementById('xara-registered-hint');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/xara/status')).json();
+    if (!d.installed) return;
+    el.textContent = d.registered_build
+      ? 'The Xara on this board has registered speeds.'
+      : 'The Xara on this board is the standard build; the registered build comes with the next update.';
+  } catch (e) {}
+})();
 
 async function previewXara() {
   const el = document.getElementById('xara-preview');

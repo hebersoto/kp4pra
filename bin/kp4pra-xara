@@ -23,6 +23,14 @@
 #             binaries only, never a long source build
 #   --force   reinstall even if that version is already installed
 #
+# Registered VARA speeds: Xara's own release files are built without them.
+# The KP4PRA repo's GitHub workflow (.github/workflows/xara-registered.yml)
+# builds each new Xara version once with the "registered" feature and
+# publishes it as release xara-v<version> of hebersoto/kp4pra. With
+# xara.registered on (the default) those files are used; until a version has
+# a registered build, the newest registered one stays (or, on a first
+# install, Xara's standard release is used). No board builds from source.
+#
 # How upgrades work: each version is unpacked into /opt/xara/<version> and
 # /opt/xara/current points at the one in use. Xara's own service file, udev
 # rule and system user come from that version's release (dist/), so a new
@@ -33,6 +41,8 @@
 set -u
 
 XARA_REPO="${KP4PRA_XARA_REPO:-https://github.com/x0rro/xara}"
+# Registered builds of each Xara version, published by KP4PRA's workflow.
+REG_REPO="${KP4PRA_XARA_REG_REPO:-https://github.com/hebersoto/kp4pra}"
 OPT=/opt/xara
 BIN=/usr/local/bin
 RW=/rw/xara
@@ -87,16 +97,20 @@ installed_versions() {
     done | sort -V
 }
 
-configured_version() {
-    # xara.version from config.yaml; "latest" when unset or unreadable.
+xara_setting() {   # KEY DEFAULT - a value from the xara: section of config.yaml
     local v=""
     if [ -x "$APP/venv/bin/python" ]; then
         v="$(KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml PYTHONPATH="$APP/src" \
-             "$APP/venv/bin/python" -c 'from common.config import load_config
-print((load_config().get("xara") or {}).get("version") or "latest")' 2>/dev/null)"
+             "$APP/venv/bin/python" -c 'import sys
+from common.config import load_config
+v = (load_config().get("xara") or {}).get(sys.argv[1])
+print("" if v is None else str(v).lower() if isinstance(v, bool) else v)' "$1" 2>/dev/null)"
     fi
-    echo "${v:-latest}"
+    echo "${v:-$2}"
 }
+configured_version() { xara_setting version latest; }
+want_registered() { [ "${KP4PRA_XARA_REGISTERED:-$(xara_setting registered true)}" = true ]; }
+is_registered() { grep -qx registered "$OPT/${1:-current}/BUILD-FEATURES" 2>/dev/null; }
 
 modem() { local m; m="$(cat "$MODEM_FILE" 2>/dev/null)"; [ "$m" = xara ] && echo xara || echo packet; }
 
@@ -117,12 +131,16 @@ close_root() { [ "$REMOUNTED" = 1 ] && { sync; kp4pra-remount-ro >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
 # Getting a version onto the board
-fetch_release() {   # VERSION TARGET DEST
-    local v="$1" t="$2" dest="$3" name tmp base
+fetch_release() {   # VERSION TARGET DEST [registered]
+    local v="$1" t="$2" dest="$3" kind="${4:-}" name tmp base
     name="xara-$v-$t"
-    base="$XARA_REPO/releases/download/v$v"
+    if [ "$kind" = registered ]; then
+        base="$REG_REPO/releases/download/xara-v$v"
+    else
+        base="$XARA_REPO/releases/download/v$v"
+    fi
     tmp="$(mktemp -d)"
-    say "downloading Xara $v for $t"
+    say "downloading Xara $v${kind:+ ($kind build)} for $t"
     if ! curl -fsL --retry 3 --connect-timeout 20 -o "$tmp/$name.tar.xz" "$base/$name.tar.xz"; then
         rm -rf "$tmp"; return 2          # no ready-made binary for this version/board
     fi
@@ -135,6 +153,9 @@ fetch_release() {   # VERSION TARGET DEST
     say "checksum OK"
     mkdir -p "$tmp/x" && tar -xJf "$tmp/$name.tar.xz" -C "$tmp/x" || { rm -rf "$tmp"; return 1; }
     [ -x "$tmp/x/$name/xara" ] || { rm -rf "$tmp"; warn "unexpected release layout"; return 1; }
+    if [ "$kind" = registered ] && ! grep -qx registered "$tmp/x/$name/BUILD-FEATURES" 2>/dev/null; then
+        rm -rf "$tmp"; warn "the registered build of $v is not marked registered - not used"; return 1
+    fi
     rm -rf "$dest" && mv "$tmp/x/$name" "$dest"
     rm -rf "$tmp"
 }
@@ -145,8 +166,9 @@ rust_ok() {   # rustc 1.85+ (Xara uses Rust edition 2024)
     [ -n "$v" ] && [ "$(printf '%s\n1.85.0\n' "$v" | sort -V | head -1)" = 1.85.0 ]
 }
 
-build_source() {  # VERSION DEST
-    local v="$1" dest="$2" cargo=cargo mem jobs
+build_source() {  # VERSION DEST [registered]
+    local v="$1" dest="$2" kind="${3:-}" cargo=cargo mem jobs feat=()
+    [ "$kind" = registered ] && feat=(--features registered)
     say "building Xara $v from source - this takes a long time on a small board"
     DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential pkg-config git curl \
         libasound2-dev libpulse-dev >/dev/null || { warn "could not install build tools"; return 1; }
@@ -165,11 +187,13 @@ build_source() {  # VERSION DEST
     git clone -q --depth 1 --branch "v$v" "$XARA_REPO.git" "$BUILD_DIR" || { warn "no tag v$v"; return 1; }
     mem=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
     jobs=$(( mem / 1024 )); [ "$jobs" -lt 1 ] && jobs=1; [ "$jobs" -gt 4 ] && jobs=4
-    ( cd "$BUILD_DIR" && "$cargo" build --release --locked -j "$jobs" -p xara ) || { warn "build failed"; return 1; }
+    ( cd "$BUILD_DIR" && "$cargo" build --release --locked -j "$jobs" -p xara "${feat[@]}" ) || { warn "build failed"; return 1; }
     mkdir -p "$dest.tmp"
     cp "$BUILD_DIR/target/release/xara" "$BUILD_DIR/target/release/xara-monitor" \
        "$BUILD_DIR/LICENSE" "$BUILD_DIR/README.md" "$dest.tmp/"
     cp -r "$BUILD_DIR/dist" "$dest.tmp/"
+    [ "$kind" = registered ] && printf 'registered\nsource: %s tag v%s (built on this board)\n' \
+        "$XARA_REPO" "$v" > "$dest.tmp/BUILD-FEATURES"
     rm -rf "$dest" && mv "$dest.tmp" "$dest"
     rm -rf "$BUILD_DIR"
 }
@@ -251,8 +275,10 @@ do_install() {  # install|update, args...
         valid_version "$candidates" || die "not a Xara version: $want"
     fi
     want="$(echo "$candidates" | head -1)"
-    if [ "$cur" = "$want" ] && [ "$force" = 0 ]; then
-        say "Xara $want is installed and up to date"
+    local reg=0 kind=""
+    want_registered && { reg=1; kind=registered; }
+    if [ "$cur" = "$want" ] && [ "$force" = 0 ] && { [ "$reg" = 0 ] || is_registered; }; then
+        say "Xara $want${kind:+ ($kind)} is installed and up to date"
         return 0
     fi
     if [ "$t" = none ] && [ "$build" = 0 ]; then
@@ -263,27 +289,61 @@ do_install() {  # install|update, args...
     open_root
     trap close_root EXIT
     mkdir -p "$OPT"
-    local v got=""
-    for v in $candidates; do
-        if [ "$cur" = "$v" ] && [ "$force" = 0 ]; then
-            say "Xara $want has no ready-made binary for $t yet - staying on $cur"
+    local v got="" stay=""
+    # 1. Registered builds (KP4PRA workflow), newest first. An installed
+    #    registered version beats a newer one that has no registered build yet.
+    if [ "$reg" = 1 ] && [ "$t" != none ]; then
+        for v in $candidates; do
+            if [ "$force" = 0 ] && is_registered "$v"; then
+                [ "$cur" = "$v" ] && { stay="$v"; break; }
+                say "Xara $v (registered) is already on the board - switching to it"
+                got="$v"; break
+            fi
+            fetch_release "$v" "$t" "$OPT/$v" registered; rc=$?
+            [ "$rc" = 0 ] && { got="$v"; break; }
+            [ "$rc" = 2 ] || return 1             # bad checksum / download: stop
+            say "no registered build of Xara $v yet (KP4PRA publishes one for each new version)"
+        done
+        if [ -n "$stay" ]; then
+            say "staying on Xara $stay (registered) until Xara $want has a registered build"
             close_root; trap - EXIT
             return 0
         fi
-        if [ -x "$OPT/$v/xara" ] && [ "$force" = 0 ]; then
-            say "Xara $v is already on the board - switching to it"
-            got="$v"; break
+        if [ -z "$got" ] && [ -n "$cur" ] && [ "$build" = 0 ]; then
+            say "keeping Xara $cur until a registered build is published"
+            close_root; trap - EXIT
+            return 0
         fi
-        rc=2
-        [ "$t" != none ] && { fetch_release "$v" "$t" "$OPT/$v"; rc=$?; }
-        if [ "$rc" = 0 ]; then got="$v"; break; fi
-        [ "$rc" = 2 ] || return 1                 # bad checksum / download: stop
-        if [ "$build" = 1 ]; then
-            build_source "$v" "$OPT/$v" || return 1
-            got="$v"; break
+        if [ -z "$got" ] && [ "$build" = 1 ]; then
+            build_source "$want" "$OPT/$want" registered || return 1
+            got="$want"
         fi
-        warn "Xara $v has no ready-made binary for $t (yet)."
-    done
+        [ -z "$got" ] && warn "no registered Xara build yet - installing Xara's standard build" \
+                              "for now (registered speeds come with the next update)"
+    fi
+    # 2. Xara's own release (standard speeds).
+    if [ -z "$got" ]; then
+        for v in $candidates; do
+            if [ "$cur" = "$v" ] && [ "$force" = 0 ]; then
+                say "Xara $want has no ready-made binary for $t yet - staying on $cur"
+                close_root; trap - EXIT
+                return 0
+            fi
+            if [ -x "$OPT/$v/xara" ] && [ "$force" = 0 ]; then
+                say "Xara $v is already on the board - switching to it"
+                got="$v"; break
+            fi
+            rc=2
+            [ "$t" != none ] && { fetch_release "$v" "$t" "$OPT/$v"; rc=$?; }
+            if [ "$rc" = 0 ]; then got="$v"; break; fi
+            [ "$rc" = 2 ] || return 1             # bad checksum / download: stop
+            if [ "$build" = 1 ]; then
+                build_source "$v" "$OPT/$v" || return 1
+                got="$v"; break
+            fi
+            warn "Xara $v has no ready-made binary for $t (yet)."
+        done
+    fi
     if [ -z "$got" ]; then
         warn "build it from source with: sudo kp4pra-xara $action $want --build"
         return 1
@@ -296,7 +356,7 @@ do_install() {  # install|update, args...
     fi
     switch_to "$want"
     prune
-    say "Xara $("$BIN/xara" --version | awk '{print $2}') installed (was: ${cur:-none})"
+    say "Xara $("$BIN/xara" --version | awk '{print $2}')$(is_registered && echo ' (registered)') installed (was: ${cur:-none})"
     if systemctl is-active --quiet "$UNIT"; then
         say "restarting Xara on the new version"
         systemctl restart "$UNIT" || warn "Xara did not restart - see: journalctl -u $UNIT"
@@ -393,6 +453,7 @@ do_status() {
     dw="$(systemctl is-active direwolf.service 2>/dev/null)"
     if [ "$json" = 1 ]; then
         V="$ver" VS="$(installed_versions | tr '\n' ' ')" M="$(modem)" R="$run" D="$dw" T="$(target)" \
+        G="$(is_registered && echo yes)" \
         U="$(systemctl is-active kp4pra-xara-update.service 2>/dev/null)" P="$plan" \
         python3 -I -c '
 import json, os
@@ -408,9 +469,10 @@ print(json.dumps({
     "xara_state": e["R"] or "inactive", "running": e["R"] == "active",
     "direwolf_state": e["D"] or "inactive",
     "updating": e["U"] in ("active", "activating"),
-    "target": e["T"], "supported": e["T"] != "none", "ptt": ptt}))'
+    "target": e["T"], "supported": e["T"] != "none", "ptt": ptt,
+    "registered_build": e["G"] == "yes"}))'
     else
-        echo "Xara installed:  ${ver:-no}  (on the board: $(installed_versions | tr '\n' ' '))"
+        echo "Xara installed:  ${ver:-no}$(is_registered && echo ' (registered build)')  (on the board: $(installed_versions | tr '\n' ' '))"
         echo "Modem in use:    $(modem)   (xara: ${run:-inactive}, direwolf: ${dw:-inactive})"
         echo "Board target:    $(target)"
         [ -f "$plan" ] && echo "PTT:             $(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["describe"])' "$plan" 2>/dev/null)"

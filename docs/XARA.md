@@ -5,8 +5,8 @@ modem for Linux, written by x0rro (MIT license). With Xara, your KP4PRA TNC
 can be the VARA modem for Winlink Express, Pat and other programs that talk to
 VARA over the network.
 
-KP4PRA installs Xara as it is, from its official releases, and keeps it up to
-date. KP4PRA does not change Xara.
+KP4PRA does not change Xara's code. It installs Xara with **registered VARA
+speeds** turned on (see "Registered speeds" below) and keeps it up to date.
 
 ## One modem at a time
 
@@ -29,8 +29,8 @@ downloads Xara when there is a ready-made Xara for your board:
   (64-bit and 32-bit systems).
 - Original Raspberry Pi Zero W: no. It is too slow for VARA.
 
-The download is checked against the checksum file that comes with each Xara
-release. If it does not match, nothing is installed.
+The download is checked against the checksum file that comes with it. If it
+does not match, nothing is installed.
 
 If Xara was not installed (no internet at the time, for example), click
 **Install Xara** on the Services page, or type:
@@ -64,6 +64,29 @@ the KP4PRA Config page.
 Ports while Xara runs: 8300 (VARA commands), 8301 (VARA data), 8100 (VARA
 KISS), 8080 (Xara page). To keep VARA programs on other devices out, set
 "VARA apps on other devices" to "Only on this board".
+
+## Registered speeds
+
+VARA's faster speeds are for stations with a VARA registration. Xara has them
+only when it is built with its "registered" option, and Xara's own downloads
+are built without it. So that no board ever has to build Xara (that takes up
+to an hour and a half on a Zero 2W), the KP4PRA repository builds it:
+
+- A GitHub workflow in the KP4PRA repo (Actions, "Registered Xara builds")
+  checks every Monday for a new Xara version. When there is one, it builds
+  Xara from Xara's unchanged source with the registered option, for every
+  board KP4PRA supports, and publishes it on the KP4PRA repo as a release
+  named `xara-v<version>`. It can also be started by hand (Run workflow).
+- Boards download that build like any update. Each version is built once.
+- If a new Xara version is out but its registered build is not published
+  yet, the board stays on its current registered version until it is.
+- On a brand-new install, before any registered build exists, the board gets
+  Xara's standard build and switches to the registered one with the next
+  update.
+
+Registered speeds are on by default. To use standard speeds, set **VARA
+speeds** to "Standard" on the Config page. The Config page and the Services
+page show whether the installed Xara has registered speeds.
 
 ## Updating Xara
 
@@ -132,12 +155,20 @@ stops or if PTT stays on for more than 2 minutes.
 | `kp4pra-xara latest`                 | newest Xara version on GitHub              |
 | `sudo kp4pra-xara uninstall`         | remove Xara (settings are kept)            |
 
-`--build` (install/update) builds Xara from source when a version has no
-ready-made binary for the board. It takes a long time (30 to 90 minutes on a
-Zero 2W) and needs Rust 1.85 or newer, which it installs if needed.
+`--build` (install/update) builds Xara on the board itself, only for special
+cases: a board with no ready-made build, or no internet access to GitHub. It
+takes a long time (30 to 90 minutes on a Zero 2W) and needs Rust 1.85 or
+newer, which it installs if needed. With registered speeds on, it builds the
+registered version. Normal installs and updates never build.
 
 ## How it fits together (for developers)
 
+- Downloads come from `github.com/hebersoto/kp4pra` releases `xara-v<version>`
+  (registered builds, made by `.github/workflows/xara-registered.yml`; each
+  has a `BUILD-FEATURES` file saying `registered`), or from Xara's own
+  releases (`github.com/x0rro/xara`, tag `v<version>`) when registered
+  speeds are off or no registered build exists yet. Both are checked
+  against their `SHA256SUMS`.
 - `/opt/xara/<version>/` holds each release as published (binaries, `dist/`).
   `/opt/xara/current` points at the one in use; `/usr/local/bin/xara` points
   into it. Two versions are kept.
@@ -151,4 +182,6 @@ Zero 2W) and needs Rust 1.85 or newer, which it installs if needed.
 - `/var/lib/xara` (Xara's state) is a bind mount of `/rw/xara/state`.
 - The chosen modem is in `/rw/kp4pra-tnc/modem`; `kp4pra-xara-boot.service`
   starts Xara at boot when it says `xara`.
+- `registered = on` is written to Xara's config only when the installed
+  build has registered speeds (Xara refuses the option otherwise).
 - Settings: the `xara:` section of `/rw/kp4pra-tnc/config.yaml`.

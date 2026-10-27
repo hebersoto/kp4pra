@@ -89,9 +89,10 @@ def cfg(**station):
     return {"station": st, "xara": {}}
 
 
-def gen(c, adevice="plughw:Device,0", hid="/dev/hidraw2"):
+def gen(c, adevice="plughw:Device,0", hid="/dev/hidraw2", registered_build=True):
     with patch.object(dp, "detect_platform", return_value="rpi"):
-        return xc.generate(c, adevice=adevice, hidraw_lookup=lambda a: hid)
+        return xc.generate(c, adevice=adevice, hidraw_lookup=lambda a: hid,
+                           registered_build=registered_build)
 
 
 class Generate(unittest.TestCase):
@@ -123,7 +124,8 @@ class Generate(unittest.TestCase):
     def test_dra_on_orange_pi_remaps_pi_line(self):
         c = cfg(ptt="GPIOD", ptt_param="gpiochip0 12")
         with patch.object(dp, "detect_platform", return_value="opi-zero2w"):
-            text, plan = xc.generate(c, adevice="plughw:DRAPiZero,0", hidraw_lookup=lambda a: None)
+            text, plan = xc.generate(c, adevice="plughw:DRAPiZero,0", hidraw_lookup=lambda a: None,
+                                     registered_build=False)
         self.assertEqual(plan["gpio"]["chip"], "gpiochip1")
         self.assertEqual(plan["gpio"]["line"], 267)
 
@@ -172,11 +174,39 @@ class Generate(unittest.TestCase):
         self.assertFalse(xc.valid_vara_call("KP4PRA-0"))
         self.assertFalse(xc.valid_vara_call("TOOLONGC"))
 
+    def test_registered_default_on(self):
+        text, plan = gen(cfg())
+        self.assertEqual(xara_accepts(text), [], text)
+        self.assertIn("registered = on\n", text)
+        self.assertTrue(plan["registered"])
+
+    def test_registered_only_with_registered_build(self):
+        # Xara built without the feature refuses "registered": leave it out.
+        text, plan = gen(cfg(), registered_build=False)
+        self.assertNotIn("registered = on", text)
+        self.assertIn("# registered speeds", text)
+        self.assertFalse(plan["registered"])
+
+    def test_registered_off(self):
+        c = cfg()
+        c["xara"] = {"registered": False}
+        text, plan = gen(c)
+        self.assertNotIn("registered", text)
+        self.assertFalse(plan["registered"])
+
+    def test_build_marker(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "BUILD-FEATURES")
+            self.assertFalse(xc.build_is_registered(f))
+            open(f, "w").write("registered\nsource: x\n")
+            self.assertTrue(xc.build_is_registered(f))
+
     def test_write_files(self):
         with tempfile.TemporaryDirectory() as d:
             conf, plan = os.path.join(d, "x", "kp4pra.conf"), os.path.join(d, "run", "ptt.json")
             with patch.object(dp, "detect_platform", return_value="rpi"), \
-                 patch.object(xc, "resolve_adevice", return_value="plughw:audioinjectorpi,0"):
+                 patch.object(xc, "resolve_adevice", return_value="plughw:audioinjectorpi,0"), \
+                 patch.object(xc, "build_is_registered", return_value=False):
                 xc.write(cfg(ptt="GPIOD"), conf_path=conf, plan_path=plan)
             self.assertEqual(oct(os.stat(conf).st_mode & 0o777), "0o640")
             self.assertEqual(json.load(open(plan))["gpio"]["line"], 12)
@@ -192,7 +222,8 @@ class Validation(unittest.TestCase):
 
     def test_bad(self):
         for x in ({"mode": "fm"}, {"drive_db": 1}, {"ptt_tail_ms": 5000}, {"version": "new"},
-                  {"port": 8087}, {"ui_port": 8088}, {"call": "KP4PRA-0"}, {"network": "yes"}):
+                  {"port": 8087}, {"ui_port": 8088}, {"call": "KP4PRA-0"}, {"network": "yes"},
+                  {"registered": "on"}):
             self.assertFalse(self.ok(x)[0], x)
 
 

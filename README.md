@@ -92,9 +92,12 @@ FM/HF compatible modem, so Winlink Express, Pat and other VARA programs can
 use the TNC as their VARA modem over the network. Xara and Dire Wolf share
 the radio, so one runs at a time; you switch on the Services page.
 
-- Installed and upgraded from Xara's official releases (checksum checked),
-  by the install command or `sudo kp4pra-xara update`; the previous version
-  is kept for `sudo kp4pra-xara rollback`.
+- Registered VARA speeds: a workflow in this repo builds each new Xara
+  version once with Xara's "registered" option and publishes it here
+  (releases `xara-v<version>`), so boards only download, never build.
+- Installed and upgraded by the install command or `sudo kp4pra-xara
+  update` (checksum checked); the previous version is kept for `sudo
+  kp4pra-xara rollback`.
 - Uses the station sound card and PTT, including the DRA-Pi-Zero (GPIO PTT
   through a small rigctld-style helper).
 - Settings on the Config page; Xara's own status page on port 8080.

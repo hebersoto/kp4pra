@@ -34,6 +34,9 @@ PTT_PLAN_PATH = "/run/kp4pra-xara/ptt.json"
 # Local rigctld-protocol PTT helper (bin/kp4pra-xara-ptt). Not 4532, so a
 # real rigctld for a CAT radio can keep its usual port.
 PTT_HELPER_ADDR = "127.0.0.1:4539"
+# Written into each registered Xara build by KP4PRA's GitHub workflow
+# (.github/workflows/xara-registered.yml) or by `kp4pra-xara --build`.
+BUILD_FEATURES = "/opt/xara/current/BUILD-FEATURES"
 
 MODES = {
     "fm-narrow": ("fm", "narrow"),
@@ -51,6 +54,7 @@ MODE_LABELS = {
 }
 DEFAULTS = {
     "version": "latest",
+    "registered": True,
     "mode": "fm-narrow",
     "call": "",
     "drive_db": -5,
@@ -131,7 +135,19 @@ def ptt_plan(station: dict, adevice: str, hidraw_lookup=find_cm108_hidraw) -> di
     return {"ptt": None, "gpio": None, "describe": "no PTT - receive only"}
 
 
-def generate(cfg: dict, adevice: str = None, hidraw_lookup=find_cm108_hidraw) -> tuple:
+def build_is_registered(path: str = BUILD_FEATURES) -> bool:
+    """True when the installed Xara was built with registered VARA speeds.
+    Xara refuses to start with `registered` if it was not, so the line is
+    only written when the build has it."""
+    try:
+        with open(path) as f:
+            return any(l.strip() == "registered" for l in f)
+    except OSError:
+        return False
+
+
+def generate(cfg: dict, adevice: str = None, hidraw_lookup=find_cm108_hidraw,
+             registered_build=None) -> tuple:
     """Return (config text, ptt plan)."""
     x = settings(cfg)
     st = (cfg or {}).get("station", {}) or {}
@@ -166,6 +182,14 @@ def generate(cfg: dict, adevice: str = None, hidraw_lookup=find_cm108_hidraw) ->
     ]
     if x.get("ui_port"):
         lines += [f"ui-port = {int(x['ui_port'])}", "ui-addr = 0.0.0.0"]
+    if registered_build is None:
+        registered_build = build_is_registered()
+    if x.get("registered") and registered_build:
+        lines.append("registered = on")
+    elif x.get("registered"):
+        lines.append("# registered speeds: this Xara build does not have them yet "
+                     "(the next update installs the registered build)")
+    plan["registered"] = bool(x.get("registered") and registered_build)
     return "\n".join(lines) + "\n", plan
 
 

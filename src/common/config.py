@@ -145,6 +145,7 @@ DEFAULT_CONFIG = {
         # Xara, the VARA-compatible modem (docs/XARA.md). Runs instead of
         # Dire Wolf when chosen on the Services page.
         "version": "latest",       # Xara version to install/keep: latest or e.g. "0.1.1"
+        "registered": True,        # registered VARA speeds (registered Xara builds)
         "mode": "fm-narrow",       # fm-narrow | fm-wide | hf-500 | hf-2300 | hf-2750
         "call": "",                # blank = station callsign-SSID
         "drive_db": -5,            # TX audio level, dB (<= 0)
