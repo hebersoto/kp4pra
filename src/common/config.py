@@ -50,9 +50,12 @@ DEFAULT_CONFIG = {
     "web": {
         "host": "0.0.0.0",
         "port": 8088,
-        "auth_enabled": False,
-        "username": "admin",
-        "password": "",
+        "auth_enabled": False,   # legacy HTTP Basic (unused; kept for back-compat)
+        "username": "admin",     # legacy (unused)
+        "password": "",          # legacy (unused)
+        # Admin Dashboard session login. Empty = not yet secured (first-run
+        # grace: dashboard is open so the trustee can do initial config).
+        "dashboard_password_hash": "",
     },
     "bluetooth": {
         "auto_discoverable": False,
@@ -79,6 +82,54 @@ DEFAULT_CONFIG = {
         "client_ssid": "",
         "client_password": "",
     },
+    "webmail": {
+        "enabled": True,
+        "delivery": {
+            "dry_run": True,       # SAFETY: real sending is off by default
+            "method": "cms",       # cms | rf  (default route when auto-pick is off)
+            "auto_route": True,    # prefer cms when internet is reachable, else rf
+            "sid": {
+                # Client identification line sent to CMS/RMS, e.g.
+                # [KP4PRA-1.4.7dev-B2FHM$]. client_name and capabilities
+                # default to KP4PRA / B2FHM$; version blank = use VERSION file.
+                # Swap client_name to the Winlink-assigned identifier on
+                # approval. Do NOT set this to another vendor's client name.
+                "client_name": "KP4PRA",
+                "version": "",
+                "capabilities": "B2FHM$",
+            },
+            "rf": {
+                "remote_rms": "",      # remote RMS gateway callsign (required for rf)
+                "digipeaters": [],     # 0-2 digipeater callsigns, in path order
+                "block_size": 250,     # B2F chunk size (<=255; 125 for paclen-128)
+                "mycall": "",          # our TX callsign (defaults to station.callsign)
+                "restart_listener": True,  # restart kp4pra-tnc-rms after each rf send
+                "connect_retries": 3,  # SABM attempts before giving up
+                "ack_timeout": 10,     # seconds to wait for UA / I-frame ack
+            },
+        },
+    },
+    "display": {
+        # Adafruit Mini PiTFT 1.3" (240x240) status screen, kp4pra-tnc-tft:
+        # auto = use it when detected, on = always, off = never.
+        "tft": "auto",
+        # 0 = upright as mounted on the KP4PRA boards, 180 = flipped.
+        "tft_rotation": 0,
+    },
+    "station": {
+        "callsign": "",
+        "ssid": "",
+        "aliasssid": "",
+        "calias": "CDIGI",
+        "clock": "",
+        "mygrid": "",
+        "lat": 0.0,
+        "lon": 0.0,
+        "ptt": "CM108",
+        "ptt_param": "",
+        "sound": "",
+        "morse_id_enabled": True,
+    },
     "rms": {
         "enabled": False,
         "cms_call": "",
@@ -89,6 +140,43 @@ DEFAULT_CONFIG = {
         "cms_port": 8772,
         "telnet_enabled": True,
         "telnet_port": 8772,  # Winlink Express "Telnet Winlink" defaults to 8772
+    },
+    "xara": {
+        # Xara, the VARA-compatible modem (docs/XARA.md). Runs instead of
+        # Dire Wolf when chosen on the Services page.
+        "version": "latest",       # Xara version to install/keep: latest or e.g. "0.1.1"
+        "registered": True,        # registered VARA speeds (registered Xara builds)
+        "mode": "fm-narrow",       # fm-narrow | fm-wide | hf-500 | hf-2300 | hf-2750
+        "call": "",                # blank = station callsign-SSID
+        "drive_db": -5,            # TX audio level, dB (<= 0)
+        "ptt_lead_ms": 0,          # PTT on before audio (0-1000)
+        "ptt_tail_ms": 100,        # PTT held after audio (0-1000)
+        "network": True,           # VARA apps on other devices may connect (and find it)
+        "auto_switch": True,       # a VARA app (RadioMail) may switch the TNC to Xara
+        "port": 8300,              # VARA command port (data port = port + 1)
+        "kiss_port": 8100,         # VARA KISS port, or "off"
+        "ui_port": 8080,           # Xara's own web page (status, waterfall)
+    },
+    "aprs": {
+        "enabled": True,
+        "mycall": "",              # TX callsign; blank = station.callsign
+        "digipath": ["WIDE1-1", "WIDE2-1"],  # RF digipeater path
+        "retry_interval": 30,      # seconds before an un-acked resend
+        "max_retries": 3,          # give up after this many resends
+        "aprsis": {
+            "enabled": False,      # also use APRS-IS (internet) when available
+            "host": "rotate.aprs2.net",
+            "port": 14580,
+        },
+        "beacon": {
+            "enabled": False,      # periodic position beacon on/off
+            "interval_min": 0,     # 0 = manual "Beacon now" only
+            "symbol_table": "/",   # / primary, \\ alternate, or overlay char
+            "symbol_code": "-",    # - house, > car, & gateway, # digipeater
+            "comment": "KP4PRA APRS",
+            "lat": 0.0,            # 0 = use station lat/lon, else grid
+            "lon": 0.0,
+        },
     },
 }
 

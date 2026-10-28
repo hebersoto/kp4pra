@@ -1,0 +1,77 @@
+#!/bin/bash
+# KP4PRA TNC - DRA-Pi-Zero codec I2C health check + recovery (Orange Pi).
+#
+# Runs as root right before Dire Wolf starts (ExecStartPre drop-in installed
+# by scripts/setup-dra-pi-zero.sh on the Orange Pi Zero 2W only). Also safe
+# to run by hand:  sudo kp4pra-dra-i2c-check
+#
+# Why: on 2026-10-12 the SoC I2C controller (mv64xxx, i2c1 on header pins
+# 3/5) got stuck reporting "I2C bus locked" while both wires were idle.
+# Every codec register write then timed out (~2 s each), so each Dire Wolf
+# start stalled ~30 s and the codec was left half-configured (no RX/TX).
+# The driver never resets itself from that state; unbinding and rebinding
+# the controller does. This script detects the condition with one harmless
+# codec write and recovers automatically.
+#
+# Exits 0 in every case so Dire Wolf always starts; results go to the journal.
+
+log() { echo "dra-i2c-check: $*"; }
+
+eval "$(kp4pra-dra-platform 2>/dev/null)"
+[ "${DRA_PLATFORM:-}" = "opi-zero2w" ] || exit 0
+
+# I2C lines of i2c1 on the Orange Pi Zero 2W header (gpiochip1 offsets).
+SCL_LINE=263   # PI7, header pin 5
+SDA_LINE=264   # PI8, header pin 3
+CODEC_ADDR=0x1a
+DRV=/sys/bus/platform/drivers/mv64xxx_i2c
+
+dev=""
+for d in /sys/bus/i2c/devices/*-001a; do
+    [ -e "$d/driver" ] && [ "$(basename "$(readlink -f "$d/driver")")" = wm8731 ] && dev=$d && break
+done
+[ -n "$dev" ] || { log "no WM8731 codec bound - nothing to check"; exit 0; }
+bus=$(basename "$dev"); bus=${bus%%-*}
+ctrl=$(basename "$(readlink -f "/sys/bus/i2c/devices/i2c-$bus/..")")
+
+# Never touch the codec while audio is streaming.
+for s in /proc/asound/"$DRA_CARD"/pcm0*/sub0/status; do
+    [ -r "$s" ] && ! grep -q closed "$s" && { log "audio stream open - skipping"; exit 0; }
+done
+
+probe() {  # reg 9 (active) = 0: the codec's idle state, harmless when no stream is open
+    timeout 6 i2ctransfer -f -y "$bus" w2@"$CODEC_ADDR" 0x12 0x00 >/dev/null 2>&1
+}
+
+if probe; then
+    log "codec I2C bus $bus OK"
+    exit 0
+fi
+
+log "codec I2C bus $bus NOT responding (controller $ctrl) - recovering"
+echo "$ctrl" > "$DRV/unbind" 2>/dev/null
+sleep 0.2
+# Free a slave that might hold SDA: up to 9 SCL pulses, then a STOP.
+for _ in 1 2 3 4 5 6 7 8 9; do
+    [ "$(gpioget -c gpiochip1 --numeric "$SDA_LINE" 2>/dev/null)" = 1 ] && break
+    timeout 0.01 gpioset -c gpiochip1 "$SCL_LINE=0"; timeout 0.01 gpioset -c gpiochip1 "$SCL_LINE=1"
+done
+timeout 0.01 gpioset -c gpiochip1 "$SDA_LINE=0"
+timeout 0.01 gpioset -c gpiochip1 "$SCL_LINE=1"
+timeout 0.01 gpioset -c gpiochip1 "$SDA_LINE=1"
+gpioget -c gpiochip1 "$SCL_LINE" "$SDA_LINE" >/dev/null 2>&1   # back to inputs
+echo "$ctrl" > "$DRV/bind" 2>/dev/null
+
+# The codec and the sound card re-probe after the rebind.
+for _ in $(seq 20); do
+    grep -q "\[$DRA_CARD" /proc/asound/cards 2>/dev/null && break
+    sleep 0.5
+done
+alsactl restore "$DRA_CARD" >/dev/null 2>&1 || log "WARN: mixer restore failed - run: sudo setup-dra-pi-zero.sh --mixer-only"
+
+if probe; then
+    log "recovered: codec I2C bus $bus OK again, mixer restored"
+else
+    log "ERROR: codec I2C bus $bus still not responding - power-cycle the board"
+fi
+exit 0

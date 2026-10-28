@@ -8,6 +8,11 @@ uvicorn>=0.24.0
 jinja2==3.1.4
 pyyaml>=6.0
 dbus-next>=0.2.3
+# email-validator: reliable RFC 5321/5322 address validation for the public
+# Web Email Interface (spec says use a real validator, not hand-rolled RFC).
+# The app degrades to a conservative ASCII fallback if this is absent, but
+# install it for full compliance:  venv/bin/pip install email-validator
+email-validator>=2.0
 # NOTE: PyBluez removed - it is unmaintained and fails to build on
 # Python 3.13. The RFCOMM bridge uses Python's built-in socket module
 # (AF_BLUETOOTH/BTPROTO_RFCOMM); SDP registration uses sdptool from the

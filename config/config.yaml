@@ -39,10 +39,16 @@ station:
   sound: ''
   ssid: ''
 web:
-  auth_enabled: false
   host: 0.0.0.0
-  password: ""
   port: 8088
+  # Admin Dashboard session login. Blank = not yet secured (first-run grace:
+  # the dashboard stays open until a valid callsign is set and the trustee
+  # sets a password here, via the Config page). Stored as a salted scrypt
+  # hash, never plain text.
+  dashboard_password_hash: ""
+  # --- Legacy HTTP Basic fields (no longer used; kept for back-compat) ---
+  auth_enabled: false
+  password: ""
   username: admin
 
 # WiFi access point (field mode). The TNC can broadcast its own network
@@ -69,3 +75,10 @@ rms:
   mode: "PACKET-1200"
   telnet_enabled: true   # Winlink-over-TCP access, all interfaces (0.0.0.0)
   telnet_port: 8772  # Winlink Express "Telnet Winlink" defaults to 8772
+
+# Public Web Email Interface (compose -> holding queue -> trustee review)
+webmail:
+  enabled: true   # false hides the public composer; landing + admin unaffected
+  delivery:
+    dry_run: true   # SAFETY: real transmission is OFF until the trustee sets false
+    method: cms     # cms | rf  (rf path added in a later step)

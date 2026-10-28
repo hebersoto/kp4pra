@@ -1,0 +1,198 @@
+# Mini PiTFT status display (Adafruit 1.3" 240x240)
+
+Optional front-panel display for the KP4PRA TNC: station call sign, live
+packet traffic in UZ7HO Soundmodem style, Winlink/WiFi/Bluetooth counters and
+the network address. Works on the **Raspberry Pi** and the **Orange Pi Zero
+2W (Armbian)**, with or without the DRA-Pi-Zero (they share no pins; use a
+stacking header to fit both).
+
+Hardware: [Adafruit Mini PiTFT 1.3" 240x240](https://www.adafruit.com/product/4484)
+(ST7789). Font: DejaVu Sans 24 pt.
+
+## Setup
+
+The installer (`scripts/install.sh`) runs `scripts/setup-tft.sh --auto`: it
+always installs the `kp4pra-tnc-tft` service and enables SPI **only if a Mini
+PiTFT is plugged in at that moment** (reboot afterwards). To add a display
+later, plug it in and run:
+
+```bash
+sudo kp4pra-remount-rw
+cd ~/kp4pra-tnc
+sudo bash scripts/setup-tft.sh
+sudo reboot
+```
+
+Web UI -> **Config -> TFT Display**: **Auto** (default - use the display when
+it is detected), **On** (always) or **Off**. The card shows the live status.
+**Orientation**: Normal (default) or Flipped 180° if the picture is upside
+down in your enclosure. Changes apply within about 10 seconds (no restart
+needed).
+
+What the setup does: installs `python3-pil python3-numpy python3-spidev
+python3-libgpiod python3-yaml fonts-dejavu-core`; adds `kp4pra-tnc` to the
+`gpio`, `systemd-journal` (and on a Pi `spi`) groups; enables SPI
+(Pi: `dtparam=spi=on` in config.txt, backed up to `config.txt.kp4pra-tft.bak`;
+Orange Pi: user overlay `kp4pra-tft-orangepi` = SPI1 + spidev); enables the
+service.
+
+## Screens
+
+| Row | Screen 1 | Screen 2 |
+|---|---|---|
+| 1 | Call sign + SSID | Winlink: N pending |
+| 2-4 | Last 3 frames (red = TX, green = RX) | WiFi: N devices (AP) / client · BT/BLE: N |
+| 5-7 | Current packet: `FROM>TO` (UI: `FROM`) + `via` digipeaters, `<frame type>` + time + TX/RX, UI text | Last 4 frames (rows 4-7) |
+| 8 | `AP 172.16.0.1` or `CL <ip>` (same on both screens) | same |
+
+At power-up a splash screen shows **KP4PRA TNC** in KP4PRA green on white for
+10 seconds. Lines wider than the screen scroll slowly.
+
+Every traffic line starts with the callsigns, `FROM>TO`, followed by a short
+AX.25 monitor token (no Pid / Len, so lines stay short; long lines scroll):
+
+| Frame | Token |
+|---|---|
+| Connected data | `<I C [P] Rn Sn>` |
+| Supervisory | `<RR C\|R [P\|F] Rn>`, `<RNR ...>`, `<REJ ...>`, `<SREJ ...>` |
+| Link setup / teardown | `<SABM C P>`, `<SABME C P>`, `<DISC C P>`, `<UA R F>`, `<DM R F>`, `<FRMR R F>` |
+| Other | `<XID C\|R [P\|F]>`, `<TEST C\|R [P\|F]>`, `<UNKN>` |
+| UI (APRS, beacons) | `<UI C>` |
+
+Examples: `KP3M-11>WP4DMD-2 <RR R F R3>`, `KP3M-10>KP4CE-10 <I C P R5 S2>`.
+UI frames leave out the destination (the TOCALL such as `APRS`), show the
+frame text with repeated spaces collapsed, and drop GPS position data
+(coordinates, symbol, course/speed, altitude, raw NMEA):
+`NP4JM-10 <UI C> Hello from Ponce`.
+C/R = command/response, P/F = poll/final, R/S = receive/send sequence numbers.
+
+Digipeated frames (UI and connected) show the digipeaters that repeated them
+right after the callsigns, with `via`:
+`KP3M-11>WP4DMD-2 via KP4DIG-1 <RR R F R3>`,
+`NP4JM-10 via KP4A,KP4B-2 <UI C> Hello`. Generic `WIDEn-N` path entries are
+never shown, and path entries not yet used (e.g. our own beacon going out
+with `WIDE2-2`, or a connect request via a digipeater before it repeats it)
+show no `via`.
+
+## VARA screens (Xara)
+
+While Xara (the VARA modem, docs/XARA.md) is the modem instead of Dire Wolf,
+the two screens change to VARA. Button 23 still switches between them, and
+they go back to the packet screens when the TNC goes back to Dire Wolf.
+
+**Screen 1 - VARA monitor**
+
+- Top bar: "VARA FM wide" (or narrow / HF) and three lights: **TX** (red,
+  transmitting), **RX** (green, receiving the other station), **BSY**
+  (yellow, the channel is busy).
+- Link state: Listening (grey), Calling KP3M-12 (yellow), Linked KP3M-12
+  (green), Disconnecting (orange).
+- **S/N** in dB and the speed level (**SL 7**) while linked.
+- Speed: link rate in **bps** and the same in **BPM** (bytes per minute, the
+  unit Winlink programs use: bps x 60 / 8). This is the modem's current
+  speed, not the average a whole session achieved.
+- RX and TX audio levels.
+- Waterfall: the last few seconds of the audio spectrum, newest at the
+  bottom; VARA bursts show as bright blocks.
+- S/N graph: the last 90 seconds.
+
+**Screen 2 - VARA log:** connected / disconnected (with the top speed of the
+session in BPM) / unable to connect / timed out, with the time, plus the
+retries and the bytes still waiting to be sent.
+
+The data comes from Xara's own live feed (its page port, 8080), the same
+data as the Xara web page. VARA activity (calling, linked, transmitting,
+busy) wakes the screen like packet traffic does.
+
+## Screen saver
+
+- No RX/TX traffic for **3 minutes**: the station callsign (without SSID,
+  e.g. `KP4PRA`) crawls around the screen like the centipede of the Atari
+  arcade game - one letter per body segment, red head, wiggling legs, no
+  mushrooms. Its path is random; leaving one edge it comes back in on the
+  opposite edge.
+- After **2 minutes** of centipede the screen goes black (display and
+  backlight off).
+- RX or TX traffic brings back the screen you were on, with the new packet.
+- A button press (23 or 24, short or long) while the centipede runs or the
+  screen is black only wakes the screen you were on; it does not switch
+  screens, turn it off, send a beacon or switch WiFi. After that the buttons
+  work normally.
+- A screen turned off with button 24 stays off (no saver, traffic does not
+  turn it on).
+
+## Shut Down from the web UI
+
+Pressing **Shut Down** on the Config page also takes over the display: it
+wakes (even from the screen saver or when turned off with button 24), clears
+and shows the same **10 -> 0 countdown** as the web page; the buttons do
+nothing meanwhile. Cancel on the web page returns the display to the normal
+screen. At 0 it shows **"Shutting Down, disconnect power in 15 seconds"**,
+and that message is left on screen while the board powers off (also after a
+`sudo poweroff` from SSH). Unplug when the screen goes dark or after 15 s.
+
+## Buttons
+
+| Button | Action |
+|---|---|
+| 23 (top), short press | Switch screen 1 <-> 2. If the screen is off, turns it on |
+| 23 held 3 s | Switch WiFi between Client and Access Point mode. Shows "WiFi Access Point Mode" or "WiFi Client Mode" (splash colors) for 10 s. Switching to Access Point drops a client-WiFi SSH session |
+| 24 (bottom), short press | Screen off / on (wakes on the same screen) |
+| 24 held 3 s | Send one APRS beacon: call sign + SSID and position (beacon lat/lon, else station lat/lon, else grid). Without a position it sends a status beacon (`>comment`). "Beacon sent" shows for 3 s |
+
+Client mode turns the hotspot off and joins the client WiFi set in
+Config -> WiFi. With no client WiFi configured, WiFi stays disconnected and
+the bottom row shows `CL` with the wired / USB Ethernet address (if any).
+Access Point mode needs `dnsmasq-base` (installed by the installer). On
+the Orange Pi Zero 2W the hotspot is open (no WiFi password; its onboard
+WiFi cannot complete WPA2 joins) - see INSTALL.md. If the
+switch fails the screen shows "WiFi switch failed" in red; details in
+`journalctl -u kp4pra-tnc-tft -b`.
+
+After a WiFi mode switch the DRA-Pi-Zero blue LED keeps following Bluetooth
+availability (kp4pra-tnc-bt-led, every 2 s): off while neither BLE nor
+RFCOMM is available, solid when available, fast flash with a client
+connected.
+
+The beacon uses the APRS settings from the Config page (callsign, digipeater
+path, symbol, comment) and goes out through Dire Wolf's AGW port; the APRS
+chat page does not need to be running.
+
+## How it works
+
+- `src/tft/main.py` (service `kp4pra-tnc-tft`, user `kp4pra-tnc`, system
+  python3).
+- Traffic comes from Dire Wolf's own packet log (`journalctl -u direwolf`):
+  it is the only source that shows **our own transmissions of every frame
+  type** (Dire Wolf's AGW monitor omits own-transmitted connected-mode
+  frames). `src/tft/monitor.py` converts its `(SABM cmd, p=1)` style
+  descriptions to UZ7HO tokens.
+- Detection (Auto): the ST7789 cannot be read back (MISO not connected), so
+  the service probes the two buttons: with the SoC's weak pull-downs enabled,
+  both read high only when the board's 10 k pull-ups are present.
+- Status for the web UI: `/run/kp4pra-tnc/tft.json`.
+
+## Pins
+
+| Header | Function | Raspberry Pi | Orange Pi Zero 2W |
+|---|---|---|---|
+| 19/23/24 | SPI MOSI/SCLK/CS | SPI0 CE0 (`spidev0.0`) | SPI1 PH7/PH6/PH5 |
+| 22 | DC | `gpiochip0 25` | `gpiochip1 262` (PI6) |
+| 15 | Backlight | `gpiochip0 22` | `gpiochip1 261` (PI5) |
+| 16 | Button 23 | `gpiochip0 23` | `gpiochip1 270` (PI14) |
+| 18 | Button 24 | `gpiochip0 24` | `gpiochip1 228` (PH4) |
+
+## Troubleshooting
+
+- `systemctl status kp4pra-tnc-tft`, `journalctl -u kp4pra-tnc-tft -b`.
+- Config card says "SPI not enabled": run `sudo bash scripts/setup-tft.sh`
+  and reboot.
+- "no Mini PiTFT detected (auto)" with a display attached: check it is
+  seated; or set the Config to **On** to skip detection.
+- No traffic lines: the service user needs the `systemd-journal` group
+  (`id kp4pra-tnc`); re-run the setup script, then
+  `sudo systemctl restart kp4pra-tnc-tft`.
+- Picture upside down: Config -> TFT Display -> Orientation -> Flipped 180°.
+- Picture shifted or mirrored: the driver assumes the 1.3" 240x240 Mini
+  PiTFT (Normal: rows 0-239; Flipped: rows 80-319). Other ST7789 sizes are
+  not supported.

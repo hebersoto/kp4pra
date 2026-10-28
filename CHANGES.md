@@ -1,51 +1,626 @@
-## APRS TOCALL APKPPR (assigned) - new in 1.3.24
-- KP4PRA TNC now has its own APRS software identifier, APKPPR. The hourly
-  Dire Wolf beacon that announces the AX.25 digipeater alias is sent to it
-  (CBEACON dest=APKPPR; before it went to BEACON). Built in, not a setting.
+## Release preparation: main becomes the stable 1.4.x - new in 1.4.33
+- The one-command install now installs the main branch: INSTALL.md and
+  scripts/bootstrap.sh use .../kp4pra/main/scripts/bootstrap.sh and
+  KP4PRA_BRANCH defaults to main. Testers install the development version
+  with the dev URL and `sudo env KP4PRA_BRANCH=dev bash` (INSTALL.md,
+  "Updating"); the manual install clones main (add -b dev for dev).
+- kp4pra-xara: after installing a different Xara build (e.g. the
+  registered one), Xara's config is rewritten right away even when Xara is
+  not running, so "registered = on" no longer waits for Xara's next start.
+- Removed sudoers.d/kp4pra-tnc-btperms: never installed by any script, and
+  its one rule is already in sudoers.d/kp4pra-tnc.
+- Branch check before the merge: every branch on GitHub (main and the four
+  feature/* branches) is fully contained in dev; main's two own commits
+  (1.3.24 APKPPR beacon, the registered-Xara workflow) are in dev as 1.4.23
+  and 1.4.25.
+
+## Fix: Mini PiTFT stuck on "Xara starting..." - new in 1.4.32
+- Xara sends its hello and a replay of past events right after the
+  WebSocket handshake, usually in the same packet as the HTTP reply. The
+  display's feed client threw away everything after the reply header, lost
+  the hello, then read every following message out of step and waited
+  forever for a "frame" that never came - the screen stayed on "Xara
+  starting..." for the whole session, with no error logged. It now keeps
+  those bytes, rejects absurd frame sizes (reconnects instead of waiting),
+  and logs and reconnects on any unexpected error instead of stopping.
+- Title shows "VARA FM wide" / "VARA FM narrow" / "VARA HF 2300" (Xara's
+  hello says "fm"; the bandwidth comes from the link status).
+- The test's fake Xara now sends like the real one (reply + hello + replay
+  at once); the old client fails it, the new one passes.
+
+## VARA monitor on the Mini PiTFT - new in 1.4.31
+- While Xara is the modem, screen 1 is a VARA monitor: TX / RX / BUSY
+  lights, link state (Listening, Calling, Linked <call>, Disconnecting),
+  S/N, speed level, link rate in bps and BPM (bytes per minute,
+  bps x 60 / 8), RX/TX audio levels, a waterfall (last ~5 s) and an S/N
+  graph (last 90 s). Screen 2 is the VARA log (linked / disconnected with the
+  session's top BPM / unable to connect / timed out, retries, bytes to send).
+  The packet screens come back with Dire Wolf.
+- New tft/xara_feed.py reads Xara's live feed (WebSocket /ws on its page
+  port, read-only, standard library only) and keeps the state; VARA activity
+  wakes the screen saver. VARA screens redraw at most 4 times a second.
+- docs/TFT_DISPLAY.md "VARA screens (Xara)"; tests/test_tft_vara.py (state,
+  WebSocket client against a fake Xara, rendering).
+
+## Fix: Xara on the DRA-Pi-Zero ("capture (no audio)"), fallback - new in 1.4.30
+- On the Orange Pi Zero 2W the DRA-Pi-Zero's I2S recording delivers no audio
+  while playback is open but idle, which is how Xara leaves playback while
+  listening; Xara stopped with "capture (no audio): timed out" (confirmed
+  with aplay/arecord: recording fails while an idle playback stream is open,
+  and stays broken until playback runs again). With a DRA, Xara now plays
+  through the shared ALSA device kp4pra_out (plug -> dmix -> card,
+  /etc/alsa/conf.d/60-kp4pra-xara.conf) and the new kp4pra-xara-keepalive
+  plays silence into it while Xara runs. Recording stays direct. USB cards
+  are unchanged.
+- If Xara keeps failing (systemd stops restarting it), the new
+  kp4pra-xara-fallback (OnFailure) switches the TNC back to Dire Wolf, so it
+  is never left without a modem; the Services page shows it.
+- "kp4pra-xara modem xara" now reports success only when Xara listens on
+  its port and is still running 8 seconds later (it reported success after
+  2 seconds before, while Xara failed shortly after).
+- At boot, Xara starts after the DRA's mixer setup (kp4pra-dra-mixer).
+
+## RadioMail finds the TNC and starts Xara by itself - new in 1.4.29
+- New kp4pra-vara-launcher service (src/vara_launcher.py), compatible with
+  varanny (github.com/islandmagic/varanny), which RadioMail uses to find and
+  start VARA modems: announces "<call> VARA FM|HF" as _vara-modem._tcp (and
+  the older _varafm-/_varahf-modem._tcp) with TXT launchport=8273; type=fm;
+  through avahi-publish, and answers varanny's commands on port 8273.
+  "start" switches the TNC to Xara when it is not on (and back to Dire Wolf
+  when that session ends); Xara chosen on the Services page stays on.
+- New setting xara.auto_switch (default on; Config page "RadioMail and other
+  VARA apps"). Not announced when network access is off or Xara is not
+  installed. The Services page shows the name RadioMail finds.
+- Docs: VARA apps connect over WiFi (VARA has no Bluetooth link); RadioMail
+  (automatic) and WoAD (IP + port 8300) steps in docs/XARA.md; Services card
+  text names RadioMail and WoAD.
+
+## Xara's libraries in the main package list - new in 1.4.28
+- install.sh now installs everything Xara needs with the other
+  prerequisites, before anything else: libpulse0 (confirmed on an Orange Pi
+  Zero 2W: with it Xara 0.1.1 installs and starts) and alsa-utils (brings
+  libasound under the name the system uses). kp4pra-xara still checks them
+  itself, for boards updated with `kp4pra-xara install` alone.
+
+## Fix: Xara "does not run on this board" on Armbian - new in 1.4.27
+- Xara's release program is linked against libpulse (PulseAudio) and
+  libasound even when it uses ALSA only. Minimal images (Armbian on the
+  Orange Pi) have no libpulse, so the downloaded xara could not start and
+  the install step reported "the downloaded xara does not run on this
+  board". kp4pra-xara now installs libpulse0 and libasound2t64 (or
+  libasound2 on older systems) before checking the program.
+- If xara still does not start, the real error (and any missing library
+  from ldd) is printed instead of only "does not run".
+
+## Fix: an update without a reboot kept running the old program - new in 1.4.26
+- install.sh copied the new program to /opt/kp4pra-tnc but only *started*
+  the KP4PRA services; services already running kept the old code until the
+  next reboot. Seen as beacons still sent to the old TOCALL APKP41 after
+  updating to 1.4.23+ without the reboot (e.g. KP4PRA_NO_REBOOT=1 or running
+  install.sh by hand). It now restarts the web, RFCOMM, BLE and APRS clock
+  services, and the RMS gateway if it is running. (The Mini PiTFT service
+  was already restarted by setup-tft.sh.)
+- No code in 1.4.23+ sends APKP41: every APRS frame the application builds
+  uses APKPPR.
+
+## Xara registered speeds, no builds on the board - new in 1.4.25
+- New GitHub workflow .github/workflows/xara-registered.yml (also on main,
+  where GitHub runs schedules): every Monday, or by hand, it builds the
+  newest Xara version with Xara's `registered` feature for x86_64, aarch64
+  and armv7 (same steps as Xara's own release workflow) and publishes it as
+  release xara-v<version> of hebersoto/kp4pra, with SHA256SUMS and a
+  BUILD-FEATURES marker. A version that is already published is skipped:
+  one build per Xara version.
+- kp4pra-xara downloads the registered build first; a newer Xara version
+  without a registered build does not replace a registered one (the board
+  waits for it); a first install before any registered build gets Xara's
+  standard build and upgrades with the next update. Builds not marked
+  registered are refused. Boards never build from source (only with
+  --build, which now builds the registered version).
+- New setting xara.registered (default on; Config page "VARA speeds").
+  `registered = on` goes into Xara's config only when the installed build
+  has it, so Xara never refuses to start over it. Services and Config pages
+  show whether the installed Xara is the registered build.
+- Callsign: Xara uses the Station Information callsign and SSID (the Xara
+  card's Callsign field overrides it), as in 1.4.24.
+
+## Xara VARA modem - new in 1.4.24
+- KP4PRA TNC can run Xara (https://github.com/x0rro/xara), a VARA FM/HF
+  compatible modem, instead of Dire Wolf, so Winlink Express, Pat and other
+  VARA programs use the TNC as their VARA modem (ports 8300/8301, KISS 8100,
+  Xara page 8080). One modem at a time; Services page "VARA Modem (Xara)":
+  Use Xara / Back to Dire Wolf (kept across restarts), Install, Check for
+  update, Xara log. Config page "Xara VARA Modem": mode (FM narrow/wide,
+  HF 500/2300/2750), callsign, TX level, PTT lead/tail, network access,
+  ports, version.
+- Easy upgrades: new bin/kp4pra-xara installs Xara's official release for
+  the board (aarch64, armv7, x86_64; checked against the release's
+  SHA256SUMS) into /opt/xara/<version>, switches /opt/xara/current, keeps
+  the previous version (rollback). Xara's own service file, udev rule and
+  system user come from each release's dist/ and are reinstalled on every
+  upgrade; KP4PRA only adds a drop-in (xara@kp4pra.service.d). The install
+  command installs/upgrades Xara (KP4PRA_XARA=0 skips it); xara.version in
+  config.yaml can hold a board on one version. If the newest tag has no
+  binaries yet (Xara releases start as drafts), the newest version that has
+  them is used. --build builds from source (Rust 1.85+).
+- Xara's config (/rw/xara/kp4pra.conf) is written from the KP4PRA settings
+  right before each start (kp4pra-xara-prep): same sound card and PTT as
+  Dire Wolf; CM108 hidraw looked up each time; VARA SSID rules (no -0,
+  max -19). Xara state on /rw (var-lib-xara.mount).
+- DRA-Pi-Zero / GPIO PTT: Xara has no GPIO PTT, so the new kp4pra-xara-ptt
+  answers Xara's rigctld commands and drives the line with libgpiod (v1 or
+  v2). PTT drops if Xara disconnects, after 2 minutes on, or on stop.
+- Shared helpers in direwolf_conf.py (resolve_adevice, gpiod_chip_line,
+  find_cm108_hidraw) so both modems always pick the same card and PTT line.
+- Fix: var-lib-bluetooth.mount had After=local-fs.target, an ordering loop
+  (mounts are part of local-fs.target) that systemd breaks at boot by
+  dropping a job; it now uses RequiresMountsFor= on its /rw source.
+- New prerequisites: python3-libgpiod, curl, git, xz-utils.
+
+## APRS TOCALL APKPPR (assigned) - new in 1.4.23
+- KP4PRA TNC now has its own APRS software identifier, APKPPR. Every frame
+  the application builds uses it as the AX.25 destination: APRS chat
+  messages and acks (RF and APRS-IS), the web "Beacon now" and periodic
+  beacons, the Mini PiTFT beacon (button 24), and the hourly Dire Wolf
+  beacon that announces the AX.25 digipeater alias (CBEACON dest=APKPPR;
+  before it went to BEACON).
+- Built in, not a setting: aprs.tocall is gone from the defaults and the
+  config check; an old value in config.yaml (APKP41) is ignored.
 - Frames from other APRS apps connected over Bluetooth, BLE or WiFi KISS
   are not changed and keep their own TOCALL.
-- Updating (running the installer again) also fixes the beacon line in an
-  existing direwolf.conf, so no Apply is needed.
-- Same change as dev 1.4.23 (dev also uses APKPPR for its APRS chat and
-  beacons, which main does not have).
+- Updating (running the install command again) also fixes the beacon line
+  in an existing direwolf.conf, so no Apply is needed.
 
-## WiFi fixes (backport from 1.4.11/1.4.12) - new in 1.3.23
+## Fix: running the installer again (update) stopped at the BlueZ step - new in 1.4.22
+- install.sh copied /var/lib/bluetooth into /rw/kp4pra-tnc/bluetooth on
+  every run. On an installed board the first is a bind mount of the second,
+  so a second run stopped with "cp: ... are the same file" (seen when
+  re-running the one-command install). The copy is now skipped when the two
+  are the same directory, and on a first install it never overwrites
+  pairings already on /rw (no-clobber: --update=none or -n, whichever the
+  board's cp supports).
+- Program files in /opt/kp4pra-tnc/src are replaced completely on each run
+  (files removed in a newer version no longer linger); the venv and config
+  are kept.
+- The capability copies of hcitool/hciconfig use cp --remove-destination
+  (no "Text file busy" if one is running during a re-run).
+
+## Setup progress you can see: web banner, Mini PiTFT, login line - new in 1.4.21
+- New bin/kp4pra-install-state keeps /rw/kp4pra-tnc/install-state.json
+  (installing / checking / dra_setup / complete / failed + a short
+  message). bootstrap.sh, install.sh, kp4pra-dra-autodetect and
+  setup-dra-pi-zero.sh (each step, the kernel switch, the restarts, errors)
+  update it; the boot-time DRA mixer marks it complete when the DRA card is
+  up, or failed when it never appears.
+- Web: every page (also the landing page) shows a banner while setup runs
+  ("Setup in progress: ... the board may restart by itself"), keeps polling
+  through restarts ("The board is restarting. This page reconnects by
+  itself."), then "Setup complete"; "Setup stopped: <what to do>" on
+  errors. Public GET /api/install/state; a run not finished after an hour
+  is reported as stopped. The setup page refreshes its sound card list when
+  setup completes (the DRA appears without reloading).
+- Mini PiTFT: full-screen "Installing / Finishing setup / Setting up -
+  please wait, do not unplug", then "Setup complete" for 10 s; "Setup
+  stopped" closes with a button. Fix: a restart (reboot) no longer shows
+  the power-off text "disconnect power in 15 seconds" - it shows
+  "Restarting - please wait, do not unplug"; only a real power-off shows
+  the power-off text.
+- Login message (MOTD): "Setup: complete" or what it is doing now.
+- INSTALL.md: "How do I know it is finished?" - no log reading needed.
+
+## Fix: one-command install stopped after building Dire Wolf - new in 1.4.20
+- bootstrap.sh reported "Dire Wolf was built without libgpiod support" for
+  a correct build: "direwolf --help" exits non-zero after printing its
+  banner, and under "set -o pipefail" the pipe into grep failed even though
+  libgpiod was listed. The banner is now captured first and searched
+  afterwards. Same fix for the Dire Wolf warning in setup-dra-pi-zero.sh,
+  which also started a full Dire Wolf for 5 s instead of using --help.
+
+## One-command install, DRA auto-detect, first-visit setup page - new in 1.4.19
+- scripts/bootstrap.sh: whole install in one command
+  (`curl -fsSL .../scripts/bootstrap.sh | sudo bash`): system update, tools,
+  Dire Wolf build with libgpiod (skipped when already present), clone/update
+  ~/kp4pra-tnc, install.sh, reboot (10 s countdown). Safe to re-run (also the
+  way to update). Log: /root/kp4pra-install.log. Runs inside main() so the
+  piped script is read completely before anything runs. KP4PRA_BRANCH and
+  KP4PRA_NO_REBOOT environment options.
+- DRA-Pi-Zero auto-detect: install.sh switches on the header I2C bus (Pi:
+  dtparam=i2c_arm=on; Orange Pi: i2c1-pi overlay; i2c-dev), installs
+  bin/kp4pra-dra-autodetect and enables kp4pra-dra-autodetect.service
+  (runs once). On the next boot it probes address 0x1a on every I2C bus; if
+  the codec answers it runs setup-dra-pi-zero.sh by itself (Orange Pi:
+  automatic kernel switch/resume/reboots from 1.4.18; Raspberry Pi: one
+  reboot after config.txt). Opt-out file /rw/kp4pra-tnc/.dra-autodetect-off,
+  re-check with `kp4pra-dra-autodetect --again`. i2c-tools added to PREREQS.
+- Web: first-visit setup page /setup (callsign, SSID, grid, sound card with
+  the DRA or a USB interface preselected, Dashboard password; open-hotspot
+  warning). /admin redirects there until a real callsign is saved
+  (?skip_setup=1 skips). /api/direwolf/apply accepts use_dra=true to write
+  this board's DRA card by name while the DRA is still setting itself up.
+- INSTALL.md rewritten: four short steps (prepare the SD card, connect,
+  one install command, open the web page), troubleshooting, updating, WiFi,
+  manual install for experienced users. References in README.md and
+  docs/DRA_PI_ZERO.md updated; DRA_PI_ZERO.md explains the auto-detect.
+
+## DRA setup on the Orange Pi: one command, automatic reboots - new in 1.4.18
+- setup-dra-pi-zero.sh (Orange Pi Zero 2W) no longer stops with "REBOOT
+  REQUIRED, then run the same command again" after switching a rolling
+  image to Armbian's stable kernel. It installs the build tools, caches the
+  WM8731 source for the new kernel (offline-safe), schedules
+  kp4pra-dra-setup-resume.service and reboots by itself (10 s countdown,
+  Ctrl-C cancels). After the reboot the service finishes the setup and the
+  board reboots once more. The service runs once and removes itself even on
+  failure (no reboot loops).
+- The full run also reboots by itself at the end (was "REBOOT REQUIRED:
+  sudo reboot"). --no-reboot keeps the manual behaviour.
+- Config page DRA card: "⏳ DRA setup is finishing automatically ..." while
+  the resume is pending (setup_state in_progress, test added).
+- Raspberry Pi path unchanged.
+- Docs: INSTALL.md 5c (Orange Pi: run once), DRA_PI_ZERO.md.
+
+## Installer: no /rw question, correct step counter - new in 1.4.17
+- install.sh no longer asks "Continue anyway? [y/N]" when /rw is not a
+  separate partition: it creates /rw itself (mkdir -p /rw) and prints one
+  informational line. A dedicated /rw partition stays optional (README.md,
+  "Read-Only Filesystem Deployment").
+- Step counter fixed: it showed [11/10]; the total is now counted from the
+  script itself ([1/11] ... [11/11]) so it cannot drift again.
+- INSTALL.md: step 4 "Writable partition" removed (the installer does it);
+  its production note moved into the install section. Later sections
+  renumbered: 4 KP4PRA TNC stage 1, 5 stage 2, 5b web interface, 5c
+  DRA-Pi-Zero, 6 first-boot verification, 7 production hardening; references
+  in INSTALL.md, README.md and docs/DRA_PI_ZERO.md updated.
+
+## Shut Down on the Mini PiTFT - new in 1.4.16
+- Shut Down (Config page) now also clears the Mini PiTFT and shows the same
+  10 -> 0 countdown (wakes the display from the screen saver / off; buttons
+  ignored), then "Shutting Down, disconnect power in 15 seconds". The web
+  page shows the same final wording ("Shutting Down - Disconnect power in
+  15 seconds."). Cancel returns the display to normal.
+- How: the web UI writes /run/kp4pra-tnc/shutdown.json (deadline) when the
+  shutdown starts and removes it on Cancel; kp4pra-tnc-tft polls it every
+  0.5 s (a file more than 60 s past its deadline is ignored).
+- kp4pra-tnc-tft handles SIGTERM: while a shutdown is pending or the system
+  is stopping (also "sudo poweroff" from SSH) it leaves the final message on
+  the panel instead of blanking it; a normal service stop/restart still
+  blanks the display.
+- Docs: TFT_DISPLAY.md "Shut Down from the web UI". Tests added.
+
+## DRA mixer applied reliably at boot - new in 1.4.15
+- Fix: on the Orange Pi Zero 2W the DRA card can register a few seconds
+  after sound.target. kp4pra-dra-mixer.service looked once, logged "not
+  detected - skipping", and the WM8731 mixer stayed at its defaults (Mic not
+  captured, output off): the DRA had no RX/TX audio until
+  setup-dra-pi-zero.sh was run again by hand (tester report). The boot run
+  (--mixer-only) now waits up to 30 s for the card when the DRA overlay is
+  set up (no wait on USB-only boards); unit TimeoutStartSec=90.
+- `alsactl store` failing on the read-only root at boot no longer aborts the
+  script (the mixer is re-applied every boot anyway).
+- Every setup run is logged to /rw/kp4pra-tnc/logs/dra-setup.log, plus one
+  line per boot from the mixer service, so testers can send it.
+- Config page DRA card: when the DRA card is missing it now says why and
+  what to do, instead of only "not detected": setup never run / kernel
+  switched or updated without reboot (reboot, run setup again) / setup not
+  finished for this kernel (driver or overlay missing - run again) / setup
+  finished after the last boot (reboot) / installed but no card (check the
+  board is seated). New /api/dra/status fields setup_state and hint
+  (common.dra_platform.setup_state, file checks only; tests added).
+- Upgrading: pull, then `sudo install -m 755 scripts/setup-dra-pi-zero.sh
+  /usr/local/bin/`, `sudo cp systemd/kp4pra-dra-mixer.service
+  /etc/systemd/system/`, `sudo systemctl daemon-reload`, reboot.
+
+## Shut Down countdown - new in 1.4.14
+- INSTALL.md: reboot after `apt upgrade` in 1b (a kernel update without a
+  reboot stopped the DRA setup) and after the installer in 5; section 6c
+  rewritten as numbered per-board steps - two runs with a reboot after each
+  is normal, the Orange Pi's first run stopping with "Kernel changed ...
+  REBOOT REQUIRED" is expected, and no kp4pra-remount-rw / nftables restart
+  is needed.
+- Config page Shut Down: the page is replaced by a full-screen
+  "Shutting down KP4PRA TNC" message with a 10 -> 0 countdown. The request is
+  sent when the countdown starts (at 10); the TNC waits 10 s itself and then
+  powers off, so the shutdown happens at 0 even if the page is closed or the
+  connection drops. Cancel (or Esc) during the countdown calls the new
+  POST /api/system/shutdown/cancel, which stops the pending power-off. At 0
+  the screen shows "Powering off. Safe to remove power once the LEDs stop
+  (about 15 seconds)". Pressing Shut Down twice does not start a second
+  shutdown. The separate confirm dialog is gone (the countdown replaces it).
+
+## DRA setup works on any Armbian image - new in 1.4.13
+- setup-dra-pi-zero.sh (Orange Pi Zero 2W), step [1/6] Kernel headers no
+  longer stops on Armbian rolling images ("linux-headers-current-sunxi64=
+  26.11.0-trunk.83 not available"): it switches the Armbian apt source to the
+  stable repository apt.armbian.com (backup in /var/backups/kp4pra/, or adds
+  the stable source if none exists), retries the running kernel's headers,
+  and otherwise installs the newest stable kernel with matching image + dtb +
+  headers and asks for a reboot and a re-run. Armbian's download page now
+  offers only rolling images for the Zero 2W, so every new install hit this.
+- Docs: DRA_PI_ZERO.md "Kernel headers (automatic on any Armbian image)",
+  INSTALL.md step 1 names the image and explains the extra reboot.
+
+## Config page wording - new in 1.4.12
 - Docs/UI for the open Orange Pi hotspot: INSTALL.md (WiFi note in step 1,
   end of install, first-boot check), README.md (features, validated
-  hardware); Services page shows
+  hardware), docs/DRA_PI_ZERO.md; Services page shows
   "AP (hotspot, open - no WiFi password)" and warns before switching to AP;
   the installer warns at the end when the hotspot is open.
 - Orange Pi Zero 2W hotspot is now open (no WiFi password). Its onboard
   WiFi (Unisoc UWE5622, driver unisoc_wifi) starts a WPA2 hotspot but no
   client can complete the WPA2 handshake ("Unable to join"), with any
-  PMF/cipher combination; hostapd cannot drive the chip. New
-  `wifi.ap_security: auto | wpa2 | open` (default auto = open only on the
-  unisoc/sprd driver, WPA2 everywhere else - Raspberry Pi unchanged).
+  PMF/cipher combination; hostapd cannot drive the chip ("Could not
+  configure driver mode", no AP type change, no virtual AP). Field-tested
+  on Armbian 26.11 trunk, kernel 6.18.44.
+  New `wifi.ap_security: auto | wpa2 | open` (default auto = open only on
+  the unisoc/sprd driver, WPA2 everywhere else - Raspberry Pi unchanged).
   `kp4pra-wifi-mode security` prints the effective setting; /api/wifi/status
-  reports `ap_security`. INSTALL.md: set a Dashboard password first.
-- Fix: switching to Client mode re-activated the hotspot. `nmcli device
-  connect wlan0` also picks autoconnect=no profiles, and KP4PRA-AP was the
-  only one on a board with no client WiFi. Client mode now brings the
-  hotspot down and joins only the configured client SSID (same fix on the
-  boot path).
-- Fix: `dnsmasq-base` added to the installer prerequisites. NetworkManager's
-  shared (AP) mode needs it; without it "kp4pra-wifi-mode ap" failed with
-  "IP configuration could not be reserved".
-- Upgrading: pull, `sudo bash scripts/deploy-to-system.sh`,
-  `sudo install -m 755 bin/kp4pra-wifi-mode /usr/local/bin/`,
-  `sudo apt-get install -y dnsmasq-base`, `sudo systemctl restart kp4pra-tnc-web`.
-## Config page wording - new in 1.3.22
+  reports `ap_security`. INSTALL.md: set a Dashboard password before using
+  the open hotspot.
 - Config page header: "Changes are written atomically" now reads "Changes
   are saved when you press Save or Apply on each card" (plain language;
   config.yaml is still written atomically - temp file + rename).
-## Config page Shutdown button - new in 1.3.21
-- Config page: a Shut Down button beside Reboot, with a confirm dialog.
-  POST /api/system/shutdown backgrounds `sudo -n /sbin/poweroff` (narrow
-  sudoers, like the reboot control) so the HTTP response flushes before the
-  network drops.
-- sudoers.d/kp4pra-tnc: adds NOPASSWD /sbin/poweroff for the service user.
-  Re-copy the sudoers file on deploy (it lives outside src/).
+## Mini PiTFT: shorter monitor lines + WiFi mode button — new in 1.4.11
+- Traffic lines start with FROM>TO for every frame, RX and TX
+  ("KP3M-11>WP4DMD-2 <RR R F R3>"), with short monitor tokens and no Pid/Len:
+  <I C [P] Rn Sn> (R before S), <RR|RNR|REJ|SREJ C|R [P|F] Rn>, <SABM C P>,
+  <SABME C P>, <DISC C P>, <UA R F>, <DM R F>, <FRMR R F>, <XID ...>,
+  <TEST ...> (XID/TEST now named instead of UNKN), <UI C>. Long lines scroll.
+- UI frames: no TOCALL/destination, repeated spaces collapsed, GPS position
+  data removed (uncompressed/compressed positions, Mic-E, objects, items,
+  course/speed, /A= altitude, DAO, raw $GP NMEA); messages show
+  "ADDRESSEE: text". Current-packet rows: FROM>TO, token + time + TX/RX,
+  UI text.
+- Button 23 held 3 s switches WiFi Client <-> Access Point (kp4pra-wifi-mode
+  via its existing sudoers rule) and shows "WiFi Access Point Mode" /
+  "WiFi Client Mode" in the splash colors for 10 s. Short press still
+  switches screens (now on release). Display access serialized between the
+  UI loop and background actions.
+- Blue LED unchanged: kp4pra-tnc-bt-led already follows Bluetooth
+  availability after a mode switch (off / solid / fast flash).
+- Docs: docs/TFT_DISPLAY.md token table, UI text rules, button 23 hold.
+  Tests: tests/test_tft.py (tokens, FROM>TO, UI text cleanup, long press).
+- Fix: switching to Client mode (button 23 hold or `kp4pra-wifi-mode
+  client`) re-activated the hotspot. `nmcli device connect wlan0` also picks
+  autoconnect=no profiles, and KP4PRA-AP was the only one on a board with no
+  client WiFi. Client mode now brings the hotspot down and joins only the
+  configured client SSID; with no client SSID configured WiFi simply stays
+  disconnected (wired/USB Ethernet keeps working). Same fix on the boot path.
+- Fix: `dnsmasq-base` added to the installer prerequisites. NetworkManager's
+  shared (AP) mode needs it; without it "kp4pra-wifi-mode ap" failed with
+  "IP configuration could not be reserved".
+- TFT monitor lines show the digipeaters that repeated a frame (UI and
+  connected), after the callsigns: "KP3M-11>WP4DMD-2 via KP4DIG-1 <RR R F R3>".
+  Only used path entries (up to Dire Wolf's "*" mark) are shown; WIDEn-N
+  aliases are always left out.
+- TFT screen saver: after 3 min without traffic the callsign crawls around
+  the screen like the Atari centipede (random path, wraps at the edges, no
+  mushrooms; src/tft/saver.py); 2 min later the screen goes black. RX/TX
+  traffic brings the screen back with the data; a button press only wakes
+  the screen (no action), then buttons work as before.
+- TFT shows "WiFi switch failed" (red) when kp4pra-wifi-mode returns an error
+  instead of leaving the mode splash up.
+- Upgrading from 1.4.10: pull, `sudo bash scripts/deploy-to-system.sh`,
+  `sudo install -m 755 bin/kp4pra-wifi-mode /usr/local/bin/`,
+  `sudo apt-get install -y dnsmasq-base`, `sudo systemctl restart kp4pra-tnc-tft`.
+## Mini PiTFT status display — new in 1.4.10
+- Optional Adafruit Mini PiTFT 1.3" (240x240, ST7789) front-panel display,
+  Raspberry Pi and Orange Pi Zero 2W, DejaVu Sans 24 pt. New service
+  kp4pra-tnc-tft (src/tft/), user kp4pra-tnc, system python3.
+- Splash "KP4PRA TNC" in KP4PRA green on white for 10 s at start.
+- Screen 1: call sign + SSID; last 3 frames (red TX / green RX); current
+  packet (SRC>DST, frame type, time); bottom row AP/CL + IP (static).
+  Screen 2: Winlink pending, WiFi devices (AP mode), BT/BLE devices, last 4
+  frames, same bottom row. Long lines scroll.
+- Frame types in UZ7HO Soundmodem style (<SABM C P>, <UA R F>, <RR R F R2>,
+  <I C P S0 R3>, <UI C>, UNKN for XID/TEST), from Dire Wolf's packet log -
+  the only source that also shows our own connected-mode transmissions.
+- Buttons: 23 = screen 1/2 (wakes if off); 24 = screen off/on; 24 held 3 s =
+  one APRS beacon (position, or status beacon without position) via Dire
+  Wolf AGW, independent of the APRS chat page.
+- Detection: the display cannot be read back, so Auto mode probes the
+  buttons' 10 k pull-ups against the SoC pull-downs. Web UI Config ->
+  TFT Display: Auto / On / Off (+ live status); applies within ~10 s.
+- scripts/setup-tft.sh: packages, groups (gpio, systemd-journal, spi on Pi),
+  SPI (Pi dtparam=spi=on with backup; Orange Pi user overlay
+  platform/orangepi-zero2w/kp4pra-tft-orangepi.dts = SPI1 + spidev), service.
+  install.sh runs it with --auto (SPI enabled only when a display is present).
+  udev rule 60-kp4pra-gpio now also covers /dev/spidev* on non-Pi boards.
+- New config keys display.tft (default auto) and display.tft_rotation
+  (0 = Normal, default; 180 = Flipped), both validated and on the Config
+  page. Field check 2026-10-13: Adafruit's rotation-180 example showed
+  upside down on the KP4PRA board, so Normal (rotation 0) is the default.
+- Docs: docs/TFT_DISPLAY.md; README, INSTALL. Tests: tests/test_tft.py
+  (UZ7HO tokens from the field example, screens, buttons, AGW beacon frame).
+- Upgrading from 1.4.9: pull, `sudo bash scripts/deploy-to-system.sh`,
+  `sudo bash scripts/setup-tft.sh`, reboot if it says so.
+## DRA-Pi-Zero on the Orange Pi Zero 2W + new blue LED behavior — new in 1.4.9
+- DRA-Pi-Zero now works on the **Orange Pi Zero 2W with Armbian** (validated
+  2026-10-12: Armbian 26.8.3, kernel 6.18.44-current-sunxi64; RX, TX, all
+  LEDs, BLE). `scripts/setup-dra-pi-zero.sh` detects the board; on the Orange
+  Pi a one-time run from SSH installs kernel headers, builds the patched
+  WM8731 codec driver as DKMS package `kp4pra-wm8731` (source for the exact
+  kernel downloaded at build time and cached; rebuilt automatically on kernel
+  updates), installs the user overlay `platform/orangepi-zero2w/
+  kp4pra-dra-orangepi.dts` + `i2c1-pi`, and sets up GPIO access.
+- WM8731 patches (opt-in by DT property): fixed 12 MHz crystal
+  (`kp4pra,xtal-12mhz`) and the AHUB I2S0 LRCK period written from the
+  codec's real frame length (`kp4pra,ahub-fmt0-reg`) - the H618 AHUB, even as
+  clock slave, only latches frames when the period matches exactly
+  (125 BCLK/channel at 48 kHz), which its driver cannot program.
+- New `src/common/dra_platform.py` + `bin/kp4pra-dra-platform` (one table,
+  kept in sync by tests): card ID and PTT/DCD/LED gpiochip lines per board.
+  The Dire Wolf config generator and web UI use it: the card `DRAPiZero` is
+  recognized as "DRA-Pi-Zero (I2S)", PTT pre-fills to `gpiochip1 267` and DCD
+  to `gpiochip1 76` on the Orange Pi; a Raspberry Pi PTT value stored in the
+  config is remapped on the Orange Pi. Raspberry Pi output is byte-identical
+  to 1.4.8 (162-case golden comparison; tests/test_dra_platform.py).
+- New `kp4pra-dra-i2c-check` (Orange Pi only, Dire Wolf ExecStartPre
+  drop-in): detects the SoC I2C controller stuck in "bus locked" (codec
+  writes time out, Dire Wolf start stalls ~30 s with no RX/TX), resets the
+  controller and restores the mixer.
+- **Blue LED, all boards:** off = Bluetooth services down, solid = BLE/RFCOMM
+  service available, fast flash (5 Hz) = a client is connected; back to
+  solid on disconnect. Previously: on only while connected. On an unknown
+  board the LED service now leaves the pin alone.
+- `install.sh`: creates the gpio group when missing (Armbian has none - the
+  LED service failed with status=216/GROUP) and, on non-Raspberry-Pi boards,
+  a udev rule giving the group access to /dev/gpiochip*. Installs the new
+  helpers. `kp4pra-adevice-fix` treats `DRAPiZero` as an I2S card.
+- Web UI: DRA card shows the detected card and board; on an Orange Pi the
+  "Set up DRA-Pi-Zero" button reports status (the driver build runs from SSH).
+- Setup fix (field report, 2026-10-13): on a board whose kernel had been
+  updated without a reboot, the Orange Pi setup stopped silently after
+  "[1/6] Kernel headers" (the running kernel's files were gone, the package
+  lookup failed under set -e). It now says "reboot first" and names both
+  kernels; the kernel-package lookup has a fallback; any unexpected stop
+  prints the line and command. Same root cause made nftables fail during
+  install on that board (running kernel's modules removed) - a reboot fixes it.
+- Docs: docs/DRA_PI_ZERO.md board table, LED table, Orange Pi section
+  (requirements, setup, beta -> stable headers, bring-up notes,
+  troubleshooting); README, INSTALL.md 6c.
+- Upgrading an existing install from 1.4.8: pull, then
+  `sudo bash scripts/deploy-to-system.sh` (web/src) and
+  `sudo kp4pra-remount-rw; sudo install -m 755 bin/kp4pra-bt-led bin/kp4pra-dra-platform bin/kp4pra-dra-i2c-check bin/kp4pra-adevice-fix scripts/setup-dra-pi-zero.sh /usr/local/bin/; sudo systemctl restart kp4pra-tnc-bt-led; sudo kp4pra-remount-ro`.
+  Orange Pi: then run `sudo bash scripts/setup-dra-pi-zero.sh` and reboot.
+## APRS messaging + position beaconing — new in 1.4.8
+- APRS text chat (/admin/aprs): WhatsApp-style conversation UI with
+  distinguishable sent/received bubbles, delivery ticks (sending/acked/
+  failed), and an RF/IS path badge. RF over the Dire Wolf KISS TNC as
+  unconnected AX.25 UI frames (dest = TOCALL APKP41), with an optional
+  additive APRS-IS path for EMCOMM fallback. Auto-ack of inbound messages,
+  msgNo tracking, and timed ret/reject-aware resends.
+- Radio interlock: an active APRS session owns the radio and is mutually
+  exclusive with the RMS gateway — starting chat stops kp4pra-tnc-rms and
+  stopping it restarts the service (refuses to start mid-relay).
+- Position beacon: APRS position report (=DDMM.mmN/DDDMM.mmW + symbol) with
+  position taken from the beacon lat/lon, else the station lat/lon, else the
+  station Maidenhead grid converted to coordinates. A "Beacon now" button on
+  the APRS page plus an optional periodic beacon. Sent over the configured
+  digipeater path (e.g. WIDE1-1,WIDE2-2). Lets WXBOT/KP4DOG and other
+  position-gated services respond.
+- APRS configuration section on the Config page: callsign + SSID (blank =
+  station callsign), comma-separated multi-hop digipeater path, and beacon
+  settings (enable/interval, symbol table+code, comment, optional lat/lon
+  override). Server-side validation in config_writer for all fields.
+- Endpoints: GET /admin/aprs, POST /api/aprs/{start,stop,send,beacon},
+  GET /api/aprs/{status,messages}. New modules under src/web
+  (aprs, aprschat, aprs_transports, aprssession, ax25_stub) with four unit
+  test suites; no I/O in the protocol/logic core (fully mock-tested).
+- Deploy tooling: scripts/deploy-to-system.sh pushes repo src/ + VERSION to
+  the live install (/opt/kp4pra-tnc), chowns to the service user, clears
+  stale bytecode, handles the read-only-root remount, and restarts the web
+  service — the repo->/opt counterpart to sync-from-system.sh. The
+  apply_aprs*.py installers now warn when they patch a checkout that differs
+  from the live install.
+## Web Email — Phase 4 step 3.5 (LZHUF B2 framing correction) — new in 1.4.5
+- Corrected the LZHUF/B2 compressed-stream framing to match the Winlink
+  reference (la5nta/wl2k-go lzhuf, whose CRC the source attributes to
+  Airmail and Winlink 2000), byte-for-byte:
+    [CRC-16 (2 bytes, little-endian)][fileSize (4 bytes, little-endian)][LZHUF data]
+  CRC-16 is the XModem-style CRC-CCITT (poly 0x1021, init 0x0000) computed
+  over (fileSize_bytes + compressed_data) with two trailing zero bytes, as
+  in the reference crc() routine.
+- The previous stream emitted only the 4-byte length with NO CRC-16, which
+  the CMS would have rejected. Fixed before any transmission.
+- Verified: our crc16() is byte-identical to the reference over 3000 random
+  inputs; B2 round-trips, tamper (CRC) detection, and fuzz all pass; the
+  LZSS + adaptive-Huffman core constants/position tables already matched
+  the reference. New test: src/web/test_lzhuf_b2_reference.py.
+- No API/route/config changes; lzhuf.compress() output changes (2 bytes
+  longer: the CRC-16), so dry-run hex previews now show the CRC first.
 
+## Web Email — Phase 4 step 3 (dry-run B2F sender, CMS path) — new in 1.4.4
+- src/web/mailbuilder.py: queue record -> Winlink message. From is
+  <station-callsign>@winlink.org (SSID stripped); user address in Reply-To;
+  body wrapped to <=78; refuses to build if the station callsign is unset.
+- src/web/lzhuf.py: clean-room LZHUF (LZSS + adaptive Huffman) codec with
+  Winlink length prefix and checksum. Round-trip verified (incl. 1000-input
+  fuzz and 22 KB).
+- src/web/b2f.py: B2F protocol assembly (client SID, FC proposal + F>
+  checksum, FS parsing, SOH/STX/EOT binary framing) and a DRY-RUN that
+  assembles the full CMS-path exchange without opening a socket or
+  transmitting. Unit-tested (frame/unframe round-trips, proposal checksum).
+- POST /api/messages/test {id}: authenticated dry-run for one message.
+  Returns a transcript (from/to/reply-to/MID, sizes, checksums, binary hex
+  preview, simulated conversation). Does NOT change message status.
+- "Test delivery (dry-run)" button + transcript panel in the message
+  detail view.
+- Config: webmail.delivery.dry_run (default true) and .method (cms).
+  No real transmit path exists yet; step 4 adds it, still gated by dry_run.
+- Note: SOH header content / EOT checksum scope and the LZHUF in-band
+  length prefix are confirmed against the live CMS during step 4.
+
+## Web Email Interface & Admin Dashboard — Phase 3 (message management) — new in 1.4.3
+- Admin Messages section (authenticated): GET /admin/messages with status
+  filter tabs, checkboxes, and bulk actions; GET /admin/messages/<id>
+  detail view (full to/reply-to/subject/body, submitted time, status,
+  language, route/error); POST /api/messages/action.
+- Actions: approve (Holding/Rejected/Failed -> Approved), reject
+  (-> Rejected, file kept on disk as an audit record and re-approvable),
+  delete (permanently removes the file; requires explicit confirmation,
+  single and bulk). Out-of-state / missing / bad-id targets are skipped.
+- Dashboard "Web Email Messages" card: pending-to-be-sent headline
+  (Holding+Approved+Failed) plus per-state badge counts and a review link.
+- Admin nav "Messages" link with an amber Holding-count badge.
+- All stored values are Jinja-autoescaped (submitted content cannot inject
+  markup/script into the trustee browser); message IDs validated on every
+  lookup and delete.
+- Approve only queues (sets Approved); transmission is Phase 4.
+- Docs: docs/WEBMAIL.md Phase 3 section.
+
+## Web Email Interface & Admin Dashboard — Phase 2 (public composer + queue) — new in 1.4.2
+- Public Web Email Interface at /mail: language toggle (English/Spanish,
+  English default), mandatory No-Privacy + FCC Part 97 notice with explicit
+  agreement gate (spec 7), reply-handling notice (spec 6), and a mobile-first
+  compose form with live subject/body character counters. No file input
+  (no attachments) and no HTML email by construction.
+- POST /mail/submit accepts JSON (parsed with stdlib, no python-multipart),
+  validates, and enqueues. GET /mail/sent shows the honest "held for trustee
+  review, not yet transmitted" confirmation (spec 15).
+- Address validation (src/web/mailvalidate.py): uses email-validator when
+  installed, else a conservative ASCII fallback. Internationalized
+  (RFC 6531 / non-ASCII) addresses are rejected with a clear message rather
+  than silently modified; user content is never truncated. Generated-message
+  line wrapping to <=78 chars provided for Phase 4 delivery.
+- Persistent holding queue (src/web/mailqueue.py): one atomic JSON file per
+  message under paths.data/mailq (/rw/kp4pra-tnc/data/mailq), survives reboot,
+  not tmpfs. States: Holding, Approved, Sending, Sent, Failed, Rejected.
+  Server-generated, pattern-validated message IDs prevent path traversal;
+  no public read endpoint, so users cannot read other users' messages.
+- Public double-submit CSRF token (kp4pra_mail_csrf) guards /mail/submit;
+  all public input is validated/sanitized and never reaches a shell.
+- Bilingual UI strings in src/web/mail_i18n.py (plain dicts, no i18n
+  framework). New config: webmail.enabled (default true, backward compatible).
+- requirements.txt: email-validator>=2.0 (optional; ASCII fallback if absent).
+- Docs: docs/WEBMAIL.md Phase 2 section.
+
+## Web Email Interface & Admin Dashboard — Phase 1 (auth) — new in 1.4.0
+- Split the web UI into a public landing page (/) offering two paths:
+  Web Email Interface (/mail, later phase) and Admin Dashboard (/admin).
+  The former dashboard moved from / to /admin. Existing admin pages and
+  APIs keep their URLs.
+- Admin Dashboard session authentication (src/web/auth.py), standard
+  library only:
+  * Password stored as a salted scrypt hash in web.dashboard_password_hash
+    (never plain text). Legacy web.auth_enabled/username/password retained
+    for back-compat but unused.
+  * HMAC-SHA256 signed, expiring session cookie (kp4pra_session, HttpOnly).
+    Signing key persisted at <paths.data>/session.key (0600), with an
+    ephemeral fallback when the path is not writable.
+  * CSRF double-submit token (kp4pra_csrf cookie echoed as X-CSRF-Token),
+    verified by middleware on unsafe methods once the dashboard is secured.
+    A fetch wrapper in base.html attaches it automatically, so existing
+    admin JS is unchanged.
+- First-run grace: auth is enforced ONLY after a Dashboard password is set.
+  Fresh boards (no valid station callsign) stay open so the trustee can do
+  initial configuration, then set a password in a new "Dashboard Security"
+  section on the Config page.
+- Login/logout: GET/POST /admin/login, GET /admin/logout. Form bodies are
+  parsed with stdlib urllib.parse to avoid a python-multipart dependency.
+- FIX (open item #2): added the missing station block to
+  config.py DEFAULT_CONFIG so first-run callsign gating works on installs
+  without a station section.
+- Docs: docs/WEBMAIL.md. Config key web.dashboard_password_hash defaults to
+  "" (blank = not yet secured); missing key is backward compatible.
 ## APRS clock fallback — new in 1.3.10
 - Added a receive-only Dire Wolf AGW listener using the existing
   `station.clock` source callsign and `direwolf.host` configuration.

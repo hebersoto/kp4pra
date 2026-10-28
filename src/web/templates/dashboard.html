@@ -27,6 +27,30 @@
 </div>
 {% endif %}
 
+<!-- Web Email queue summary -->
+<div class="card" style="margin-bottom:1rem">
+  <div class="card-title"><span class="icon">✉️</span> Web Email Messages</div>
+  {% set mc = mail_counts | default({}) %}
+  {% set pending = (mc.Holding | default(0)) + (mc.Approved | default(0)) + (mc.Failed | default(0)) %}
+  <div style="display:flex;gap:1.25rem;flex-wrap:wrap;align-items:center">
+    <div>
+      <div style="font-size:1.8rem;font-weight:700;color:var(--kp4pra-primary-dark);line-height:1">{{ pending }}</div>
+      <div style="font-size:0.8rem;color:var(--kp4pra-muted-text)">pending to be sent</div>
+    </div>
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+      <span class="badge badge-warning">Holding: {{ mc.Holding | default(0) }}</span>
+      <span class="badge badge-info">Approved: {{ mc.Approved | default(0) }}</span>
+      <span class="badge badge-info">Sending: {{ mc.Sending | default(0) }}</span>
+      <span class="badge badge-success">Sent: {{ mc.Sent | default(0) }}</span>
+      <span class="badge badge-error">Failed: {{ mc.Failed | default(0) }}</span>
+      <span class="badge badge-disabled">Rejected: {{ mc.Rejected | default(0) }}</span>
+    </div>
+    <div style="margin-left:auto">
+      <a class="btn btn-primary" href="/admin/messages">Review messages &rarr;</a>
+    </div>
+  </div>
+</div>
+
 <!-- Status Grid -->
 <div class="grid-2">
 

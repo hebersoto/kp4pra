@@ -1,0 +1,109 @@
+#!/bin/bash
+# KP4PRA TNC - find a DRA-Pi-Zero by itself and set it up (runs once).
+#
+# Started at boot by kp4pra-dra-autodetect.service, which the installer enables.
+# The installer also switches on the header I2C bus (pins 3/5), so on the first
+# boot after the install the DRA's WM8731 codec answers at I2C address 0x1a.
+#
+#   found     -> run scripts/setup-dra-pi-zero.sh (Orange Pi: builds the driver,
+#                may change kernel and reboots by itself; Raspberry Pi: writes
+#                config.txt, then this script reboots once)
+#   not found -> nothing changes (USB sound card users)
+#
+# Either way it never runs again (marker /rw/kp4pra-tnc/.dra-autodetect-done).
+# To look again later, for example after adding a DRA:  sudo kp4pra-dra-autodetect --again
+#
+# Note: another board with a sound chip at address 0x1a (for example a WM8960
+# HAT) would also be taken for a DRA. To switch the auto-detect off, create
+# /rw/kp4pra-tnc/.dra-autodetect-off before the first boot after the install.
+set -u
+
+DONE=/rw/kp4pra-tnc/.dra-autodetect-done
+OFF=/rw/kp4pra-tnc/.dra-autodetect-off
+LOGF=/rw/kp4pra-tnc/logs/dra-setup.log
+REPO="${KP4PRA_REPO:-}"
+
+log() {
+    echo "dra-autodetect: $*"
+    { mkdir -p "$(dirname "$LOGF")" && echo "$(date -Is) dra-autodetect: $*" >> "$LOGF"; } 2>/dev/null || true
+}
+finish() { { mkdir -p "$(dirname "$DONE")" && date -Is > "$DONE"; } 2>/dev/null || true; }
+# Progress for the web page / Mini PiTFT / login message.
+istate() { kp4pra-install-state set "$@" >/dev/null 2>&1 || true; }
+
+[ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
+if [ "${1:-}" = "--again" ]; then
+    rm -f "$DONE"
+    log "looking for a DRA-Pi-Zero again (asked by hand)"
+fi
+[ -f "$DONE" ] && exit 0
+if [ -f "$OFF" ]; then log "auto-detect turned off ($OFF)"; finish; istate complete ""; exit 0; fi
+
+eval "$(kp4pra-dra-platform 2>/dev/null)"
+case "${DRA_PLATFORM:-unknown}" in
+    rpi|opi-zero2w) ;;
+    *) log "board not supported - nothing to do"; finish; istate complete ""; exit 0 ;;
+esac
+
+if aplay -l 2>/dev/null | grep -q ": ${DRA_CARD} \["; then
+    log "DRA-Pi-Zero already set up (card $DRA_CARD present)"
+    finish; istate complete ""; exit 0
+fi
+
+istate checking "Looking for a DRA-Pi-Zero"
+# Look for the codec on every I2C bus: quick probe of address 0x1a.
+modprobe i2c-dev 2>/dev/null || true
+found=""
+for try in 1 2 3; do
+    for dev in /dev/i2c-*; do
+        [ -e "$dev" ] || continue
+        bus="${dev##*-}"
+        if timeout 10 i2cdetect -y "$bus" 0x1a 0x1a 2>/dev/null | grep -qE '^10:.*\b(1a|UU)\b'; then
+            found="$bus"; break 2
+        fi
+    done
+    sleep 2
+done
+
+if [ -z "$found" ]; then
+    log "no DRA-Pi-Zero found (no codec at I2C address 0x1a) - USB sound card setup unchanged"
+    finish; istate complete ""; exit 0
+fi
+
+log "DRA-Pi-Zero found on I2C bus $found - setting it up automatically"
+finish          # mark first: a reboot during the setup must not start it twice
+istate dra_setup "DRA-Pi-Zero found. Setting it up; the board restarts by itself (about 10 minutes)"
+
+if [ -z "$REPO" ] || [ ! -f "$REPO/scripts/setup-dra-pi-zero.sh" ]; then
+    log "ERROR: KP4PRA repository not found (${REPO:-unset}) - run the setup by hand: sudo bash scripts/setup-dra-pi-zero.sh"
+    istate failed "DRA-Pi-Zero found but its setup could not start. Run the install command again."
+    exit 1
+fi
+
+if [ "$DRA_PLATFORM" = "opi-zero2w" ]; then
+    # Builds the driver; reboots (and resumes after a kernel change) by itself.
+    bash "$REPO/scripts/setup-dra-pi-zero.sh" </dev/null
+    exit $?
+fi
+
+# Raspberry Pi: config.txt changes need one reboot; the mixer is then applied
+# at boot by kp4pra-dra-mixer.service.
+cfg=/boot/firmware/config.txt; [ -f "$cfg" ] || cfg=/boot/config.txt
+before="$(md5sum "$cfg" 2>/dev/null)"
+ro=0
+if ! ( : > /etc/.kp4pra-wtest ) 2>/dev/null; then
+    kp4pra-remount-rw >/dev/null 2>&1 && ro=1
+fi
+rm -f /etc/.kp4pra-wtest
+SUDO_USER="$(stat -c %U "$REPO" 2>/dev/null || echo kp4pra)" bash "$REPO/scripts/setup-dra-pi-zero.sh" </dev/null
+rc=$?
+[ "$ro" = 1 ] && kp4pra-remount-ro >/dev/null 2>&1
+if [ $rc -ne 0 ]; then
+    istate failed "The DRA-Pi-Zero setup stopped with an error. Open the Config page (DRA card) to see what to do."
+elif [ "$(md5sum "$cfg" 2>/dev/null)" != "$before" ]; then
+    istate dra_setup "DRA-Pi-Zero installed. Restarting to load it"
+    log "DRA overlay enabled - rebooting once to load it"
+    sync
+    systemctl reboot
+fi
+exit $rc

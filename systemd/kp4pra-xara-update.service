@@ -1,0 +1,10 @@
+[Unit]
+Description=KP4PRA TNC - install or upgrade Xara (started from the web page)
+Documentation=file:///opt/kp4pra-tnc/docs/XARA.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kp4pra-xara update --auto
+TimeoutStartSec=15min

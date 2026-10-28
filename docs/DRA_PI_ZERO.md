@@ -2,12 +2,40 @@
 
 Opt-in support for the DRA-Pi-Zero, an I2S daughterboard on the 40-pin
 header. Unlike the CM108-class USB cards (AIOC, DigiRig Lite), it is NOT a
-USB device: audio is a WM8731 codec on I2S, PTT is a relay driven by GPIO 12
-using Dire Wolf's GPIOD (libgpiod) interface. NOTE: Dire Wolf MUST be built
+USB device: audio is a WM8731 codec on I2S, PTT is a relay driven by header
+pin 32 using Dire Wolf's GPIOD (libgpiod) interface.
+
+Supported boards (1.4.9): **Raspberry Pi** (all models with the 40-pin
+header) and **Orange Pi Zero 2W with Armbian** - see
+[Orange Pi Zero 2W](#orange-pi-zero-2w-armbian) below. The header pins are the
+same on both boards; the Linux names behind them differ:
+
+| Header pin | DRA function | Raspberry Pi | Orange Pi Zero 2W |
+|---|---|---|---|
+| 12/35/38/40 | I2S BCLK/LRCK/DIN/DOUT | GPIO 18/19/20/21 | PI1/PI2/PI4/PI3 |
+| 3/5 | I2C to the codec | GPIO 2/3 (i2c-1) | PI8/PI7 (i2c-2) |
+| 32 | PTT relay + red LED | `gpiochip0 12` | `gpiochip1 267` (PI11) |
+| 36 | Green carrier-detect LED | `gpiochip0 16` | `gpiochip1 76` (PC12) |
+| 29 | Blue Bluetooth LED | `gpiochip0 5` | `gpiochip1 256` (PI0) |
+| - | ALSA card ID | `audioinjectorpi` | `DRAPiZero` |
+
+The web UI, the Dire Wolf config generator and the LED service pick the
+right column automatically (bin/kp4pra-dra-platform, src/common/dra_platform.py). NOTE: Dire Wolf MUST be built
 with libgpiod-dev present, or GPIOD PTT crash-loops on kernel 6.x (legacy
 sysfs GPIO is unreliable and can leave the line locked).
 
-## Setup (web UI — recommended)
+
+**Automatic setup:** a new install (INSTALL.md, one command) finds a
+DRA-Pi-Zero by itself. The installer switches on the I2C bus on header pins
+3/5, and on the next boot `kp4pra-dra-autodetect` (runs once) looks for the
+DRA's codec at I2C address 0x1a. If it is there, the DRA setup below runs on
+its own and the board restarts once (Raspberry Pi) or twice (Orange Pi). If
+not, nothing changes. Added a DRA later: `sudo kp4pra-dra-autodetect --again`.
+To switch the auto-detect off before the first boot, for example with another
+HAT that also uses address 0x1a (such as a WM8960 sound board), create
+`/rw/kp4pra-tnc/.dra-autodetect-off`. The manual steps below still work.
+
+## Setup on a Raspberry Pi (web UI — recommended)
 
 The Config page has a **DRA-Pi-Zero (I²S) Setup** card. It shows whether a
 DRA is currently detected, and a **Set up DRA-Pi-Zero** button that runs a
@@ -31,7 +59,7 @@ config step (narrow sudoers: `--config-only` only), never arbitrary commands.
 config.txt edit): restore the backup from another machine or a recovery boot:
 `cp /boot/firmware/config.txt.kp4pra.bak /boot/firmware/config.txt`.
 
-## Setup (manual script — alternative)
+## Setup on a Raspberry Pi (manual script — alternative)
 
 1. Run the opt-in script (NOT part of the standard installer):
 
@@ -56,8 +84,22 @@ succeed but are pure silence. The script sets: Input Mux=Mic, Mic capture
 on, Mic Boost off, Line capture off, ADC HPF on, Sidetone 0, Output Mixer
 HiFi on, Master 100 (tested: -21dB; the earlier 37 was a wrong scale that
 left TX nearly silent), Capture 31 (max; RX gain is set by the R12 pot, not
-ALSA). The green Carrier-Detect LED (GPIO 16) is driven by a
-"DCD GPIOD gpiochip0 16" line, emitted automatically for the I2S board.
+ALSA). The same settings are used on both boards. The green Carrier-Detect
+LED (header pin 36) is driven by a "DCD GPIOD ..." line, emitted
+automatically for the I2S board with the board's chip/line.
+
+## LEDs
+
+| LED | Meaning |
+|---|---|
+| Red | PTT relay energized (Dire Wolf is transmitting) |
+| Green | Carrier detect: brief flash per received packet (DCD asserts only during demodulation - a blink, not a steady glow, is correct) |
+| Blue, off | Neither Bluetooth service (BLE, RFCOMM) is running, or the adapter is off |
+| Blue, solid | Bluetooth service available, no client connected |
+| Blue, fast flash (5 Hz) | A client is connected (BLE iPhone or RFCOMM Android); back to solid when it disconnects |
+
+The blue LED is driven by `kp4pra-tnc-bt-led` (polls every 2 s) on every
+board. On a board it does not know, it leaves the pin alone.
 
 ## Hardware settings on the board
 
@@ -74,7 +116,7 @@ ALSA). The green Carrier-Detect LED (GPIO 16) is driven by a
 
 `kp4pra-adevice-fix` normally waits up to 45 s for a CM108-class USB card
 and rewrites ADEVICE to it. When the configured ADEVICE contains an I2S
-card ID (audioinjectorpi) it now logs a skip and exits immediately: no boot
+card ID (audioinjectorpi on a Pi, DRAPiZero on an Orange Pi) it now logs a skip and exits immediately: no boot
 delay, and a plugged-in USB card can NOT silently steal the config. To go
 back to a USB card, just re-select it in the web UI — the self-heal
 reactivates automatically because ADEVICE no longer matches an I2S card.
@@ -90,10 +132,173 @@ reactivates automatically because ADEVICE no longer matches an I2S card.
   Rebuild with libgpiod-dev present (it is in install.sh PREREQS as of 1.3.7).
 - Green RX LED: flashes briefly per decoded packet (DCD asserts only during
   carrier demodulation - a brief blink, not a steady glow, is correct).
-- Blue BT LED (GPIO 5): on while a phone is CONNECTED (BLE or RFCOMM),
-  off otherwise. Driven by the kp4pra-tnc-bt-led service (polls
-  `bluetoothctl devices Connected` every 3s). On/off only - GPIO cannot
-  dim from software; if it is too bright, fit a larger current-limiting
-  resistor on GPIO 5 (hardware mod). The service user needs the gpio group.
+- Blue BT LED (header pin 29): see [LEDs](#leds). GPIO cannot dim from
+  software; if it is too bright, fit a larger current-limiting resistor on
+  pin 29 (hardware mod). The service user needs the gpio group. If the
+  service fails with `status=216/GROUP`, the gpio group is missing - re-run
+  the setup script (Armbian has no gpio group by default).
 - GPIO permission errors in the journal: service user must be in the
   `gpio` group (setup script does this; needs service restart to apply).
+
+## Orange Pi Zero 2W (Armbian)
+
+Tested: Orange Pi Zero 2W, Armbian 26.8.3 (stable), kernel
+6.18.44-current-sunxi64, DRA-Pi-Zero with the 12.000 MHz crystal. RX, TX,
+all three LEDs, BLE (iPhone) validated on 2026-10-12.
+
+### Requirements
+
+- **Armbian** with Armbian's own kernel ("current" or "edge" branch). Its
+  sunxi AHUB audio support is an Armbian patch - Orange Pi's vendor images
+  ("Orange Pi OS", legacy 4.9/5.4/6.1 BSP kernels) use a different audio
+  stack and are not supported.
+- **Kernel headers** for the running kernel. The setup script gets them
+  automatically on any Armbian image (see "Kernel headers" below).
+- **Internet** during setup and whenever a new kernel is installed (the codec
+  driver source for that exact kernel is downloaded and cached).
+- Only the **Zero 2W** is covered. Other H616/H618 boards (Zero 2, Zero 3)
+  have different header pinouts.
+
+### Setup (from SSH, once)
+
+```bash
+cd ~/kp4pra-tnc
+sudo bash scripts/setup-dra-pi-zero.sh
+sudo reboot
+```
+
+Then in the web UI Config page: **Detect sound cards**, select
+**DRA-Pi-Zero (I2S)** (plughw:DRAPiZero,0). PTT pre-fills to GPIOD
+`gpiochip1 267` and the green LED line (`DCD GPIOD gpiochip1 76`) is added
+automatically. Preview, then Apply. The "Set up DRA-Pi-Zero" button on the
+Config page only reports the status on an Orange Pi.
+
+What the script does (six steps, all logged):
+
+1. Installs the kernel headers that match the running kernel.
+2. Installs dkms, gcc/make, device-tree-compiler, i2c-tools, gpiod.
+3. Builds the KP4PRA-patched WM8731 driver as DKMS package
+   `kp4pra-wm8731`: downloads `sound/soc/codecs/wm8731*` for exactly your
+   kernel version (git.kernel.org, GitHub mirror as fallback), caches it in
+   /var/cache/kp4pra-wm8731, applies the patches. **DKMS rebuilds it
+   automatically on every kernel update** - nothing to do by hand.
+4. Adds `i2c1-pi` to `overlays=` and installs the user overlay
+   `kp4pra-dra-orangepi` (armbianEnv.txt is backed up once to
+   armbianEnv.txt.kp4pra.bak).
+5. Creates the gpio group + udev rule, adds `kp4pra` (Dire Wolf) and
+   `kp4pra-tnc` (LED service) to it, installs the helpers, and adds a Dire
+   Wolf pre-start I2C check (see below).
+6. Applies the mixer (or schedules it for the next boot).
+
+Re-running the script is safe; it rebuilds the driver and keeps your settings.
+
+### Kernel headers (automatic on any Armbian image)
+
+The codec driver is built against the running kernel's headers. Armbian's
+download page for the Zero 2W currently offers only **rolling** images
+(packages from `beta.armbian.com`, "trunk" kernels such as
+`26.11.0-trunk.83`), and the beta repository often has **no headers** for its
+trunk kernels. Step [1/6] of the setup script handles this by itself:
+
+1. Headers for the running kernel available -> installed, setup continues.
+2. Not available -> the Armbian apt source is switched to the **stable**
+   repository `apt.armbian.com` (original file backed up to
+   `/var/backups/kp4pra/`; if no Armbian source exists, a stable one is added)
+   and the running kernel's headers are tried again.
+3. Still not available (a rolling kernel) -> the newest **stable** kernel
+   that has image, device tree and headers is installed
+   (`linux-image/dtb/headers-current-sunxi64`), the build tools are
+   installed and the WM8731 source for the new kernel is downloaded into
+   `/var/cache/kp4pra-wm8731` (so the rest also works offline), and
+   `kp4pra-dra-setup-resume.service` is scheduled. The board **reboots by
+   itself** (10 s countdown, Ctrl-C cancels), the service finishes the setup
+   on the new kernel and the board **reboots once more**. The service runs
+   only once (it removes itself even if the build fails - then run the
+   command again by hand). `--no-reboot` restores the old behaviour (reboot
+   and run again by hand).
+
+The board stays on the stable repository afterwards, so `apt upgrade` keeps
+kernel and headers in step and DKMS rebuilds the driver for each new kernel.
+To undo the repository change, copy the file back from `/var/backups/kp4pra/`.
+
+Manual equivalent (only if the automatic step cannot reach the repository):
+
+```bash
+grep -rl beta.armbian.com /etc/apt/sources.list /etc/apt/sources.list.d/
+# edit that file: beta.armbian.com -> apt.armbian.com (keep a backup), then:
+sudo apt update
+apt-cache madison linux-image-current-sunxi64      # pick the newest stable version
+V=26.8.3                                           # example
+sudo apt install --allow-downgrades linux-image-current-sunxi64=$V linux-dtb-current-sunxi64=$V linux-headers-current-sunxi64=$V
+sudo reboot
+```
+
+Do not install Debian's `linux-headers-*` packages - they do not match
+Armbian's kernel.
+
+### How it works (bring-up notes)
+
+- **Codec clocking.** The DRA's WM8731 runs from its own 12.000 MHz crystal
+  in USB mode and is the I2S clock master, as on the Pi. Patch 1
+  (`kp4pra,xtal-12mhz`) makes the driver use the crystal and ignore the
+  sunxi machine driver's 0 Hz sysclk request.
+- **AHUB LRCK period.** In USB mode the codec sends 250 BCLKs per frame at
+  48 kHz (125 per channel; 272/136 at 44.1 kHz). The H618's AHUB I2S
+  receiver only latches frames when its LRCK period matches exactly - even as
+  clock slave - and its driver can only program slot multiples (125 is
+  unreachable). Patch 2 (`kp4pra,ahub-fmt0-reg`) has the codec write the
+  right period into AHUB I2S0 FMT0 during hw_params. Symptom without it:
+  `arecord` fails with `Input/output error` after ~0.6 s.
+- **Pin states.** The AHUB driver applies its "default" pins only at probe
+  and ASoC parks idle devices in "sleep", so the overlay's sleep state uses
+  the same I2S mux. PI0 (I2S MCLK) is deliberately left free - it drives
+  the blue LED.
+- **I2C controller lock-up.** The SoC's I2C controller can get stuck
+  reporting `mv64xxx: I2C bus locked` with idle wires; every codec write
+  then times out (~2 s each) and Dire Wolf's start stalls ~30 s with no
+  RX/TX. `kp4pra-dra-i2c-check` runs before every Dire Wolf start (systemd
+  drop-in `direwolf.service.d/kp4pra-dra-i2c.conf`), probes the codec and,
+  if needed, resets the controller and restores the mixer. Run it by hand
+  with `sudo kp4pra-dra-i2c-check`; results are in
+  `journalctl -u direwolf`.
+
+### WiFi hotspot on the Orange Pi
+
+The KP4PRA hotspot (AP mode, button 23 hold on the Mini PiTFT) has **no WiFi
+password** on this board: the onboard WiFi (Unisoc UWE5622, Armbian driver
+`unisoc_wifi`) starts a WPA2 hotspot but phones never finish joining it, and
+hostapd cannot drive the chip. Set a Dashboard password before using AP mode
+in the field, or use client mode / USB Ethernet. Details: INSTALL.md, "WiFi: home network or
+hotspot" (`wifi.ap_security`).
+
+### Troubleshooting (Orange Pi)
+
+- Automatic continue after the kernel change:
+  `journalctl -b -u kp4pra-dra-setup-resume` (pending while
+  `/rw/kp4pra-tnc/.dra-setup-resume` exists).
+- **Send this file when reporting a problem:**
+  `/rw/kp4pra-tnc/logs/dra-setup.log`. It keeps the output of every
+  `setup-dra-pi-zero.sh` run plus one line per boot from the mixer service
+  (`boot mixer: mixer applied ...` or `... NOT detected after 30 s`).
+- Card listed but no RX/TX audio: the WM8731 mixer is not set. It is applied
+  at every boot by `kp4pra-dra-mixer.service` (which waits up to 30 s for the
+  card); apply it by hand with
+  `sudo /usr/local/bin/setup-dra-pi-zero.sh --mixer-only` and check
+  `journalctl -b -u kp4pra-dra-mixer`.
+- `dmesg | grep KP4PRA` must show both `fixed 12 MHz crystal` and
+  `AHUB LRCK period fixup at 0x05097204`. If not: `dkms status` should list
+  `kp4pra-wm8731/<version>, <kernel>: installed`.
+- `aplay -l` must list `card N: DRAPiZero`. 10 s capture test:
+  `arecord -D hw:DRAPiZero,0 -f S16_LE -r 48000 -c 2 -d 10 /tmp/t.wav`
+  (must finish in 10 s, file 1920044 bytes).
+- Dire Wolf exits with `Failed to request GPIO line` on `gpiochip0`: the
+  config still has the Raspberry Pi PTT line. Re-select the DRA in the web
+  UI and Apply (a Pi value is remapped to `gpiochip1 267` automatically).
+- Slow Dire Wolf start / `I2C bus locked` in dmesg: `sudo kp4pra-dra-i2c-check`.
+- Setup says "the kernel was updated but the board has not been rebooted
+  yet": an `apt upgrade` installed a new kernel and the running one's files
+  are gone (nftables and other modules fail too). `sudo reboot`, then run
+  the setup again.
+- After a kernel update the DRA is gone: the update ran without internet, so
+  DKMS could not fetch the new driver source. Connect and run
+  `sudo dkms autoinstall`, then reboot.

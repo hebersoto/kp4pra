@@ -1,44 +1,66 @@
 #!/bin/bash
-# KP4PRA TNC - Blue Bluetooth LED (DRA-Pi-Zero, GPIO 5 / header pin 29).
-# LED is active-high (verified: GPIO5=low -> off, high -> on). At power-on the
-# pin floats HIGH so the LED is stuck on; this daemon drives it and holds it,
-# lighting it only while a BT device is actually CONNECTED (BLE iPhone or
-# RFCOMM Android - both appear in `bluetoothctl devices Connected`).
+# KP4PRA TNC - Blue Bluetooth LED (DRA-Pi-Zero, header pin 29).
 #
-# libgpiod, not sysfs (kernel 6.x sysfs GPIO is unreliable / can lock a line).
-# gpioset holds the line only while it runs, so we keep ONE gpioset alive and
-# restart it when the desired level changes. Runs as kp4pra-tnc (gpio group).
+#   off        - BLE and RFCOMM services both down, or the adapter is unpowered
+#   solid on   - a Bluetooth service is available, no client connected
+#   fast flash - a client is connected (BLE iPhone or RFCOMM Android)
+#
+# The pin comes from kp4pra-dra-platform: Raspberry Pi GPIO 5 (gpiochip0
+# line 5), Orange Pi Zero 2W PI0 (gpiochip1 line 256). On an unknown board
+# the LED is left alone (we do not drive pins we do not know). Override with
+# KP4PRA_BT_LED_CHIP / KP4PRA_BT_LED_LINE.
+#
+# The LED is active-high. libgpiod, not sysfs (kernel 6.x sysfs GPIO is
+# unreliable / can lock a line). One gpioset process holds the line (or
+# toggles it for the flash); it is replaced only when the wanted state
+# changes. Runs as kp4pra-tnc (gpio group).
 
-CHIP=gpiochip0
-LINE=5
-POLL=3
+PLAT="$(command -v kp4pra-dra-platform || echo "$(dirname "$0")/kp4pra-dra-platform")"
+eval "$("$PLAT" 2>/dev/null)"
+CHIP=${KP4PRA_BT_LED_CHIP:-$DRA_LED_CHIP}
+LINE=${KP4PRA_BT_LED_LINE:-$DRA_LED_LINE}
+if [ -z "$CHIP" ] || [ -z "$LINE" ]; then
+    echo "BT LED: no known LED pin for '${DRA_MODEL:-unknown board}' - LED disabled."
+    exit 0
+fi
+
+POLL=2
+FLASH_MS=100          # 100 ms on / 100 ms off = 5 Hz fast flash
 
 hold_pid=""
-current=""   # "" unknown, "0" off, "1" on
+current=""            # "", off, on, flash
 
-set_level() {
+set_state() {
     local want="$1"
     [ "$want" = "$current" ] && return
-    [ -n "$hold_pid" ] && kill "$hold_pid" 2>/dev/null
-    # -t0 = hold until killed; background it and keep the pid
-    gpioset -c "$CHIP" -t0 "${LINE}=${want}" &
+    [ -n "$hold_pid" ] && { kill "$hold_pid" 2>/dev/null; wait "$hold_pid" 2>/dev/null; }
+    case "$want" in
+        off)   gpioset -c "$CHIP" "${LINE}=0" & ;;
+        on)    gpioset -c "$CHIP" "${LINE}=1" & ;;
+        flash) gpioset -c "$CHIP" -t "$FLASH_MS" "${LINE}=1" & ;;
+    esac
     hold_pid=$!
     current="$want"
 }
 
-cleanup() { [ -n "$hold_pid" ] && kill "$hold_pid" 2>/dev/null; exit 0; }
+cleanup() { set_state off; sleep 0.2; [ -n "$hold_pid" ] && kill "$hold_pid" 2>/dev/null; exit 0; }
 trap cleanup INT TERM
 
-# Drive LOW immediately so the floating-high LED goes dark at startup.
-set_level 0
-
+service_up() {
+    { systemctl is-active --quiet kp4pra-tnc-ble || systemctl is-active --quiet kp4pra-tnc-rfcomm; } \
+        && bluetoothctl show 2>/dev/null | grep -q "Powered: yes"
+}
 any_connected() {
-    # Reuse the same source of truth as bluez_manager.get_connected_devices().
-    # A connected device line looks like: "Device AA:BB:.. Name"
+    # Same source of truth as bluez_manager.get_connected_devices().
     bluetoothctl devices Connected 2>/dev/null | grep -q '^Device '
 }
 
+echo "BT LED on $CHIP line $LINE (${DRA_BOARD:-board})"
+set_state off
 while true; do
-    if any_connected; then set_level 1; else set_level 0; fi
+    if ! service_up;    then set_state off
+    elif any_connected; then set_state flash
+    else                     set_state on
+    fi
     sleep "$POLL"
 done

@@ -33,7 +33,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 log()  { echo -e "${GREEN}[KP4PRA TNC]${NC} $*"; }
-STEP=0; TOTAL_STEPS=10
+# Total = number of step lines in this script, so the [n/N] counter stays right.
+STEP=0; TOTAL_STEPS="$(grep -c '^[[:space:]]*step "' "${BASH_SOURCE[0]}" 2>/dev/null || echo 0)"
 step() { STEP=$((STEP+1)); echo -e "${GREEN}[KP4PRA TNC] [${STEP}/${TOTAL_STEPS}]${NC} $*"; }
 warn() { echo -e "${YELLOW}[KP4PRA TNC WARN]${NC} $*"; }
 err()  { echo -e "${RED}[KP4PRA TNC ERROR]${NC} $*" >&2; }
@@ -45,6 +46,10 @@ log "Starting KP4PRA TNC installation..."
 
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash $0"
 
+# Setup progress for the web page / Mini PiTFT / login message.
+istate() { "$(dirname "$(dirname "$(readlink -f "$0")")")/bin/kp4pra-install-state" set "$@" >/dev/null 2>&1 || true; }
+istate installing "Installing KP4PRA TNC"
+
 # ── Auto-install prerequisite packages (Debian/Ubuntu) ───────────────────────
 # On a fresh image these are usually missing; install them up front so the
 # checks below pass on the first run. Idempotent: apt skips what's present.
@@ -52,7 +57,11 @@ log "Starting KP4PRA TNC installation..."
 # It is only a Recommends of network-manager, so minimal images (Armbian)
 # lack it and "kp4pra-wifi-mode ap" fails with "IP configuration could not
 # be reserved".
-PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils"
+# Xara (VARA modem): its program is linked against libpulse0 and libasound
+# (alsa-utils brings libasound under whichever name the system uses:
+# libasound2t64 on Debian 13, libasound2 before), plus curl/git/xz-utils to
+# download it and python3-libgpiod for the DRA-Pi-Zero PTT helper.
+PREREQS="python3 python3-venv python3-pip bluez bluez-tools network-manager dnsmasq-base libgpiod-dev avahi-daemon avahi-utils i2c-tools alsa-utils curl git xz-utils python3-libgpiod libpulse0"
 if command -v apt-get >/dev/null 2>&1; then
     step "Installing prerequisite packages: $PREREQS"
     export DEBIAN_FRONTEND=noninteractive
@@ -75,12 +84,12 @@ python3 -c "import ensurepip" >/dev/null 2>&1 || die "python3-venv (with ensurep
 command -v bt-agent >/dev/null 2>&1 || warn "bt-agent not found - install bluez-tools (required for Just Works pairing agent)"
 command -v nmcli >/dev/null 2>&1 || warn "NetworkManager (nmcli) not found - WiFi hotspot mode requires it: apt install network-manager"
 
-if ! mountpoint -q /rw 2>/dev/null && ! [ -d /rw/kp4pra-tnc ]; then
-    warn "/rw does not appear to be a separate writable partition."
-    warn "Configuration and Bluetooth state will use the root filesystem."
-    warn "For production use, mount a dedicated writable partition at /rw."
-    read -rp "Continue anyway? [y/N] " ans
-    [[ "$ans" =~ ^[Yy]$ ]] || exit 1
+# Writable area for config and Bluetooth state. Created automatically; a
+# dedicated partition mounted at /rw is optional (production layout, see
+# README.md "Read-Only Filesystem Deployment") - no question asked.
+mkdir -p /rw
+if ! mountpoint -q /rw 2>/dev/null; then
+    log "/rw is a folder on the root filesystem (fine for normal use; a separate /rw partition is optional - README.md \"Read-Only Filesystem Deployment\")"
 fi
 
 # ── System user ──────────────────────────────────────────────────────────────
@@ -101,7 +110,12 @@ fi
 
 step "Installing application to $APP_DIR"
 mkdir -p "$APP_DIR"
-cp -r "$PROJECT_DIR/src" "$APP_DIR/"
+# Replace the program files completely (re-run / update safe: files removed
+# in a newer version do not linger). The venv and config are kept.
+rm -rf "$APP_DIR/src.new"
+cp -r "$PROJECT_DIR/src" "$APP_DIR/src.new"
+rm -rf "$APP_DIR/src"
+mv "$APP_DIR/src.new" "$APP_DIR/src"
 cp "$PROJECT_DIR/VERSION" "$APP_DIR/VERSION"   # web UI reads this for app_version
 chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 chmod -R 755 "$APP_DIR"
@@ -157,10 +171,18 @@ fi
 step "Setting up BlueZ persistent state directory: $BLUEZ_STATE_DIR"
 mkdir -p "$BLUEZ_STATE_DIR"
 
-# Copy any existing BlueZ pairing state to the persistent location
-if [ -d /var/lib/bluetooth ] && [ "$(ls -A /var/lib/bluetooth 2>/dev/null)" ]; then
+# Copy any existing BlueZ pairing state to the persistent location.
+# Re-run safe: on an installed board /var/lib/bluetooth IS the persistent
+# directory (bind mount, var-lib-bluetooth.mount) - nothing to copy. And never
+# overwrite pairings already on /rw (-n): the folder under the mount can hold
+# older state from before the first install.
+if [ /var/lib/bluetooth -ef "$BLUEZ_STATE_DIR" ] || mountpoint -q /var/lib/bluetooth 2>/dev/null; then
+    log "BlueZ state already lives in $BLUEZ_STATE_DIR (bind mount active) - nothing to copy"
+elif [ -d /var/lib/bluetooth ] && [ "$(ls -A /var/lib/bluetooth 2>/dev/null)" ]; then
     log "Copying existing BlueZ state to $BLUEZ_STATE_DIR..."
-    cp -a /var/lib/bluetooth/. "$BLUEZ_STATE_DIR/"
+    # "Do not overwrite": --update=none on newer coreutils, -n on older ones.
+    if cp --help 2>/dev/null | grep -q -- '--update\[=UPDATE\]'; then NOCLOBBER=--update=none; else NOCLOBBER=-n; fi
+    cp -a $NOCLOBBER /var/lib/bluetooth/. "$BLUEZ_STATE_DIR/"
 fi
 
 chown -R root:bluetooth "$BLUEZ_STATE_DIR"
@@ -186,7 +208,18 @@ cp "$PROJECT_DIR/systemd/kp4pra-morse-id.service"    /etc/systemd/system/ 2>/dev
 cp "$PROJECT_DIR/systemd/kp4pra-morse-id.timer"      /etc/systemd/system/ 2>/dev/null || true
 
 log "Installing helper scripts to /usr/local/bin"
-usermod -aG gpio kp4pra-tnc 2>/dev/null || true  # blue BT LED on GPIO 5
+# Blue BT LED (DRA-Pi-Zero header pin 29). Raspberry Pi OS ships a gpio group
+# and udev rule; Armbian (Orange Pi) has neither, which made the LED service
+# fail with status=216/GROUP. groupadd -f is a no-op where the group exists.
+groupadd -f gpio
+usermod -aG gpio kp4pra-tnc 2>/dev/null || true
+if ! tr -d '\0' </proc/device-tree/model 2>/dev/null | grep -qi "raspberry pi"; then
+    printf '%s\n' 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' \
+        'SUBSYSTEM=="spidev", KERNEL=="spidev*", GROUP="gpio", MODE="0660"' \
+        > /etc/udev/rules.d/60-kp4pra-gpio.rules
+    udevadm control --reload 2>/dev/null || true
+    udevadm trigger --subsystem-match=gpio 2>/dev/null || true
+fi
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-rw"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-remount-ro"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-fix-bt-perms" /usr/local/bin/
@@ -194,6 +227,10 @@ install -m 755 "$PROJECT_DIR/bin/kp4pra-legacy-adv"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-wifi-mode"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-web-redirect" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-bt-led"       /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-platform" /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-i2c-check" /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-dra-autodetect" /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-install-state" /usr/local/bin/
 install -m 755 "$PROJECT_DIR/bin/kp4pra-aprs-clock"   /usr/local/bin/
 install -m 755 "$PROJECT_DIR/scripts/setup-dra-pi-zero.sh" /usr/local/bin/
 
@@ -203,7 +240,8 @@ log "Creating capability-bearing HCI tool copies for the legacy-adv fallback"
 mkdir -p /usr/local/lib/kp4pra
 for t in hcitool hciconfig; do
     if [ -x "/usr/bin/$t" ]; then
-        cp "/usr/bin/$t" /usr/local/lib/kp4pra/
+        # --remove-destination: re-run safe even if the old copy is running.
+        cp --remove-destination "/usr/bin/$t" /usr/local/lib/kp4pra/
         setcap cap_net_admin,cap_net_raw+ep "/usr/local/lib/kp4pra/$t" ||             warn "setcap failed for $t - legacy BLE advertising fallback may not work"
     else
         warn "$t not found - install bluez (legacy BLE advertising fallback needs it)"
@@ -303,6 +341,83 @@ fi
 
 # ── Enable and start services ────────────────────────────────────────────────
 
+# ── DRA-Pi-Zero auto-detect ──────────────────────────────────────────────────
+# Switch on the I2C bus on header pins 3/5 (harmless without a DRA) so that on
+# the next boot kp4pra-dra-autodetect can see the DRA's codec (address 0x1a)
+# and run the DRA setup by itself. The service runs once.
+step "DRA-Pi-Zero auto-detect (header I2C bus, runs once after the reboot)"
+echo i2c-dev > /etc/modules-load.d/kp4pra-i2c.conf
+DRA_PLAT="$("$PROJECT_DIR/bin/kp4pra-dra-platform" 2>/dev/null | sed -n 's/^DRA_PLATFORM=//p')"
+case "$DRA_PLAT" in
+    rpi)
+        PI_CFG=/boot/firmware/config.txt; [ -f "$PI_CFG" ] || PI_CFG=/boot/config.txt
+        if [ -f "$PI_CFG" ] && ! grep -qE '^[[:space:]]*dtparam=i2c_arm=on' "$PI_CFG"; then
+            printf '\n# KP4PRA: I2C on header pins 3/5 (DRA-Pi-Zero auto-detect)\ndtparam=i2c_arm=on\n' >> "$PI_CFG"
+            log "I2C enabled in $PI_CFG"
+        fi ;;
+    opi-zero2w)
+        ENV_TXT=/boot/armbianEnv.txt
+        if [ -f "$ENV_TXT" ]; then
+            if grep -qE '^overlays=' "$ENV_TXT"; then
+                grep -qE '^overlays=.*\bi2c1-pi\b' "$ENV_TXT" || sed -i -E 's/^(overlays=.*)$/\1 i2c1-pi/' "$ENV_TXT"
+            else
+                echo "overlays=i2c1-pi" >> "$ENV_TXT"
+            fi
+            log "I2C (i2c1-pi overlay) enabled in $ENV_TXT"
+        fi ;;
+    *) log "Board not recognised - DRA-Pi-Zero auto-detect skipped" ;;
+esac
+sed "s#@REPO_DIR@#$PROJECT_DIR#" "$PROJECT_DIR/systemd/kp4pra-dra-autodetect.service" \
+    > /etc/systemd/system/kp4pra-dra-autodetect.service
+systemctl daemon-reload
+systemctl enable kp4pra-dra-autodetect.service >/dev/null 2>&1 || true
+log "DRA-Pi-Zero auto-detect enabled (looks once, on the next boot)"
+# What the web page / display show until the next boot finishes the setup.
+if [ -f /rw/kp4pra-tnc/.dra-autodetect-done ] || [ -z "$DRA_PLAT" ] || [ "$DRA_PLAT" = unknown ]; then
+    INSTALL_END_STATE=complete
+else
+    INSTALL_END_STATE=checking
+fi
+
+# ── Xara (VARA-compatible modem) ─────────────────────────────────────────────
+# Xara runs instead of Dire Wolf when chosen on the Services page (same radio
+# and sound card). kp4pra-xara downloads the ready-made Xara release for this
+# board (checked against its SHA256SUMS) into /opt/xara/<version>. Running this
+# installer again also upgrades Xara to the newest release (or the version set
+# in config.yaml xara.version). KP4PRA_XARA=0 skips the download.
+step "Xara VARA modem (install or upgrade)"
+install -m 755 "$PROJECT_DIR/bin/kp4pra-xara"     /usr/local/bin/
+install -m 755 "$PROJECT_DIR/bin/kp4pra-xara-ptt" /usr/local/bin/
+for u in kp4pra-xara-prep.service kp4pra-xara-ptt.service kp4pra-xara-boot.service \
+         kp4pra-xara-update.service var-lib-xara.mount kp4pra-vara-launcher.service \
+         kp4pra-xara-keepalive.service kp4pra-xara-fallback.service; do
+    cp "$PROJECT_DIR/systemd/$u" /etc/systemd/system/
+done
+# Shared playback for Xara on the DRA-Pi-Zero (I2S): see the file's comments.
+mkdir -p /etc/alsa/conf.d
+install -m 644 "$PROJECT_DIR/config/alsa/60-kp4pra-xara.conf" /etc/alsa/conf.d/
+mkdir -p /etc/systemd/system/xara@kp4pra.service.d
+cp "$PROJECT_DIR/systemd/xara@kp4pra.service.d/kp4pra.conf" /etc/systemd/system/xara@kp4pra.service.d/
+cp "$PROJECT_DIR/sudoers.d/kp4pra-tnc-xara" /etc/sudoers.d/kp4pra-tnc-xara
+chmod 0440 /etc/sudoers.d/kp4pra-tnc-xara
+visudo -c -f /etc/sudoers.d/kp4pra-tnc-xara >/dev/null || {
+    warn "Xara sudoers validation failed - removed (Xara buttons on the web page will not work)"
+    rm -f /etc/sudoers.d/kp4pra-tnc-xara
+}
+systemctl daemon-reload
+# RadioMail finds the TNC (DNS-SD _vara-modem._tcp) and starts Xara through
+# this varanny-compatible service (port 8273).
+systemctl enable kp4pra-vara-launcher.service >/dev/null 2>&1 || true
+systemctl restart kp4pra-vara-launcher.service || warn "VARA launcher did not start (RadioMail auto-discovery)"
+if [ "${KP4PRA_XARA:-1}" = 0 ]; then
+    log "Xara download skipped (KP4PRA_XARA=0). Later: sudo kp4pra-xara install"
+elif /usr/local/bin/kp4pra-xara update --auto; then
+    log "Xara: $(/usr/local/bin/kp4pra-xara status | head -1)"
+else
+    warn "Xara was not installed or upgraded (see above). Everything else works;"
+    warn "  try again later with: sudo kp4pra-xara install"
+fi
+
 step "Enabling KP4PRA TNC services"
 systemctl enable kp4pra-tnc-rms.service
 systemctl enable kp4pra-tnc-aprs-clock.service
@@ -341,10 +456,14 @@ systemctl start kp4pra-tnc-agent.service  || warn "Pairing agent start failed (b
 systemctl start kp4pra-bt-perms.service   || warn "BlueZ perms fix failed"
 /usr/local/bin/kp4pra-fix-bt-perms 2>/dev/null || true
 usermod -aG bluetooth "$SERVICE_USER" 2>/dev/null || true
-systemctl start kp4pra-tnc-rfcomm.service || warn "RFCOMM bridge start failed (may need Bluetooth adapter)"
-systemctl start kp4pra-tnc-ble.service    || warn "BLE bridge start failed (may need Bluetooth adapter)"
-systemctl start kp4pra-tnc-web.service    || warn "Web interface start failed"
-systemctl start kp4pra-tnc-aprs-clock.service || warn "APRS clock fallback start failed"
+# restart, not start: on an update the services are already running and
+# would keep the old program in memory until the next reboot (an update
+# without the reboot kept sending the old APRS TOCALL, for example).
+systemctl restart kp4pra-tnc-rfcomm.service || warn "RFCOMM bridge start failed (may need Bluetooth adapter)"
+systemctl restart kp4pra-tnc-ble.service    || warn "BLE bridge start failed (may need Bluetooth adapter)"
+systemctl restart kp4pra-tnc-web.service    || warn "Web interface start failed"
+systemctl restart kp4pra-tnc-aprs-clock.service || warn "APRS clock fallback start failed"
+systemctl try-restart kp4pra-tnc-rms.service 2>/dev/null || true   # only if it is running
 
 # ── journald: ensure volatile-only ─────────────────────────────────────────
 
@@ -403,6 +522,15 @@ else
     warn "  sudo bash scripts/install-direwolf-integration.sh"
 fi
 
+# ── Optional Mini PiTFT display (auto-detected) ─────────────────────────────
+# Always installs the kp4pra-tnc-tft service (Config -> TFT Display); enables
+# SPI only when a Mini PiTFT is plugged in right now. Never fails the install.
+if [ -x "$PROJECT_DIR/scripts/setup-tft.sh" ]; then
+    log "Mini PiTFT display (optional, auto-detect)"
+    bash "$PROJECT_DIR/scripts/setup-tft.sh" --auto \
+        || warn "TFT setup reported errors - re-run: sudo bash scripts/setup-tft.sh"
+fi
+
 echo ""
 log "═══════════════════════════════════════════════════════"
 # ── Login MOTD splash ────────────────────────────────────────────────────────
@@ -422,6 +550,11 @@ else
     /usr/local/bin/kp4pra-wifi-mode ap || warn "Hotspot start failed - run manually: sudo kp4pra-wifi-mode ap"
 fi
 
+if [ "${INSTALL_END_STATE:-complete}" = checking ]; then
+    istate checking "Finishing after the restart: looking for a DRA-Pi-Zero"
+else
+    istate complete ""
+fi
 log "  KP4PRA TNC installation complete!"
 log "  Version: $(cat "$APP_DIR/VERSION" 2>/dev/null || echo dev)"
 log "═══════════════════════════════════════════════════════"

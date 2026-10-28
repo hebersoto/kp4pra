@@ -5,7 +5,9 @@ Documentation=https://github.com/kp4pra/kp4pra-tnc
 # This keeps root filesystem read-only while allowing persistent Bluetooth pairing.
 # /rw/kp4pra-tnc/bluetooth must exist and contain a valid BlueZ state tree.
 Before=bluetooth.service kp4pra-tnc-rfcomm.service kp4pra-tnc-ble.service
-After=local-fs.target
+# Wait for the /rw partition. (Not After=local-fs.target: mounts are part
+# of local-fs.target, so that line made an ordering loop at boot.)
+RequiresMountsFor=/rw/kp4pra-tnc/bluetooth
 
 [Mount]
 # Source: writable persistent partition for BlueZ state

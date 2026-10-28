@@ -10,13 +10,16 @@ import re
 import subprocess
 from typing import Optional
 
+from common.dra_platform import (
+    is_dra_adevice, dra_ptt_param, dra_dcd_line, foreign_dra_ptt_params,
+)
+
 # Real storage location (writable partition). The web service writes here
 # directly. /home/kp4pra/direwolf.conf is a symlink to this file, used only
 # by Direwolf's -c flag; the service user cannot traverse /home/kp4pra.
 DIREWOLF_CONF_PATH = "/rw/kp4pra-tnc/direwolf.conf"
-# KP4PRA TNC's assigned APRS TOCALL (APRS software identifier). Built in,
-# not a setting. Destination of the KP4PRA beacon below; frames from phone
-# and PC apps (Bluetooth, BLE, WiFi KISS) keep their own TOCALL.
+# KP4PRA TNC's assigned APRS TOCALL (same value as web/aprs.py TOCALL;
+# a test keeps the two equal). Used as the destination of the beacon below.
 APRS_TOCALL = "APKPPR"
 
 # label shown in UI -> keyword patterns matched against `aplay -l` card names
@@ -29,9 +32,11 @@ CARD_SIGNATURES = [
     ("Yaesu USB radio",   ["yaesu", "ft-991", "ftdx"]),
     ("Icom USB radio",    ["icom", "ic-7300", "ic-705", "ic-9700"]),
     ("Kenwood USB radio", ["kenwood", "ts-590", "ts-890"]),
-    # DRA-Pi-Zero: I2S WM8731 on the 40-pin header via the audioinjector
-    # overlay. Card ID "audioinjectorpi". Relay PTT driven by GPIO 12.
-    ("DRA-Pi-Zero (I2S)", ["audioinjector"]),
+    # DRA-Pi-Zero: I2S WM8731 on the 40-pin header. Card ID
+    # "audioinjectorpi" on a Raspberry Pi (audioinjector overlay) and
+    # "DRAPiZero" on an Orange Pi Zero 2W (KP4PRA overlay). Relay PTT on
+    # header pin 32 - the gpiochip/line comes from common.dra_platform.
+    ("DRA-Pi-Zero (I2S)", ["audioinjector", "drapizero"]),
 ]
 
 # Suggested PTT per detected card label: (ptt_method, ptt_param)
@@ -41,7 +46,7 @@ PTT_SUGGESTIONS = {
     "Yaesu USB radio":   ("RTS", "/dev/ttyUSB1"),   # FT-991A: USB1 = PTT/standard port
     "Icom USB radio":    ("RTS", "/dev/ttyUSB1"),
     "Kenwood USB radio": ("RTS", "/dev/ttyUSB0"),
-    "DRA-Pi-Zero (I2S)": ("GPIOD", "gpiochip0 12"),
+    "DRA-Pi-Zero (I2S)": ("GPIOD", None),   # None = per-board, see dra_platform
 }
 
 
@@ -88,6 +93,8 @@ def detect_sound_cards() -> list:
         if label == "Signalink" and len(cp210x) >= 2:
             label = "Yaesu USB radio"
         ptt_s, ptt_p = PTT_SUGGESTIONS.get(label, ("", ""))
+        if ptt_p is None:
+            ptt_p = dra_ptt_param()
         entry = {"card": int(card_num), "name": card_name,
                  "label": label, "plughw": f"plughw:{card_id},{dev}",
                  "ptt_suggest": ptt_s, "ptt_param_suggest": ptt_p}
@@ -132,23 +139,67 @@ def _call_with_ssid(call: str, ssid) -> str:
     return f"{call}-{s}" if s else call
 
 
+def resolve_adevice(station: dict) -> str:
+    """ALSA device (plughw:...) of the sound card chosen in the web UI.
+    Prefers the selected card matched against live detection; falls back to
+    the CM108 hidraw mapping, then to the historical default. Shared by
+    Dire Wolf and Xara so both modems always use the same card."""
+    selected = (station.get("sound") or "").strip()
+    if selected:
+        for card in detect_sound_cards():
+            if card["label"] == selected or card["name"] == selected:
+                return card["plughw"]
+    return detect_cm108_adevice() or "plughw:1,0"
+
+
+def gpiod_chip_line(ptt_param: str, adevice: str) -> tuple:
+    """(chip, line) for GPIOD PTT. ptt_param may be "gpiochip0 12" (chip +
+    line) or just "12" (line; default chip). With the DRA-Pi-Zero selected,
+    an empty param or another board's DRA default (e.g. a Pi's
+    "gpiochip0 12" on an Orange Pi) is replaced by THIS board's DRA PTT
+    line. A line written "-12" is active-low (Dire Wolf syntax)."""
+    ptt_param = (ptt_param or "").strip()
+    if is_dra_adevice(adevice) and (
+            not ptt_param or " ".join(ptt_param.split()) in foreign_dra_ptt_params()):
+        ptt_param = dra_ptt_param()
+    toks = ptt_param.split()
+    if len(toks) >= 2:
+        return toks[0], toks[1]
+    if len(toks) == 1 and toks[0].lstrip("-").isdigit():
+        return "gpiochip0", toks[0]
+    return "gpiochip0", "12"
+
+
+def find_cm108_hidraw(adevice: str = "") -> Optional[str]:
+    """/dev/hidrawN of the CM108-type PTT that belongs to `adevice` (from
+    Dire Wolf's `cm108` tool). The hidraw number changes between boots, so
+    this is looked up each time Xara starts. Falls back to the first CM108
+    device found; None when there is none."""
+    try:
+        out = subprocess.run(["cm108"], capture_output=True, timeout=5
+                             ).stdout.decode(errors="replace")
+    except Exception:
+        return None
+    first = None
+    want = (adevice or "").strip()
+    for line in out.splitlines():
+        toks = line.split()
+        hid = next((t for t in toks if t.startswith("/dev/hidraw")), None)
+        if not hid:
+            continue
+        first = first or hid
+        if want and want in toks:
+            return hid
+    return first
+
+
 def generate_direwolf_conf(station: dict, adevice: str = None) -> str:
     """Render direwolf.conf text from the station config section."""
     mycall = _call_with_ssid(station.get("callsign", ""), station.get("ssid", ""))
     alias  = _call_with_ssid(station.get("calias", "") or "CDIGI",
                              station.get("aliasssid", ""))
     if not adevice:
-        # Prefer the ADEVICE of the sound card selected in the web UI,
-        # matched against live detection; fall back to CM108 hidraw
-        # mapping, then to the historical default.
-        selected = (station.get("sound") or "").strip()
-        if selected:
-            for card in detect_sound_cards():
-                if card["label"] == selected or card["name"] == selected:
-                    adevice = card["plughw"]
-                    break
-        if not adevice:
-            adevice = detect_cm108_adevice() or "plughw:1,0"
+        adevice = resolve_adevice(station)
 
     ptt = (station.get("ptt") or "CM108").upper()
     ptt_param = (station.get("ptt_param") or "").strip()
@@ -165,13 +216,10 @@ def generate_direwolf_conf(station: dict, adevice: str = None) -> str:
         # where legacy sysfs GPIO is unreliable (line numbering moved,
         # and a crash can leave the line locked). ptt_param may be
         # "gpiochip0 12" (chip + line) or just "12" (line; default chip).
-        toks = ptt_param.split()
-        if len(toks) >= 2:
-            chip, line = toks[0], toks[1]
-        elif len(toks) == 1 and toks[0].isdigit():
-            chip, line = "gpiochip0", toks[0]
-        else:
-            chip, line = "gpiochip0", "12"
+        # With the DRA-Pi-Zero selected, an empty param or another board's
+        # DRA default (e.g. a Pi's "gpiochip0 12" on an Orange Pi) is
+        # replaced by THIS board's DRA PTT line.
+        chip, line = gpiod_chip_line(ptt_param, adevice)
         ptt_lines.append(f"PTT GPIOD {chip} {line}")
     elif ptt in ("RTS", "DTR"):
         dev = ptt_param if ptt_param.startswith("/dev/") else "/dev/ttyUSB0"
@@ -183,12 +231,13 @@ def generate_direwolf_conf(station: dict, adevice: str = None) -> str:
     elif ptt == "NONE":
         ptt_lines.append("# No PTT configured")
 
-    # Carrier-detect LED (green on DRA-Pi-Zero, GPIO 16 / header pin 36).
+    # Carrier-detect LED (green on DRA-Pi-Zero, header pin 36).
     # GPIOD form for kernel 6.x (sysfs GPIO is unreliable / can lock).
     # Only emitted for the I2S board; USB cards have no such LED wired.
+    # The gpiochip/line is per board (common.dra_platform).
     dcd_lines = []
-    if "audioinjector" in (adevice or ""):
-        dcd_lines.append("DCD GPIOD gpiochip0 16")
+    if is_dra_adevice(adevice):
+        dcd_lines.append(dra_dcd_line())
     lines = [
         "# Generated by KP4PRA TNC web interface - do not edit by hand.",
         "# Edit Station Information at http://<host>:8088/config and Apply.",

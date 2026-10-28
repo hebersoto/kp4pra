@@ -126,6 +126,48 @@
   </div>
 
 
+  <!-- Xara (VARA modem) -->
+  <div class="card" id="xara-card">
+    <div class="card-title"><span class="icon">📶</span> VARA Modem (Xara)</div>
+    <div class="card-subtitle" style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-bottom:0.75rem">
+      Xara is a VARA FM/HF compatible modem for RadioMail, WoAD and other
+      VARA apps (they connect over WiFi). It uses the same radio as Dire Wolf, so one of them runs at a
+      time. Settings are on the Config page.
+    </div>
+    <div class="status-row">
+      <span class="status-label">Modem in use</span>
+      <span class="status-value" id="xara-modem">checking…</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Xara</span>
+      <span class="status-value" id="xara-version">checking…</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Mode / PTT</span>
+      <span class="status-value" id="xara-mode">—</span>
+    </div>
+    <div class="status-row" id="xara-disc-row" style="display:none">
+      <span class="status-label">RadioMail finds it as</span>
+      <span class="status-value" id="xara-disc"></span>
+    </div>
+    <div class="status-row" id="xara-connect-row" style="display:none">
+      <span class="status-label">VARA apps connect to</span>
+      <span class="status-value" id="xara-connect"></span>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:1rem">
+      <button class="btn btn-primary btn-sm" id="xara-use" style="display:none" onclick="xaraModem('xara')">Use Xara (VARA)</button>
+      <button class="btn btn-secondary btn-sm" id="xara-packet" style="display:none" onclick="xaraModem('packet')">Back to Dire Wolf (packet)</button>
+      <a class="btn btn-secondary btn-sm" id="xara-ui" style="display:none" target="_blank" rel="noopener">Open Xara page</a>
+      <button class="btn btn-secondary btn-sm" id="xara-install" style="display:none" onclick="xaraUpdate()">Install Xara</button>
+      <button class="btn btn-secondary btn-sm" id="xara-check" style="display:none" onclick="xaraCheck()">Check for update</button>
+    </div>
+    <div id="xara-result" style="margin-top:0.6rem;font-size:0.85rem"></div>
+    <details style="margin-top:0.6rem" ontoggle="if(this.open) loadXaraLog()">
+      <summary style="cursor:pointer;font-size:0.85rem">Xara log</summary>
+      <div class="log-block" id="xara-log" style="max-height:220px">…</div>
+    </details>
+  </div>
+
   <!-- WiFi Mode -->
   <div class="card">
     <div class="card-title"><span class="icon">📶</span> WiFi Mode</div>
@@ -322,6 +364,117 @@ function showResult(success, msg) {
   el.scrollIntoView({behavior:'smooth'});
 }
 
+// ── Xara (VARA modem) ──
+let xaraPoll = null;
+function xaraSet(id, text) { document.getElementById(id).textContent = text; }
+function xaraShow(id, on) { document.getElementById(id).style.display = on ? '' : 'none'; }
+
+async function loadXara() {
+  let d;
+  try { d = await (await fetch('/api/xara/status')).json(); }
+  catch (e) { xaraSet('xara-version', 'unknown'); return; }
+  const host = location.hostname;
+  const x = d.settings || {};
+  if (d.updating) {
+    xaraSet('xara-version', 'installing / updating…');
+    if (!xaraPoll) xaraPoll = setInterval(loadXara, 4000);
+  } else {
+    if (xaraPoll) { clearInterval(xaraPoll); xaraPoll = null; loadXaraLog(true); }
+    xaraSet('xara-version', d.installed ? ('version ' + d.version + (d.registered_build ? ' (registered)' : ''))
+      : (d.tool_missing ? 'not set up - run the install command again'
+         : (d.supported === false ? 'no Xara build for this board' : 'not installed')));
+  }
+  const running = d.running;
+  if (d.fallback_at && !running && !document.getElementById('xara-result').textContent) {
+    document.getElementById('xara-result').textContent =
+      '⚠ Xara stopped after repeated errors (' + d.fallback_at.replace('T', ' ').slice(0, 19) +
+      ') and the TNC went back to Dire Wolf. See the Xara log below.';
+  }
+  xaraSet('xara-modem', running ? 'Xara (VARA) - Dire Wolf is stopped'
+        : (d.modem === 'xara' ? 'Xara (starting…)' : 'Dire Wolf (packet)'));
+  xaraSet('xara-mode', (d.mode_label || '') + (d.ptt ? ' · PTT: ' + d.ptt : ''));
+  xaraShow('xara-connect-row', running);
+  const disc = d.discovery || {};
+  xaraShow('xara-disc-row', d.installed);
+  xaraSet('xara-disc', disc.announced
+    ? '"' + disc.name + '" (VARA ' + (String(x.mode || '').startsWith('hf') ? 'HF' : 'FM') + ')' +
+      (disc.auto_switch ? ' - starts Xara by itself' : '')
+    : (disc.active ? 'not announced (network access is off)' : 'discovery service not running'));
+  if (running) {
+    xaraSet('xara-connect', (x.network ? host : '127.0.0.1') + ' port ' + x.port +
+            ' (data ' + (Number(x.port) + 1) + ')' +
+            (String(x.kiss_port).toLowerCase() !== 'off' ? ', KISS ' + x.kiss_port : '') +
+            ' · call ' + d.call);
+  }
+  xaraShow('xara-use', d.installed && !running && !d.updating);
+  xaraShow('xara-packet', running || d.modem === 'xara');
+  xaraShow('xara-install', !d.installed && !d.updating && !d.tool_missing && d.supported !== false);
+  xaraShow('xara-check', d.installed && !d.updating);
+  const ui = document.getElementById('xara-ui');
+  ui.href = 'http://' + host + ':' + (x.ui_port || 8080) + '/';
+  xaraShow('xara-ui', running && x.ui_port);
+}
+
+async function xaraModem(m) {
+  const msg = m === 'xara'
+    ? 'Switch to Xara (VARA)?\n\nDire Wolf stops: no APRS, no Bluetooth/BLE KISS apps and no RMS ' +
+      'gateway until you switch back. Xara stays on after a restart until you switch back.'
+    : 'Switch back to Dire Wolf (packet)?\n\nXara stops; VARA apps are disconnected.';
+  if (!confirm(msg)) return;
+  const el = document.getElementById('xara-result');
+  el.textContent = m === 'xara' ? 'Starting Xara…' : 'Starting Dire Wolf…';
+  try {
+    const r = await post('/api/xara/modem', {modem: m});
+    el.textContent = (r.success ? '✓ ' : '✗ ') + r.message;
+  } catch (e) { el.textContent = '✗ ' + e; }
+  loadXara();
+}
+
+async function xaraUpdate() {
+  const el = document.getElementById('xara-result');
+  el.textContent = 'Starting…';
+  try {
+    const r = await post('/api/xara/update', {});
+    el.textContent = (r.success ? '' : '✗ ') + r.message;
+  } catch (e) { el.textContent = '✗ ' + e; }
+  setTimeout(loadXara, 1500);
+}
+
+async function xaraCheck() {
+  const el = document.getElementById('xara-result');
+  el.textContent = 'Checking GitHub…';
+  try {
+    const [r, st] = await Promise.all([
+      (await fetch('/api/xara/latest')).json(), (await fetch('/api/xara/status')).json()]);
+    if (!r.success) { el.textContent = '✗ ' + r.message; return; }
+    if (r.latest === st.version) { el.textContent = '✓ Xara ' + st.version + ' is the newest version.'; return; }
+    const pinned = st.settings && st.settings.version && st.settings.version !== 'latest';
+    if (pinned) {
+      el.textContent = 'Xara ' + r.latest + ' is available. This board is set to stay on ' +
+                       st.settings.version + ' (Config page, Xara version).';
+      return;
+    }
+    if (confirm('Xara ' + r.latest + ' is available (installed: ' + st.version + '). Update now?' +
+                (st.running ? '\n\nXara restarts on the new version.' : ''))) xaraUpdate();
+    else el.textContent = 'Xara ' + r.latest + ' is available.';
+  } catch (e) { el.textContent = '✗ ' + e; }
+}
+
+async function loadXaraLog(updateToo) {
+  const el = document.getElementById('xara-log');
+  try {
+    const a = await (await fetch('/api/service/xara@kp4pra/log?lines=60')).json();
+    let text = a.log || '';
+    if (updateToo || !text) {
+      const b = await (await fetch('/api/service/kp4pra-xara-update/log?lines=30')).json();
+      if (b.log) text = (text ? text + '\n\n' : '') + '--- install / update ---\n' + b.log;
+    }
+    el.textContent = text || '(no output yet)';
+    el.scrollTop = el.scrollHeight;
+  } catch (e) { el.textContent = 'Load failed: ' + e; }
+}
+
+loadXara();
 loadWifiMode();
 </script>
 {% endblock %}

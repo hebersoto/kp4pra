@@ -1,0 +1,9 @@
+[Unit]
+Description=KP4PRA TNC - write the Xara config from the KP4PRA settings
+Documentation=file:///opt/kp4pra-tnc/docs/XARA.md
+# Runs each time xara@kp4pra starts (it Requires this unit).
+After=local-fs.target sound.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kp4pra-xara apply-conf

@@ -1,0 +1,7 @@
+# KP4PRA TNC - Xara (VARA modem) actions for the web service user.
+# Only these exact commands: switch modems, restart with new settings,
+# and start the install/upgrade unit (it runs as root, ready-made binaries only).
+kp4pra-tnc ALL=(root) NOPASSWD: /usr/local/bin/kp4pra-xara modem xara
+kp4pra-tnc ALL=(root) NOPASSWD: /usr/local/bin/kp4pra-xara modem packet
+kp4pra-tnc ALL=(root) NOPASSWD: /usr/local/bin/kp4pra-xara restart
+kp4pra-tnc ALL=(root) NOPASSWD: /bin/systemctl start --no-block kp4pra-xara-update.service

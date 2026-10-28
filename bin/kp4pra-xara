@@ -1,0 +1,569 @@
+#!/bin/bash
+# KP4PRA TNC - Xara, the VARA-compatible modem (https://github.com/x0rro/xara)
+#
+# Install, upgrade and run Xara next to Dire Wolf. Both use the same radio
+# and sound card, so one of them runs at a time: "packet" (Dire Wolf: APRS,
+# KISS, Bluetooth apps, RMS gateway) or "xara" (VARA FM/HF for Winlink
+# Express, Pat and other VARA apps).
+#
+#   sudo kp4pra-xara install [VERSION]   install Xara (latest release by default)
+#   sudo kp4pra-xara update  [VERSION]   upgrade to the latest (or given) version
+#   sudo kp4pra-xara rollback            go back to the previously installed version
+#   sudo kp4pra-xara uninstall           remove Xara (settings in /rw/xara are kept)
+#   sudo kp4pra-xara modem xara|packet   switch modems (kept across restarts)
+#   sudo kp4pra-xara restart             restart Xara with the current settings
+#   sudo kp4pra-xara apply-conf          rewrite /rw/xara/kp4pra.conf from config.yaml
+#        kp4pra-xara keepalive           (service) silence into the DRA's shared playback
+#   sudo kp4pra-xara fallback            (service) Xara failed: back to Dire Wolf
+#        kp4pra-xara status [--json]     what is installed and running
+#        kp4pra-xara latest              newest Xara version on GitHub
+#
+# Options for install/update:
+#   --build   build from source when no ready-made binary exists for this board
+#             (slow: 30-90 minutes on a Zero 2W; needs Rust 1.85 or newer)
+#   --auto    used by the KP4PRA installer and the web page: ready-made
+#             binaries only, never a long source build
+#   --force   reinstall even if that version is already installed
+#
+# Registered VARA speeds: Xara's own release files are built without them.
+# The KP4PRA repo's GitHub workflow (.github/workflows/xara-registered.yml)
+# builds each new Xara version once with the "registered" feature and
+# publishes it as release xara-v<version> of hebersoto/kp4pra. With
+# xara.registered on (the default) those files are used; until a version has
+# a registered build, the newest registered one stays (or, on a first
+# install, Xara's standard release is used). No board builds from source.
+#
+# How upgrades work: each version is unpacked into /opt/xara/<version> and
+# /opt/xara/current points at the one in use. Xara's own service file, udev
+# rule and system user come from that version's release (dist/), so a new
+# Xara release brings its own changes with it. KP4PRA only adds a small
+# drop-in (xara@kp4pra.service.d/kp4pra.conf). Two versions are kept, so
+# "rollback" is instant. The version to install is xara.version in
+# /rw/kp4pra-tnc/config.yaml ("latest", or a fixed version such as 0.1.1).
+set -u
+
+XARA_REPO="${KP4PRA_XARA_REPO:-https://github.com/x0rro/xara}"
+# Registered builds of each Xara version, published by KP4PRA's workflow.
+REG_REPO="${KP4PRA_XARA_REG_REPO:-https://github.com/hebersoto/kp4pra}"
+OPT=/opt/xara
+BIN=/usr/local/bin
+RW=/rw/xara
+MODEM_FILE=/rw/kp4pra-tnc/modem
+APP=/opt/kp4pra-tnc
+UNIT=xara@kp4pra.service
+KEEP=2
+BUILD_DIR=/var/tmp/kp4pra-xara-build
+
+say()  { echo "kp4pra-xara: $*"; }
+warn() { echo "kp4pra-xara: WARNING: $*" >&2; }
+die()  { echo "kp4pra-xara: ERROR: $*" >&2; exit 1; }
+need_root() { [ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"; }
+
+# ---------------------------------------------------------------------------
+# Board and versions
+target() {
+    # Ready-made Xara binaries: aarch64, armv7 (32-bit Pi OS on a Zero 2W /
+    # Pi 3) and x86_64. The original Pi Zero W (ARMv6) has none.
+    local arch m
+    arch="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+    m="$(uname -m)"
+    case "$arch" in
+        arm64|aarch64) echo aarch64-unknown-linux-gnu ;;
+        amd64|x86_64)  echo x86_64-unknown-linux-gnu ;;
+        armhf)
+            # 32-bit Raspberry Pi OS: ARMv7 and newer CPUs run the armv7 build.
+            if [ "$m" = armv6l ]; then echo none; else echo armv7-unknown-linux-gnueabihf; fi ;;
+        *) echo none ;;
+    esac
+}
+
+valid_version() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; }
+
+release_versions() {   # all tagged versions, newest first
+    timeout 30 git ls-remote --tags --refs "$XARA_REPO" 'v*' 2>/dev/null \
+        | sed -n 's#.*refs/tags/v##p' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -rV
+}
+latest_version() { release_versions | head -1; }
+
+installed_version() {
+    local v
+    v="$(readlink "$OPT/current" 2>/dev/null)" || return 0
+    basename "$v"
+}
+
+installed_versions() {
+    local d
+    for d in "$OPT"/*/; do
+        d="${d%/}"; d="${d##*/}"
+        [ "$d" != current ] && valid_version "$d" && [ -x "$OPT/$d/xara" ] && echo "$d"
+    done | sort -V
+}
+
+xara_setting() {   # KEY DEFAULT - a value from the xara: section of config.yaml
+    local v=""
+    if [ -x "$APP/venv/bin/python" ]; then
+        v="$(KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml PYTHONPATH="$APP/src" \
+             "$APP/venv/bin/python" -c 'import sys
+from common.config import load_config
+v = (load_config().get("xara") or {}).get(sys.argv[1])
+print("" if v is None else str(v).lower() if isinstance(v, bool) else v)' "$1" 2>/dev/null)"
+    fi
+    echo "${v:-$2}"
+}
+configured_version() { xara_setting version latest; }
+want_registered() { [ "${KP4PRA_XARA_REGISTERED:-$(xara_setting registered true)}" = true ]; }
+is_registered() { grep -qx registered "$OPT/${1:-current}/BUILD-FEATURES" 2>/dev/null; }
+
+modem() { local m; m="$(cat "$MODEM_FILE" 2>/dev/null)"; [ "$m" = xara ] && echo xara || echo packet; }
+
+# ---------------------------------------------------------------------------
+# Read-only root: open it for writing while installing, close it after.
+REMOUNTED=0
+open_root() {
+    if ! ( : > /usr/local/.kp4pra-xara-wtest ) 2>/dev/null; then
+        if command -v kp4pra-remount-rw >/dev/null 2>&1 && kp4pra-remount-rw >/dev/null 2>&1; then
+            REMOUNTED=1
+        else
+            die "the root filesystem is read-only - run: sudo kp4pra-remount-rw"
+        fi
+    fi
+    rm -f /usr/local/.kp4pra-xara-wtest
+}
+close_root() { [ "$REMOUNTED" = 1 ] && { sync; kp4pra-remount-ro >/dev/null 2>&1 || true; }; REMOUNTED=0; }
+
+# ---------------------------------------------------------------------------
+# Getting a version onto the board
+fetch_release() {   # VERSION TARGET DEST [registered]
+    local v="$1" t="$2" dest="$3" kind="${4:-}" name tmp base
+    name="xara-$v-$t"
+    if [ "$kind" = registered ]; then
+        base="$REG_REPO/releases/download/xara-v$v"
+    else
+        base="$XARA_REPO/releases/download/v$v"
+    fi
+    tmp="$(mktemp -d)"
+    say "downloading Xara $v${kind:+ ($kind build)} for $t"
+    if ! curl -fsL --retry 3 --connect-timeout 20 -o "$tmp/$name.tar.xz" "$base/$name.tar.xz"; then
+        rm -rf "$tmp"; return 2          # no ready-made binary for this version/board
+    fi
+    if ! curl -fsSL --retry 3 --connect-timeout 20 -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"; then
+        rm -rf "$tmp"; warn "release $v has no SHA256SUMS - not installing an unchecked download"; return 1
+    fi
+    if ! ( cd "$tmp" && grep -E "[[:space:]]\*?$name\.tar\.xz\$" SHA256SUMS | sha256sum -c --status - ); then
+        rm -rf "$tmp"; warn "checksum of $name.tar.xz does not match SHA256SUMS - download rejected"; return 1
+    fi
+    say "checksum OK"
+    mkdir -p "$tmp/x" && tar -xJf "$tmp/$name.tar.xz" -C "$tmp/x" || { rm -rf "$tmp"; return 1; }
+    [ -x "$tmp/x/$name/xara" ] || { rm -rf "$tmp"; warn "unexpected release layout"; return 1; }
+    if [ "$kind" = registered ] && ! grep -qx registered "$tmp/x/$name/BUILD-FEATURES" 2>/dev/null; then
+        rm -rf "$tmp"; warn "the registered build of $v is not marked registered - not used"; return 1
+    fi
+    rm -rf "$dest" && mv "$tmp/x/$name" "$dest"
+    rm -rf "$tmp"
+}
+
+rust_ok() {   # rustc 1.85+ (Xara uses Rust edition 2024)
+    local v
+    v="$("${1:-rustc}" --version 2>/dev/null | awk '{print $2}')"
+    [ -n "$v" ] && [ "$(printf '%s\n1.85.0\n' "$v" | sort -V | head -1)" = 1.85.0 ]
+}
+
+build_source() {  # VERSION DEST [registered]
+    local v="$1" dest="$2" kind="${3:-}" cargo=cargo mem jobs feat=()
+    [ "$kind" = registered ] && feat=(--features registered)
+    say "building Xara $v from source - this takes a long time on a small board"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential pkg-config git curl \
+        libasound2-dev libpulse-dev >/dev/null || { warn "could not install build tools"; return 1; }
+    if ! rust_ok rustc; then
+        if apt-cache policy rustc 2>/dev/null | awk '/Candidate:/{print $2}' | grep -qE '^1\.(8[5-9]|9[0-9])'; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y rustc cargo >/dev/null || return 1
+        else
+            say "installing a Rust toolchain in $OPT/rust (rustup)"
+            export RUSTUP_HOME="$OPT/rust/rustup" CARGO_HOME="$OPT/rust/cargo"
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+                | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path >/dev/null || return 1
+            cargo="$CARGO_HOME/bin/cargo"
+        fi
+    fi
+    rm -rf "$BUILD_DIR"
+    git clone -q --depth 1 --branch "v$v" "$XARA_REPO.git" "$BUILD_DIR" || { warn "no tag v$v"; return 1; }
+    mem=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+    jobs=$(( mem / 1024 )); [ "$jobs" -lt 1 ] && jobs=1; [ "$jobs" -gt 4 ] && jobs=4
+    ( cd "$BUILD_DIR" && "$cargo" build --release --locked -j "$jobs" -p xara "${feat[@]}" ) || { warn "build failed"; return 1; }
+    mkdir -p "$dest.tmp"
+    cp "$BUILD_DIR/target/release/xara" "$BUILD_DIR/target/release/xara-monitor" \
+       "$BUILD_DIR/LICENSE" "$BUILD_DIR/README.md" "$dest.tmp/"
+    cp -r "$BUILD_DIR/dist" "$dest.tmp/"
+    [ "$kind" = registered ] && printf 'registered\nsource: %s tag v%s (built on this board)\n' \
+        "$XARA_REPO" "$v" > "$dest.tmp/BUILD-FEATURES"
+    rm -rf "$dest" && mv "$dest.tmp" "$dest"
+    rm -rf "$BUILD_DIR"
+}
+
+# Libraries the Xara program loads at start. It is linked against both
+# libpulse and libasound (ALSA), even when it uses ALSA only; minimal images
+# (Armbian) have no libpulse, and then xara cannot start at all.
+runtime_libs() {
+    local pkgs=(libpulse0)
+    if apt-cache show libasound2t64 >/dev/null 2>&1; then pkgs+=(libasound2t64); else pkgs+=(libasound2); fi
+    dpkg -s "${pkgs[@]}" >/dev/null 2>&1 && return 0
+    say "installing libraries Xara needs: ${pkgs[*]}"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}" >/dev/null 2>&1 \
+        || { apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive \
+             apt-get install -y --no-install-recommends "${pkgs[@]}" >/dev/null 2>&1; } \
+        || warn "could not install ${pkgs[*]}"
+}
+
+# ---------------------------------------------------------------------------
+# System files from the active version's dist/ + KP4PRA's own pieces
+setup_system() {
+    local d="$OPT/current/dist"
+    # System user "xara" (upstream sysusers.d), groups for audio/serial/hidraw.
+    if [ -f "$d/sysusers.d/xara.conf" ]; then
+        install -Dm644 "$d/sysusers.d/xara.conf" /etc/sysusers.d/xara.conf
+        systemd-sysusers /etc/sysusers.d/xara.conf >/dev/null 2>&1 || true
+    fi
+    getent group plugdev >/dev/null || groupadd -r plugdev
+    id xara >/dev/null 2>&1 || useradd -r -U -M -d /nonexistent -s /usr/sbin/nologin xara
+    # CM108 / AIOC PTT access (upstream udev rule).
+    if [ -f "$d/udev/60-xara-ptt.rules" ]; then
+        install -Dm644 "$d/udev/60-xara-ptt.rules" /etc/udev/rules.d/60-xara-ptt.rules
+        udevadm control --reload >/dev/null 2>&1 || true
+        udevadm trigger --subsystem-match=hidraw >/dev/null 2>&1 || true
+    fi
+    # Upstream service file, pointed at /usr/local/bin/xara.
+    [ -f "$d/systemd/xara@.service" ] || die "release has no dist/systemd/xara@.service"
+    sed "s#/usr/bin/xara#$BIN/xara#g" "$d/systemd/xara@.service" > /etc/systemd/system/xara@.service
+    chmod 644 /etc/systemd/system/xara@.service
+    for m in xara.1 xara-monitor.1; do
+        [ -f "$d/man/$m" ] && install -Dm644 "$d/man/$m" "/usr/local/share/man/man1/$m"
+    done
+    # Settings live on /rw (root may be read-only): config written by KP4PRA,
+    # Xara's state directory (UI token etc.) bind-mounted over /var/lib/xara.
+    install -d -m 2750 -o root -g xara "$RW"
+    install -d -m 755 -o root -g root "$RW/state" /var/lib/xara /etc/xara
+    ln -sfn "$RW/kp4pra.conf" /etc/xara/kp4pra.conf
+    systemctl daemon-reload
+    systemctl enable var-lib-xara.mount kp4pra-xara-boot.service >/dev/null 2>&1 || true
+    systemctl start var-lib-xara.mount >/dev/null 2>&1 || true
+}
+
+prune() {
+    local n=0 v cur
+    cur="$(installed_version)"
+    for v in $(installed_versions | sort -rV); do
+        n=$((n + 1))
+        [ "$v" = "$cur" ] && continue
+        [ "$n" -gt "$KEEP" ] && { say "removing old version $v"; rm -rf "${OPT:?}/$v"; }
+    done
+}
+
+switch_to() {   # VERSION
+    ln -sfn "$1" "$OPT/current"
+    ln -sfn "$OPT/current/xara" "$BIN/xara"
+    ln -sfn "$OPT/current/xara-monitor" "$BIN/xara-monitor"
+    setup_system
+}
+
+do_install() {  # install|update, args...
+    local action="$1"; shift
+    local want="" build=0 auto=0 force=0 t cur rc
+    for a in "$@"; do
+        case "$a" in
+            --build) build=1 ;; --auto) auto=1 ;; --force) force=1 ;;
+            -*) die "unknown option $a" ;;
+            *) want="$a" ;;
+        esac
+    done
+    [ "$auto" = 1 ] && build=0
+    t="$(target)"
+    cur="$(installed_version)"
+    [ -n "$want" ] || want="$(configured_version)"
+    local candidates
+    if [ "$want" = latest ]; then
+        # Newest first. A tag can exist before its binaries are published
+        # (Xara's release starts as a draft); then the newest version that has
+        # them is used, and the next update picks up the new one.
+        candidates="$(release_versions | head -3)"
+        [ -n "$candidates" ] || { warn "cannot reach $XARA_REPO to find the latest version"; return 1; }
+    else
+        candidates="${want#v}"
+        valid_version "$candidates" || die "not a Xara version: $want"
+    fi
+    want="$(echo "$candidates" | head -1)"
+    local reg=0 kind=""
+    want_registered && { reg=1; kind=registered; }
+    if [ "$cur" = "$want" ] && [ "$force" = 0 ] && { [ "$reg" = 0 ] || is_registered; }; then
+        say "Xara $want${kind:+ ($kind)} is installed and up to date"
+        return 0
+    fi
+    if [ "$t" = none ] && [ "$build" = 0 ]; then
+        warn "no ready-made Xara binary for this board ($(uname -m)). The original Pi Zero W" \
+             "is too slow for VARA; on other boards: sudo kp4pra-xara $action --build"
+        return 1
+    fi
+    open_root
+    trap close_root EXIT
+    mkdir -p "$OPT"
+    local v got="" stay=""
+    # 1. Registered builds (KP4PRA workflow), newest first. An installed
+    #    registered version beats a newer one that has no registered build yet.
+    if [ "$reg" = 1 ] && [ "$t" != none ]; then
+        for v in $candidates; do
+            if [ "$force" = 0 ] && is_registered "$v"; then
+                [ "$cur" = "$v" ] && { stay="$v"; break; }
+                say "Xara $v (registered) is already on the board - switching to it"
+                got="$v"; break
+            fi
+            fetch_release "$v" "$t" "$OPT/$v" registered; rc=$?
+            [ "$rc" = 0 ] && { got="$v"; break; }
+            [ "$rc" = 2 ] || return 1             # bad checksum / download: stop
+            say "no registered build of Xara $v yet (KP4PRA publishes one for each new version)"
+        done
+        if [ -n "$stay" ]; then
+            say "staying on Xara $stay (registered) until Xara $want has a registered build"
+            close_root; trap - EXIT
+            return 0
+        fi
+        if [ -z "$got" ] && [ -n "$cur" ] && [ "$build" = 0 ]; then
+            say "keeping Xara $cur until a registered build is published"
+            close_root; trap - EXIT
+            return 0
+        fi
+        if [ -z "$got" ] && [ "$build" = 1 ]; then
+            build_source "$want" "$OPT/$want" registered || return 1
+            got="$want"
+        fi
+        [ -z "$got" ] && warn "no registered Xara build yet - installing Xara's standard build" \
+                              "for now (registered speeds come with the next update)"
+    fi
+    # 2. Xara's own release (standard speeds).
+    if [ -z "$got" ]; then
+        for v in $candidates; do
+            if [ "$cur" = "$v" ] && [ "$force" = 0 ]; then
+                say "Xara $want has no ready-made binary for $t yet - staying on $cur"
+                close_root; trap - EXIT
+                return 0
+            fi
+            if [ -x "$OPT/$v/xara" ] && [ "$force" = 0 ]; then
+                say "Xara $v is already on the board - switching to it"
+                got="$v"; break
+            fi
+            rc=2
+            [ "$t" != none ] && { fetch_release "$v" "$t" "$OPT/$v"; rc=$?; }
+            if [ "$rc" = 0 ]; then got="$v"; break; fi
+            [ "$rc" = 2 ] || return 1             # bad checksum / download: stop
+            if [ "$build" = 1 ]; then
+                build_source "$v" "$OPT/$v" || return 1
+                got="$v"; break
+            fi
+            warn "Xara $v has no ready-made binary for $t (yet)."
+        done
+    fi
+    if [ -z "$got" ]; then
+        warn "build it from source with: sudo kp4pra-xara $action $want --build"
+        return 1
+    fi
+    want="$got"
+    runtime_libs
+    local out
+    if ! out="$("$OPT/$want/xara" --version 2>&1)"; then
+        warn "the downloaded xara does not start on this board - not installed. It said:"
+        printf '    %s\n' "$out" | head -5 >&2
+        if command -v ldd >/dev/null 2>&1; then
+            ldd "$OPT/$want/xara" 2>&1 | grep -E "not found|version .* not found" | sed 's/^/    /' >&2
+        fi
+        rm -rf "${OPT:?}/$want"
+        return 1
+    fi
+    switch_to "$want"
+    prune
+    # Xara's config depends on the build (registered speeds); rewrite it now,
+    # not only at Xara's next start (a running Xara is restarted below anyway).
+    systemctl is-active --quiet "$UNIT" || do_apply_conf >/dev/null 2>&1 || true
+    say "Xara $("$BIN/xara" --version | awk '{print $2}')$(is_registered && echo ' (registered)') installed (was: ${cur:-none})"
+    if systemctl is-active --quiet "$UNIT"; then
+        say "restarting Xara on the new version"
+        systemctl restart "$UNIT" || warn "Xara did not restart - see: journalctl -u $UNIT"
+    fi
+    close_root
+    trap - EXIT
+    return 0
+}
+
+do_rollback() {
+    local cur prev
+    cur="$(installed_version)"
+    prev="$(installed_versions | grep -vxF "$cur" | tail -1)"
+    [ -n "$prev" ] || die "no other Xara version on the board"
+    open_root; trap close_root EXIT
+    switch_to "$prev"
+    say "back on Xara $prev (was $cur)"
+    systemctl is-active --quiet "$UNIT" && systemctl restart "$UNIT"
+    close_root; trap - EXIT
+}
+
+do_uninstall() {
+    open_root; trap close_root EXIT
+    [ "$(modem)" = xara ] && do_modem packet
+    systemctl stop "$UNIT" kp4pra-xara-ptt.service >/dev/null 2>&1 || true
+    systemctl disable kp4pra-xara-boot.service var-lib-xara.mount >/dev/null 2>&1 || true
+    systemctl stop var-lib-xara.mount >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/xara@.service /etc/udev/rules.d/60-xara-ptt.rules \
+          "$BIN/xara" "$BIN/xara-monitor" /etc/xara/kp4pra.conf \
+          /usr/local/share/man/man1/xara.1 /usr/local/share/man/man1/xara-monitor.1
+    rm -rf "${OPT:?}"
+    systemctl daemon-reload
+    say "Xara removed. Its settings stay in $RW and config.yaml (xara: section)."
+    close_root; trap - EXIT
+}
+
+# ---------------------------------------------------------------------------
+# Running
+do_apply_conf() {
+    mkdir -p /run/kp4pra-xara
+    KP4PRA_CONFIG=/rw/kp4pra-tnc/config.yaml PYTHONPATH="$APP/src" \
+        "$APP/venv/bin/python" -m common.xara_conf --write
+}
+
+# Xara binds its ports only after its audio works, and stops within seconds
+# when the sound card gives no audio. So "started" means: port open and still
+# running a little later.
+xara_up() {   # wait up to 60 s for the VARA command port, then 8 s steady
+    local port i
+    port="$(sed -n 's/^port = //p' "$RW/kp4pra.conf" 2>/dev/null)"; port="${port:-8300}"
+    for i in $(seq 1 60); do
+        case "$(systemctl show -p ActiveState --value "$UNIT" 2>/dev/null)" in
+            active|activating|reloading) ;;
+            *) return 1 ;;            # failed or stopped while starting
+        esac
+        ss -ltn 2>/dev/null | grep -q ":$port " && break
+        sleep 1
+    done
+    ss -ltn 2>/dev/null | grep -q ":$port " || return 1
+    sleep 8
+    systemctl is-active --quiet "$UNIT" && ss -ltn 2>/dev/null | grep -q ":$port "
+}
+
+do_modem() {
+    case "${1:-}" in
+        xara)
+            [ -x "$BIN/xara" ] || die "Xara is not installed - run: sudo kp4pra-xara install"
+            echo xara > "$MODEM_FILE"; chmod 644 "$MODEM_FILE"
+            rm -f /run/kp4pra-xara/fallback
+            say "switching to Xara (VARA) - Dire Wolf stops"
+            systemctl reset-failed "$UNIT" >/dev/null 2>&1 || true
+            if systemctl start "$UNIT" && xara_up; then
+                say "Xara is running"
+            else
+                warn "Xara did not start - going back to Dire Wolf. Last messages:"
+                journalctl -u "$UNIT" -u kp4pra-xara-prep.service -u kp4pra-xara-ptt.service \
+                    -u kp4pra-xara-keepalive.service -n 15 --no-pager -o cat 2>/dev/null >&2 || true
+                echo packet > "$MODEM_FILE"
+                systemctl stop "$UNIT" >/dev/null 2>&1 || true
+                systemctl start direwolf.service
+                return 1
+            fi ;;
+        packet)
+            echo packet > "$MODEM_FILE"; chmod 644 "$MODEM_FILE"
+            systemctl stop "$UNIT" >/dev/null 2>&1 || true
+            systemctl start direwolf.service && say "Dire Wolf (packet) is running" ;;
+        *) die "usage: kp4pra-xara modem xara|packet" ;;
+    esac
+}
+
+do_fallback() {
+    # OnFailure of xara@kp4pra: Xara stopped for good (systemd gave up
+    # restarting it). Never leave the TNC without a modem.
+    say "Xara stopped after repeated errors - going back to Dire Wolf (packet)"
+    mkdir -p /run/kp4pra-xara && date -Is > /run/kp4pra-xara/fallback
+    echo packet > "$MODEM_FILE" 2>/dev/null || true
+    systemctl start direwolf.service
+}
+
+do_keepalive() {
+    # Silence into the DRA's shared playback (config/alsa/60-kp4pra-xara.conf)
+    # so its recording keeps working while Xara listens. Nothing to do for USB
+    # sound cards.
+    local pcm
+    pcm="$(python3 -I -c 'import json,sys
+print(json.load(open(sys.argv[1])).get("keepalive_pcm") or "")' /run/kp4pra-xara/ptt.json 2>/dev/null)"
+    if [ -z "$pcm" ]; then
+        say "keep-alive not needed for this sound card"
+        exit 0
+    fi
+    say "keeping $pcm playing (silence) while Xara runs"
+    exec aplay -q -D "$pcm" -t raw -f S16_LE -r 48000 -c 2 /dev/zero
+}
+
+do_restart() {
+    if systemctl is-active --quiet "$UNIT"; then
+        systemctl restart "$UNIT" && say "Xara restarted with the current settings"
+    else
+        do_apply_conf >/dev/null && say "settings saved; they are used the next time Xara starts"
+    fi
+}
+
+do_boot() {
+    # At boot Dire Wolf starts as usual; switch to Xara if that was chosen.
+    [ "$(modem)" = xara ] || exit 0
+    if [ -x "$BIN/xara" ]; then
+        systemctl start --no-block "$UNIT"
+    else
+        echo packet > "$MODEM_FILE"
+    fi
+}
+
+do_status() {
+    local json=0 plan=/run/kp4pra-xara/ptt.json
+    [ "${1:-}" = --json ] && json=1
+    local ver run dw
+    ver="$(installed_version)"
+    run="$(systemctl is-active "$UNIT" 2>/dev/null)"
+    dw="$(systemctl is-active direwolf.service 2>/dev/null)"
+    if [ "$json" = 1 ]; then
+        V="$ver" VS="$(installed_versions | tr '\n' ' ')" M="$(modem)" R="$run" D="$dw" T="$(target)" \
+        G="$(is_registered && echo yes)" F="$(cat /run/kp4pra-xara/fallback 2>/dev/null)" \
+        U="$(systemctl is-active kp4pra-xara-update.service 2>/dev/null)" P="$plan" \
+        python3 -I -c '
+import json, os
+e = os.environ
+ptt = ""
+try:
+    ptt = json.load(open(e["P"])).get("describe", "")
+except Exception:
+    pass
+print(json.dumps({
+    "installed": bool(e["V"]), "version": e["V"] or None,
+    "versions": e["VS"].split(), "modem": e["M"],
+    "xara_state": e["R"] or "inactive", "running": e["R"] == "active",
+    "direwolf_state": e["D"] or "inactive",
+    "updating": e["U"] in ("active", "activating"),
+    "target": e["T"], "supported": e["T"] != "none", "ptt": ptt,
+    "registered_build": e["G"] == "yes", "fallback_at": e["F"] or None}))'
+    else
+        echo "Xara installed:  ${ver:-no}$(is_registered && echo ' (registered build)')  (on the board: $(installed_versions | tr '\n' ' '))"
+        echo "Modem in use:    $(modem)   (xara: ${run:-inactive}, direwolf: ${dw:-inactive})"
+        echo "Board target:    $(target)"
+        [ -f "$plan" ] && echo "PTT:             $(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["describe"])' "$plan" 2>/dev/null)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+cmd="${1:-status}"; shift || true
+case "$cmd" in
+    install|update) need_root "$cmd" "$@"; do_install "$cmd" "$@" ;;
+    rollback)       need_root "$cmd"; do_rollback ;;
+    uninstall)      need_root "$cmd"; do_uninstall ;;
+    modem)          need_root "$cmd" "$@"; do_modem "$@" ;;
+    restart)        need_root "$cmd"; do_restart ;;
+    apply-conf)     need_root "$cmd"; do_apply_conf ;;
+    fallback)       need_root "$cmd"; do_fallback ;;
+    keepalive)      do_keepalive ;;
+    boot)           need_root "$cmd"; do_boot ;;
+    status)         do_status "$@" ;;
+    latest)         latest_version ;;
+    versions)       installed_versions ;;
+    -h|--help|help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown command $cmd (see: kp4pra-xara --help)" ;;
+esac

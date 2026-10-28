@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Message — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Message detail</div>
+  <div class="page-subtitle"><a href="/admin/messages" style="color:var(--kp4pra-muted-text)">← Back to messages</a></div>
+</div>
+
+<div id="action-result" style="display:none;margin-bottom:1rem"></div>
+
+<div class="card">
+  <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem">
+    <div class="card-title" style="margin:0">Submitted {{ m.created_iso }}</div>
+    <span>
+      {% if m.status == 'Holding' %}<span class="badge badge-warning">Holding</span>
+      {% elif m.status == 'Approved' %}<span class="badge badge-info">Approved</span>
+      {% elif m.status == 'Sending' %}<span class="badge badge-info">Sending</span>
+      {% elif m.status == 'Sent' %}<span class="badge badge-success">Sent</span>
+      {% elif m.status == 'Failed' %}<span class="badge badge-error">Failed</span>
+      {% else %}<span class="badge badge-disabled">{{ m.status }}</span>{% endif %}
+    </span>
+  </div>
+
+  <table style="width:100%;font-size:0.92rem;border-collapse:collapse">
+    <tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text);width:9rem">Destination</td><td style="padding:0.35rem 0">{{ m.to }}</td></tr>
+    <tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text)">Reply-To</td><td style="padding:0.35rem 0">{{ m.reply_to }}</td></tr>
+    <tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text)">Subject</td><td style="padding:0.35rem 0">{{ m.subject if m.subject else '(no subject)' }}</td></tr>
+    <tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text)">Language</td><td style="padding:0.35rem 0">{{ 'Español' if m.lang == 'es' else 'English' }}</td></tr>
+    {% if m.route %}<tr><td style="padding:0.35rem 0;color:var(--kp4pra-muted-text)">Route</td><td style="padding:0.35rem 0">{{ m.route }}</td></tr>{% endif %}
+    {% if m.error %}<tr><td style="padding:0.35rem 0;color:var(--kp4pra-error)">Last error</td><td style="padding:0.35rem 0;color:var(--kp4pra-error)">{{ m.error }}</td></tr>{% endif %}
+  </table>
+
+  <div style="margin-top:1rem">
+    <div style="color:var(--kp4pra-muted-text);font-size:0.85rem;margin-bottom:0.35rem">Message</div>
+    <pre style="white-space:pre-wrap;word-wrap:break-word;background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.85rem;font-family:inherit;font-size:0.92rem;margin:0">{{ m.body }}</pre>
+  </div>
+
+  <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.25rem">
+    <button class="btn btn-primary" onclick="act('approve')">Approve</button>
+    <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="act('reject')">Reject</button>
+    <button class="btn" style="border:1px solid var(--kp4pra-error);color:var(--kp4pra-error)" onclick="act('delete')">Delete</button>
+    <span style="flex:1"></span>
+    <button class="btn" style="border:1px solid var(--kp4pra-primary);color:var(--kp4pra-primary)" onclick="testDelivery()">Test delivery (dry-run)</button>
+  </div>
+  {% if not dry_run %}
+  <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--kp4pra-border)">
+    <span style="align-self:center;font-size:0.82rem;color:var(--kp4pra-warning)">⚡ Live delivery (dry-run is OFF):</span>
+    <label style="align-self:center;font-size:0.82rem;color:var(--kp4pra-muted-text)">Route:
+      <select id="routeSel" style="margin-left:0.3rem;padding:0.2rem 0.4rem;border:1px solid var(--kp4pra-border);border-radius:4px;background:var(--kp4pra-bg);color:var(--kp4pra-text)">
+        <option value="auto" selected>Auto (prefer TCP/IP)</option>
+        <option value="cms">TCP/IP (CMS)</option>
+        <option value="rf">RF (remote RMS)</option>
+      </select>
+    </label>
+    <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="probe('station')">Probe (station)</button>
+    <button class="btn" style="border:1px solid var(--kp4pra-border)" onclick="probe('gateway')">Probe (gateway)</button>
+    <button class="btn btn-primary" onclick="sendNow('station')">Send now</button>
+  </div>
+  {% else %}
+  <div style="margin-top:0.75rem;font-size:0.8rem;color:var(--kp4pra-muted-text)">
+    Live probe/send are disabled while <code>webmail.delivery.dry_run</code> is true.
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" id="dryrun-card" style="display:none">
+  <div class="card-title"><span class="icon">🧪</span> Dry-run delivery (CMS) — nothing transmitted</div>
+  <div id="dryrun-body"></div>
+</div>
+
+<script>
+  var MID = "{{ m.id }}";
+  function showResult(ok, msg){
+    var el=document.getElementById('action-result');
+    el.style.display='block';
+    el.innerHTML='<div class="alert '+(ok?'alert-success':'alert-error')+'"><span class="alert-icon">'+(ok?'✓':'✗')+'</span><div>'+msg+'</div></div>';
+    el.scrollIntoView({behavior:'smooth'});
+  }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  async function testDelivery(){
+    showResult(true,'Assembling dry-run…');
+    try{
+      var r=await fetch('/api/messages/test', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:MID})
+      });
+      var data=await r.json();
+      if(!data.success){ showResult(false, data.message||'Dry run failed.'); return; }
+      renderTranscript(data.transcript);
+      document.getElementById('action-result').style.display='none';
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+  function row(k,v){ return '<tr><td style="color:var(--kp4pra-muted-text);padding:0.2rem 0.75rem 0.2rem 0;white-space:nowrap">'+k+'</td><td style="padding:0.2rem 0"><code>'+esc(v)+'</code></td></tr>'; }
+  function renderTranscript(t){
+    var rows='';
+    t.transcript.forEach(function(line){
+      var dir=line[0], txt=esc(line[1]);
+      var color = dir==='-->' ? 'var(--kp4pra-primary-dark)' : (dir==='<--' ? 'var(--kp4pra-muted-text)' : 'var(--kp4pra-warning)');
+      var tag = dir==='info' ? '' : dir+' ';
+      rows += '<div style="color:'+color+'"><code>'+esc(tag)+txt+'</code></div>';
+    });
+    var notes = t.notes.map(function(n){return '<li>'+esc(n)+'</li>';}).join('');
+    var html =
+      '<table style="width:100%;font-size:0.9rem;margin-bottom:1rem">'+
+      row('From', t.from)+row('To', t.to)+row('Reply-To', t.reply_to)+row('MID', t.mid)+
+      row('Uncompressed', t.uncompressed_size+' bytes')+
+      row('Compressed', t.compressed_size+' bytes ('+Math.round(100*t.compressed_size/Math.max(1,t.uncompressed_size))+'%)')+
+      row('Message checksum', t.message_checksum)+row('Proposal checksum', t.proposal_checksum)+
+      row('Binary frame', t.binary_total_bytes+' bytes, '+t.binary_data_frames+' data frame(s)')+
+      '</table>'+
+      '<div style="color:var(--kp4pra-muted-text);font-size:0.82rem;margin-bottom:0.3rem">Simulated conversation</div>'+
+      '<div style="background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.75rem;font-size:0.82rem;line-height:1.5;overflow-x:auto">'+rows+'</div>'+
+      '<div style="color:var(--kp4pra-muted-text);font-size:0.82rem;margin:0.75rem 0 0.3rem">Binary frame (hex preview)</div>'+
+      '<pre style="white-space:pre-wrap;word-break:break-all;background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.6rem;font-size:0.78rem;margin:0">'+esc(t.binary_hex_preview)+'</pre>'+
+      '<ul style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-top:0.75rem">'+notes+'</ul>';
+    document.getElementById('dryrun-body').innerHTML=html;
+    document.getElementById('dryrun-card').style.display='block';
+    document.getElementById('dryrun-card').scrollIntoView({behavior:'smooth'});
+  }
+
+  function renderLive(title, r){
+    var card=document.getElementById('dryrun-card');
+    var bodyEl=document.getElementById('dryrun-body');
+    document.querySelector('#dryrun-card .card-title').innerHTML='<span class="icon">📡</span> '+esc(title);
+    var rows='';
+    (r.transcript||r.log||[]).forEach(function(line){
+      var dir=line[0], txt=esc(line[1]);
+      var color = dir==='-->' ? 'var(--kp4pra-primary-dark)' : (dir==='error' ? 'var(--kp4pra-error)' : (dir==='<--' ? 'var(--kp4pra-muted-text)' : 'var(--kp4pra-warning)'));
+      rows += '<div style="color:'+color+'"><code>'+esc((dir==='info'||dir==='error')?'':dir+' ')+txt+'</code></div>';
+    });
+    var summary='';
+    if(r.identity) summary+=row('Identity', r.identity);
+    if('accepted' in r) summary+=row((r.route==='rf'?'RMS':'CMS')+' accepted proposal', r.accepted? 'YES (FS '+esc(r.fs||'')+')' : 'no ('+esc(r.fs||'')+')');
+    if(r.final_status) summary+=row('Result', r.final_status);
+    if(r.error) summary+=row('Error', r.error);
+    bodyEl.innerHTML='<table style="width:100%;font-size:0.9rem;margin-bottom:1rem">'+summary+'</table>'+
+      '<div style="color:var(--kp4pra-muted-text);font-size:0.82rem;margin-bottom:0.3rem">Session log</div>'+
+      '<div style="background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.75rem;font-size:0.8rem;line-height:1.5;overflow-x:auto">'+rows+'</div>';
+    card.style.display='block';
+    card.scrollIntoView({behavior:'smooth'});
+  }
+
+  async function probe(identity){
+    var route=(document.getElementById('routeSel')||{}).value||'cms';
+    var rlabel=route==='rf'?'RF (remote RMS)':(route==='cms'?'TCP/IP (CMS)':'Auto');
+    showResult(true,'Probing via '+rlabel+' ('+identity+')… this can take a moment.');
+    try{
+      var r=await fetch('/api/messages/probe', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:MID, identity:identity, route:route})
+      });
+      var data=await r.json();
+      if(!data.success){ showResult(false, data.message||'Probe failed.'); return; }
+      document.getElementById('action-result').style.display='none';
+      if(data.both){
+        renderLive('Probe (station)', data.both.station);
+        var extra=document.createElement('div'); extra.style.marginTop='1rem';
+        document.getElementById('dryrun-body').appendChild(extra);
+      } else {
+        renderLive('Probe ('+(data.route||identity)+')', data.result);
+      }
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+
+  async function sendNow(identity){
+    var route=(document.getElementById('routeSel')||{}).value||'auto';
+    var rlabel=route==='rf'?'RF':(route==='cms'?'TCP/IP':'Auto');
+    if(!confirm('Send this message for real now via '+rlabel+'? It will be transmitted.')) return;
+    showResult(true,'Sending via '+rlabel+'… this can take a moment.');
+    try{
+      var r=await fetch('/api/messages/send', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id:MID, identity:identity, confirm:true, route:route})
+      });
+      var data=await r.json();
+      if(!data.success && data.message){ showResult(false, data.message); return; }
+      document.getElementById('action-result').style.display='none';
+      renderLive('Send ('+(data.route||route)+')', data.result||{});
+      if(data.sent){ setTimeout(function(){ location.reload(); }, 1500); }
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+
+  async function act(action){
+    var confirmFlag=false;
+    if(action==='delete'){
+      if(!confirm('Permanently delete this message? This cannot be undone.')) return;
+      confirmFlag=true;
+    }
+    try{
+      var r=await fetch('/api/messages/action', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:action, ids:[MID], confirm:confirmFlag})
+      });
+      var data=await r.json();
+      if(data.success){
+        if(action==='delete'){ window.location='/admin/messages'; return; }
+        showResult(true, 'Message '+action+'d.');
+        setTimeout(function(){ location.reload(); }, 600);
+      }else{
+        showResult(false, data.message || 'Action failed.');
+      }
+    }catch(e){ showResult(false,'Error: '+e); }
+  }
+</script>
+{% endblock %}

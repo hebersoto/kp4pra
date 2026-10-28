@@ -117,6 +117,11 @@ echo -e "${GREEN}#    # #            #  #       #     # #     #${RESET}"
 echo -e "${WHITE}By KP3M Heber Soto${RESET}"
 echo
 echo -e "${GREEN}################### KP4PRA-NETWORK ###################${RESET}"
+# Setup progress (install / DRA setup): "complete", or what it is doing now.
+SETUP_LINE="$(/usr/local/bin/kp4pra-install-state show 2>/dev/null || echo 'Setup: complete')"
+SETUP_VAL="${SETUP_LINE#Setup: }"
+case "$SETUP_VAL" in complete) SETUP_COLOR="$GREEN" ;; STOPPED*) SETUP_COLOR="$RED" ;; *) SETUP_COLOR="$YELLOW" ;; esac
+echo -e "${WHITE}Setup:${RESET}               ${SETUP_COLOR:-$MAGENTA}${SETUP_VAL}${RESET}"
 echo -e "${WHITE}Hostname:${RESET}            ${MAGENTA}${HOSTNAME_VAL}${RESET}"
 echo -e "${WHITE}Disk Available:${RESET}      ${MAGENTA}${DISK_AVAILABLE}${RESET}"
 echo -e "${WHITE}rnsh Connect ID:${RESET}     ${MAGENTA}${RETICULUM_ID}${RESET}"

@@ -23,13 +23,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-# Add parent to path for imports when running directly
+# Add parent (src) and this dir (src/web) to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common.config import load_config
 from common.config_writer import save_config, validate_config_updates
 from common.runtime_status import (
-    read_status, write_status, is_reboot_pending,
+    read_status, write_status, clear_status, is_reboot_pending,
     set_provisioning_status, clear_provisioning_status, set_reboot_pending
 )
 from common.bluez_manager import (
@@ -45,6 +46,17 @@ from common.fs_manager import (
     restart_service, stop_service, get_service_status,
     get_volatile_service_log, check_direwolf_tcp, check_dns_sd
 )
+import auth
+import mailqueue
+import mailvalidate
+import mail_i18n
+import b2f
+import mailbuilder
+import b2fsend
+import rfsend
+import aprssession
+from aprs import TOCALL as APRS_TOCALL
+from rms import ax25 as _aprs_ax25
 
 PRODUCT_NAME = "KP4PRA TNC"
 
@@ -63,6 +75,23 @@ def _read_version():
 
 APP_VERSION = _read_version()
 templates.env.globals["app_version"] = APP_VERSION
+templates.env.globals["dashboard_secured"] = auth.dashboard_password_set
+templates.env.globals["station_callsign_valid"] = auth.callsign_valid
+
+
+def _mail_counts() -> dict:
+    """Queue counts by state, safe against a missing/unreadable queue so
+    page rendering never breaks."""
+    try:
+        return mailqueue.counts()
+    except Exception:
+        base = {s: 0 for s in mailqueue.STATES}
+        base["total"] = 0
+        return base
+
+
+# Nav badge = messages awaiting trustee review (Holding).
+templates.env.globals["mail_held_count"] = lambda: _mail_counts().get("Holding", 0)
 
 
 
@@ -76,32 +105,138 @@ def get_config():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Optional HTTP Basic Authentication
+# Admin Dashboard session authentication
+#
+# Auth is enforced ONLY once a dashboard password has been configured
+# (auth.auth_required). Before that, the dashboard is open so the trustee
+# can perform initial station configuration and set a password. The public
+# Web Email Interface (/mail*) is never gated here.
 # ─────────────────────────────────────────────────────────────────────────────
 
-security = HTTPBasic(auto_error=False)
+class NeedsLogin(Exception):
+    def __init__(self, next_path: str):
+        self.next_path = next_path
 
-def check_auth(credentials: Optional[HTTPBasicCredentials] = Depends(security)):
+
+@app.exception_handler(NeedsLogin)
+async def _needs_login_handler(request: Request, exc: NeedsLogin):
+    return RedirectResponse(url=f"/admin/login?next={exc.next_path}", status_code=303)
+
+
+def require_auth(request: Request):
+    """FastAPI dependency: allow the request through if the dashboard is
+    not yet secured, or if a valid session cookie is present. Otherwise
+    redirect page requests to the login form and 401 API requests."""
     cfg = get_config()
-    if not cfg["web"].get("auth_enabled", False):
+    if not auth.auth_required(cfg):
         return True
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    expected_user = cfg["web"].get("username", "admin")
-    expected_pass = cfg["web"].get("password", "")
-    ok_user = secrets.compare_digest(credentials.username, expected_user)
-    ok_pass = secrets.compare_digest(credentials.password, expected_pass)
-    if not (ok_user and ok_pass):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return True
+    token = request.cookies.get(auth.SESSION_COOKIE, "")
+    if auth.session_valid(token):
+        return True
+    path = request.url.path
+    if path.startswith("/api/"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Authentication required")
+    raise NeedsLogin(path)
+
+
+def _set_session_cookies(resp):
+    resp.set_cookie(auth.SESSION_COOKIE, auth.issue_session(),
+                    max_age=auth.SESSION_TTL, httponly=True,
+                    samesite="lax", path="/")
+    resp.set_cookie(auth.CSRF_COOKIE, auth.issue_csrf(),
+                    max_age=auth.SESSION_TTL, httponly=False,
+                    samesite="lax", path="/")
+
+
+def _clear_session_cookies(resp):
+    resp.delete_cookie(auth.SESSION_COOKIE, path="/")
+    resp.delete_cookie(auth.CSRF_COOKIE, path="/")
+
+
+@app.middleware("http")
+async def csrf_middleware(request: Request, call_next):
+    """Enforce the CSRF double-submit token on unsafe methods once the
+    dashboard is secured. The login form and the public mail interface
+    are exempt (they have no session yet / are handled separately)."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        path = request.url.path
+        exempt = path == "/admin/login" or path.startswith("/mail")
+        if not exempt and auth.auth_required(get_config()):
+            cookie = request.cookies.get(auth.CSRF_COOKIE, "")
+            header = request.headers.get("X-CSRF-Token", "")
+            if not auth.csrf_ok(cookie, header):
+                return JSONResponse({"success": False,
+                                     "message": "CSRF validation failed"},
+                                    status_code=403)
+    return await call_next(request)
+
+
+# Backwards-compatible alias: existing route signatures use check_auth.
+check_auth = require_auth
+
+# APRS chat session (singleton; owns the radio while active, mutually
+# exclusive with the RMS gateway).
+_aprs_session = None
+
+
+def _get_aprs():
+    global _aprs_session
+    if _aprs_session is None:
+        _aprs_session = aprssession.AprsSession(_aprs_ax25, get_config())
+    elif not _aprs_session.active:
+        _aprs_session.cfg = get_config()
+    return _aprs_session
+
+
+@app.get("/admin/aprs", response_class=HTMLResponse)
+async def aprs_page(request: Request, _auth=Depends(check_auth)):
+    cfg = get_config()
+    a = cfg.get("aprs", {}) or {}
+    mycall = a.get("mycall") or cfg.get("station", {}).get("callsign") or ""
+    return templates.TemplateResponse("aprs.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "mycall": mycall,
+        "tocall": APRS_TOCALL,
+    })
+
+
+@app.post("/api/aprs/start")
+async def aprs_start(request: Request, _auth=Depends(check_auth)):
+    return JSONResponse(await _get_aprs().start())
+
+
+@app.post("/api/aprs/stop")
+async def aprs_stop(request: Request, _auth=Depends(check_auth)):
+    return JSONResponse(await _get_aprs().stop())
+
+
+@app.get("/api/aprs/status")
+async def aprs_status(request: Request, _auth=Depends(check_auth)):
+    return JSONResponse({"success": True, **_get_aprs().status()})
+
+
+@app.post("/api/aprs/send")
+async def aprs_send(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    r = await _get_aprs().send(body.get("peer", ""), body.get("text", ""),
+                               want_ack=bool(body.get("want_ack", True)))
+    return JSONResponse(r)
+
+
+@app.get("/api/aprs/messages")
+async def aprs_messages(request: Request, since: int = 0,
+                        _auth=Depends(check_auth)):
+    s = _get_aprs()
+    return JSONResponse({"success": True, "head": s.store.head,
+                         "active": s.active,
+                         "messages": s.messages_since(since)})
+
+
+@app.post("/api/aprs/beacon")
+async def aprs_beacon(request: Request, _auth=Depends(check_auth)):
+    return JSONResponse(await _get_aprs().beacon_now())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -148,13 +283,543 @@ def get_live_status() -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
+async def landing(request: Request):
+    # Public landing page: Web Email Interface vs Admin Dashboard.
+    return templates.TemplateResponse("landing.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+    })
+
+
+INSTALL_STATE_FILE = "/rw/kp4pra-tnc/install-state.json"
+INSTALL_ACTIVE = ("installing", "checking", "dra_setup")
+
+
+@app.get("/api/install/state")
+async def api_install_state():
+    """Setup progress (bin/kp4pra-install-state) for the banner on every page.
+    Public on purpose: it only says whether setup is still running."""
+    import time as _time
+    try:
+        with open(INSTALL_STATE_FILE) as f:
+            d = json.load(f)
+    except Exception:
+        d = {"state": "complete", "message": ""}
+    now = _time.time()
+    updated = float(d.get("updated") or now)
+    if d.get("state") in INSTALL_ACTIVE and now - updated > 3600:
+        d = {"state": "failed", "updated": updated,
+             "message": "Setup has not finished after an hour. Open the Config page "
+                        "(DRA card) or run the install command again."}
+    d["age"] = int(now - updated)
+    return JSONResponse(d, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request, _auth=Depends(check_auth)):
+    """First-visit setup: callsign, sound card, Dashboard password in one form.
+    Shown automatically by /admin until a real callsign is saved."""
+    cfg = get_config()
+    st = cfg.get("station", {}) or {}
+    call = str(st.get("callsign", "")).strip().upper()
+    return templates.TemplateResponse("setup.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "callsign": "" if call in ("", "N0CALL") else call,
+        "ssid": st.get("ssid", ""),
+        "mygrid": st.get("mygrid", ""),
+        "password_set": auth.dashboard_password_set(cfg),
+    })
+
+
+@app.get("/admin", response_class=HTMLResponse)
 async def dashboard(request: Request, _auth=Depends(check_auth)):
+    # First visit (no callsign yet): go to the one-page setup instead.
+    if not auth.callsign_valid(get_config()) and request.query_params.get("skip_setup") != "1":
+        return RedirectResponse("/setup", status_code=303)
     status_data = get_live_status()
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "product_name": PRODUCT_NAME,
         "status": status_data,
+        "mail_counts": _mail_counts(),
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public Web Email Interface (no Dashboard authentication)
+#
+# Submissions are validated and placed in a persistent holding queue for
+# trustee review; they are NEVER transmitted here (spec sections 4-9, 15).
+# Form input arrives as JSON and is parsed without python-multipart.
+# ─────────────────────────────────────────────────────────────────────────────
+
+MAIL_CSRF_COOKIE = "kp4pra_mail_csrf"
+
+
+def _webmail_enabled(cfg=None) -> bool:
+    cfg = cfg or get_config()
+    return bool(cfg.get("webmail", {}).get("enabled", True))
+
+
+@app.get("/mail", response_class=HTMLResponse)
+async def mail_compose(request: Request, lang: str = "en"):
+    lang = mail_i18n.normalize_lang(lang)
+    t = mail_i18n.get_strings(lang)
+    token = auth.issue_csrf()
+    resp = templates.TemplateResponse("mail/compose.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "t": t,
+        "enabled": _webmail_enabled(),
+        "csrf_token": token,
+        "prev": {},
+    })
+    # Public double-submit token: readable cookie echoed by the composer.
+    resp.set_cookie(MAIL_CSRF_COOKIE, token, max_age=3600,
+                    httponly=False, samesite="lax", path="/mail")
+    return resp
+
+
+@app.post("/mail/submit")
+async def mail_submit(request: Request):
+    cfg = get_config()
+    if not _webmail_enabled(cfg):
+        return JSONResponse({"success": False, "message": "unavailable"},
+                            status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    lang = mail_i18n.normalize_lang(body.get("lang", "en"))
+    t = mail_i18n.get_strings(lang)
+
+    # Public CSRF (double-submit) check.
+    cookie_tok = request.cookies.get(MAIL_CSRF_COOKIE, "")
+    form_tok = body.get("csrf", "")
+    if not auth.csrf_ok(cookie_tok, form_tok):
+        return JSONResponse({"success": False, "message": t["csrf_error"]},
+                            status_code=403)
+
+    ok, cleaned, errors = mailvalidate.validate_submission(
+        body.get("to"), body.get("reply_to"),
+        body.get("subject"), body.get("body"))
+
+    if not ok:
+        # Map stable error keys to localized text for each bad field.
+        localized = {field: t.get(key, t["email_invalid"])
+                     for field, key in errors.items()}
+        return JSONResponse({"success": False, "errors": localized},
+                            status_code=400)
+
+    try:
+        mailqueue.enqueue(cleaned["to"], cleaned["reply_to"],
+                          cleaned["subject"], cleaned["body"], lang)
+    except Exception:
+        return JSONResponse({"success": False, "message": t["queue_error"]},
+                            status_code=500)
+
+    return JSONResponse({"success": True, "redirect": f"/mail/sent?lang={lang}"})
+
+
+@app.get("/mail/sent", response_class=HTMLResponse)
+async def mail_sent(request: Request, lang: str = "en"):
+    lang = mail_i18n.normalize_lang(lang)
+    return templates.TemplateResponse("mail/confirm.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "t": mail_i18n.get_strings(lang),
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin: Web Email message management (spec section 10). Authenticated.
+#
+# Approve : Holding/Rejected/Failed -> Approved (queued for Phase 4 delivery).
+# Reject  : Holding/Approved/Failed -> Rejected (kept on disk for the record).
+# Delete  : permanently removes the file (requires explicit confirmation).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MSG_ACTIONS = {"approve", "reject", "delete"}
+_APPROVE_FROM = {"Holding", "Rejected", "Failed"}
+_REJECT_FROM = {"Holding", "Approved", "Failed"}
+
+
+@app.get("/admin/messages", response_class=HTMLResponse)
+async def messages_list(request: Request, status: str = None,
+                        _auth=Depends(check_auth)):
+    flt = status if status in mailqueue.STATES else None
+    msgs = mailqueue.list_messages(flt)
+    _cfg = get_config()
+    _dry = bool(_cfg.get("webmail", {}).get("delivery", {}).get("dry_run", True))
+    return templates.TemplateResponse("messages.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "messages": msgs,
+        "counts": _mail_counts(),
+        "filter": flt,
+        "states": list(mailqueue.STATES),
+        "dry_run": _dry,
+    })
+
+
+@app.get("/admin/messages/{mid}", response_class=HTMLResponse)
+async def message_detail(request: Request, mid: str,
+                         _auth=Depends(check_auth)):
+    rec = mailqueue.get(mid)
+    if rec is None:
+        return RedirectResponse(url="/admin/messages", status_code=303)
+    cfg = get_config()
+    delivery = cfg.get("webmail", {}).get("delivery", {})
+    return templates.TemplateResponse("message_detail.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "m": rec,
+        "dry_run": bool(delivery.get("dry_run", True)),
+        "delivery_method": delivery.get("method", "cms"),
+    })
+
+
+@app.post("/api/messages/action")
+async def api_messages_action(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    action = body.get("action")
+    ids = body.get("ids") or []
+    confirm = bool(body.get("confirm", False))
+
+    if action not in _MSG_ACTIONS:
+        return JSONResponse({"success": False, "message": "Unknown action."},
+                            status_code=400)
+    if not isinstance(ids, list) or not ids:
+        return JSONResponse({"success": False, "message": "No messages selected."},
+                            status_code=400)
+    if action == "delete" and not confirm:
+        return JSONResponse({"success": False, "need_confirm": True,
+                             "message": "Confirmation required to delete."},
+                            status_code=400)
+
+    done = 0
+    skipped = 0
+    for mid in ids:
+        rec = mailqueue.get(mid)
+        if rec is None:
+            skipped += 1
+            continue
+        st = rec.get("status")
+        if action == "approve":
+            if st in _APPROVE_FROM:
+                mailqueue.set_status(mid, "Approved")
+                done += 1
+            else:
+                skipped += 1
+        elif action == "reject":
+            if st in _REJECT_FROM:
+                mailqueue.set_status(mid, "Rejected")
+                done += 1
+            else:
+                skipped += 1
+        elif action == "delete":
+            if mailqueue.delete(mid):
+                done += 1
+            else:
+                skipped += 1
+
+    return JSONResponse({"success": True, "action": action,
+                         "done": done, "skipped": skipped,
+                         "counts": _mail_counts()})
+
+
+@app.post("/api/messages/test")
+async def api_messages_test(request: Request, _auth=Depends(check_auth)):
+    """DRY-RUN delivery test for one message (spec Phase 4, step 3).
+
+    Assembles the full CMS-path B2F exchange and returns a transcript.
+    Opens no socket and transmits nothing. Does NOT change the message
+    status -- a dry run is a diagnostic, not a delivery."""
+    body = await request.json()
+    mid = body.get("id", "")
+    rec = mailqueue.get(mid)
+    if rec is None:
+        return JSONResponse({"success": False, "message": "Message not found."},
+                            status_code=404)
+
+    cfg = get_config()
+    method = cfg.get("webmail", {}).get("delivery", {}).get("method", "cms")
+    if method != "cms":
+        return JSONResponse({"success": False,
+            "message": "Only the CMS dry-run is available so far."},
+            status_code=400)
+
+    try:
+        transcript = b2f.dry_run_cms(rec, cfg, version=APP_VERSION)
+    except mailbuilder.BuildError as e:
+        return JSONResponse({"success": False,
+            "message": "Cannot build message: %s" % e}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"success": False,
+            "message": "Dry run failed: %s" % e}, status_code=500)
+
+    # Attach the latest test result to the record (status unchanged).
+    mailqueue.update(mid, last_test={
+        "at": transcript["at"], "method": transcript["method"],
+        "compressed_size": transcript["compressed_size"],
+        "uncompressed_size": transcript["uncompressed_size"],
+        "proposal_checksum": transcript["proposal_checksum"],
+    })
+
+    return JSONResponse({"success": True, "dry_run": True,
+                         "transcript": transcript})
+
+
+@app.post("/api/messages/probe")
+async def api_messages_probe(request: Request, _auth=Depends(check_auth)):
+    """LIVE probe: connect, exchange SID, send the proposal, read the real FS,
+    then abort BEFORE any body. Requires dry_run=false.
+    body: {id, identity: station|gateway|both, route: cms|rf|auto}."""
+    body = await request.json()
+    rec = mailqueue.get(body.get("id", ""))
+    if rec is None:
+        return JSONResponse({"success": False, "message": "Message not found."},
+                            status_code=404)
+    cfg = get_config()
+    route = _resolve_route(body.get("route", "cms"), cfg)
+    identity = body.get("identity", "station")
+    try:
+        if route == "rf":
+            res = await rfsend.probe(rec, cfg, version=APP_VERSION)
+            return JSONResponse({"success": True, "probe": True,
+                                 "route": "rf", "result": res})
+        if identity == "both":
+            results = await b2fsend.probe_both(rec, cfg, version=APP_VERSION)
+            return JSONResponse({"success": True, "probe": True, "both": results})
+        res = await b2fsend.probe(rec, cfg, identity=identity,
+                                  version=APP_VERSION)
+        return JSONResponse({"success": True, "probe": True, "result": res})
+    except b2fsend.DeliveryError as e:
+        return JSONResponse({"success": False, "message": str(e)},
+                            status_code=400)
+    except mailbuilder.BuildError as e:
+        return JSONResponse({"success": False,
+                             "message": "Cannot build message: %s" % e},
+                            status_code=400)
+    except Exception as e:
+        return JSONResponse({"success": False,
+                             "message": "Probe failed: %s" % e},
+                            status_code=500)
+
+
+def _internet_up(host="1.1.1.1", port=53, timeout=1.5):
+    """Cheap reachability check for auto route selection."""
+    import socket
+    try:
+        s = socket.create_connection((host, port), timeout=timeout)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+
+def _resolve_route(requested, cfg):
+    """Map requested route ('cms'|'tcp-ip'|'rf'|'auto'|'') to 'cms' or 'rf'.
+    'auto' (or blank with auto_route on) prefers cms when internet is up."""
+    d = cfg.get("webmail", {}).get("delivery", {}) or {}
+    req = (requested or "").strip().lower()
+    if req in ("cms", "tcp", "tcpip", "tcp-ip"):
+        return "cms"
+    if req == "rf":
+        return "rf"
+    if req == "auto" or (req == "" and d.get("auto_route", True)):
+        return "cms" if _internet_up() else "rf"
+    return "rf" if d.get("method") == "rf" else "cms"
+
+
+@app.post("/api/messages/send")
+async def api_messages_send(request: Request, _auth=Depends(check_auth)):
+    """LIVE send: full delivery of one message. Requires dry_run=false and
+    confirm=true. body: {id, identity, confirm, route}. route is
+    'cms' | 'tcp-ip' | 'rf' | 'auto' (default 'auto')."""
+    body = await request.json()
+    if not body.get("confirm"):
+        return JSONResponse({"success": False, "need_confirm": True,
+                             "message": "Confirmation required to send."},
+                            status_code=400)
+    rec = mailqueue.get(body.get("id", ""))
+    if rec is None:
+        return JSONResponse({"success": False, "message": "Message not found."},
+                            status_code=404)
+    cfg = get_config()
+    route = _resolve_route(body.get("route", "auto"), cfg)
+    identity = body.get("identity", "station")
+    try:
+        if route == "rf":
+            res = await rfsend.send(rec, cfg, version=APP_VERSION)
+        else:
+            res = await b2fsend.send(rec, cfg, identity=identity,
+                                     version=APP_VERSION)
+        return JSONResponse({"success": res.get("ok", False),
+                             "sent": res.get("final_status") == "Sent",
+                             "route": route,
+                             "result": res})
+    except b2fsend.DeliveryError as e:
+        return JSONResponse({"success": False, "route": route,
+                             "message": str(e)}, status_code=400)
+    except mailbuilder.BuildError as e:
+        return JSONResponse({"success": False,
+                             "message": "Cannot build message: %s" % e},
+                            status_code=400)
+    except Exception as e:
+        return JSONResponse({"success": False, "route": route,
+                             "message": "Send failed: %s" % e},
+                            status_code=500)
+
+
+_BULK_SEND_MAX = 25
+
+
+@app.post("/api/messages/send_bulk")
+async def api_messages_send_bulk(request: Request, _auth=Depends(check_auth)):
+    """LIVE bulk send: deliver several approved messages sequentially over one
+    route. body: {ids:[...], route, confirm}. Returns per-message results.
+    Each message is sent independently; one failure does not abort the rest."""
+    body = await request.json()
+    if not body.get("confirm"):
+        return JSONResponse({"success": False, "need_confirm": True,
+                             "message": "Confirmation required to send."},
+                            status_code=400)
+    ids = body.get("ids") or []
+    if not ids:
+        return JSONResponse({"success": False, "message": "No messages selected."},
+                            status_code=400)
+    if len(ids) > _BULK_SEND_MAX:
+        return JSONResponse({"success": False,
+                             "message": "Too many selected (max %d per batch)."
+                             % _BULK_SEND_MAX}, status_code=400)
+    cfg = get_config()
+    route = _resolve_route(body.get("route", "auto"), cfg)
+    identity = body.get("identity", "station")
+
+    results = []
+    sent_count = 0
+    for mid in ids:
+        rec = mailqueue.get(mid)
+        if rec is None:
+            results.append({"id": mid, "sent": False, "error": "not found"})
+            continue
+        if rec.get("status") not in ("Approved", "Failed"):
+            results.append({"id": mid, "sent": False,
+                            "error": "status %s (not Approved)" % rec.get("status")})
+            continue
+        try:
+            if route == "rf":
+                res = await rfsend.send(rec, cfg, version=APP_VERSION)
+            else:
+                res = await b2fsend.send(rec, cfg, identity=identity,
+                                         version=APP_VERSION)
+            ok = res.get("final_status") == "Sent"
+            sent_count += 1 if ok else 0
+            results.append({"id": mid, "sent": ok,
+                            "status": res.get("final_status"),
+                            "error": res.get("error")})
+        except Exception as e:
+            results.append({"id": mid, "sent": False,
+                            "error": "%s: %s" % (type(e).__name__, e)})
+
+    return JSONResponse({"success": True, "route": route,
+                         "sent": sent_count, "total": len(ids),
+                         "results": results})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin Dashboard login / logout
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def login_page(request: Request, next: str = "/admin"):
+    # If no password is configured yet, there is nothing to log into.
+    if not auth.dashboard_password_set(get_config()):
+        return RedirectResponse(url="/admin", status_code=303)
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "product_name": PRODUCT_NAME,
+        "next": auth.safe_next(next),
+        "error": False,
+    })
+
+
+@app.post("/admin/login")
+async def login_submit(request: Request):
+    from urllib.parse import parse_qs
+    raw = (await request.body()).decode("utf-8", "replace")
+    data = parse_qs(raw, keep_blank_values=True)
+    password = (data.get("password") or [""])[0]
+    next = (data.get("next") or ["/admin"])[0]
+    cfg = get_config()
+    stored = cfg["web"].get("dashboard_password_hash", "")
+    if not stored or not auth.verify_password(password, stored):
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "product_name": PRODUCT_NAME,
+            "next": auth.safe_next(next),
+            "error": True,
+        }, status_code=status.HTTP_401_UNAUTHORIZED)
+    resp = RedirectResponse(url=auth.safe_next(next), status_code=303)
+    _set_session_cookies(resp)
+    return resp
+
+
+@app.get("/admin/logout")
+async def logout(request: Request):
+    resp = RedirectResponse(url="/", status_code=303)
+    _clear_session_cookies(resp)
+    return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin Dashboard password (set / change)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/dashboard/password")
+async def api_dashboard_password(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    new_pw = body.get("new_password", "")
+    current_pw = body.get("current_password", "")
+    cfg = get_config()
+
+    if not auth.callsign_valid(cfg):
+        return JSONResponse({"success": False,
+            "message": "Configure a valid station callsign and save before "
+                       "setting a Dashboard password."}, status_code=400)
+
+    # Changing an existing password requires the current one.
+    if auth.dashboard_password_set(cfg):
+        stored = cfg["web"]["dashboard_password_hash"]
+        if not auth.verify_password(current_pw, stored):
+            return JSONResponse({"success": False,
+                "message": "Current password is incorrect."}, status_code=403)
+
+    ok, msg = auth.validate_new_password(new_pw)
+    if not ok:
+        return JSONResponse({"success": False, "message": msg}, status_code=400)
+
+    fs = get_filesystem_status()
+    if not fs["rw_partition_writable"]:
+        return JSONResponse({"success": False,
+            "message": "Configuration path is not writable. Check "
+                       "/rw/kp4pra-tnc/ mount."}, status_code=503)
+
+    save_ok, save_msg = save_config(
+        {"web": {"dashboard_password_hash": auth.hash_password(new_pw)}})
+    if not save_ok:
+        return JSONResponse({"success": False, "message": save_msg},
+                            status_code=500)
+
+    global _config
+    _config = None
+    return JSONResponse({"success": True,
+        "message": "Dashboard password saved. Authentication is now required "
+                   "for the Admin Dashboard."})
 
 
 @app.get("/bluetooth", response_class=HTMLResponse)
@@ -492,6 +1157,111 @@ async def api_wifi_mode(request: Request, _auth=Depends(check_auth)):
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# API: Xara (VARA-compatible modem) - bin/kp4pra-xara, docs/XARA.md
+# ─────────────────────────────────────────────────────────────────────────────
+
+XARA_TOOL = "/usr/local/bin/kp4pra-xara"
+
+
+def _run(cmd, timeout=30):
+    import subprocess
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        return (r.returncode,
+                r.stdout.decode(errors="replace").strip(),
+                r.stderr.decode(errors="replace").strip())
+    except FileNotFoundError:
+        return 127, "", f"{cmd[0]} not found"
+    except Exception as e:
+        return 1, "", str(e)
+
+
+@app.get("/api/xara/status")
+async def api_xara_status(_auth=Depends(check_auth)):
+    from common import xara_conf
+    rc, out, err = _run([XARA_TOOL, "status", "--json"], timeout=15)
+    try:
+        st = json.loads(out) if rc == 0 else {}
+    except ValueError:
+        st = {}
+    if not st:
+        st = {"installed": False, "running": False, "modem": "packet",
+              "tool_missing": rc == 127, "error": err}
+    x = xara_conf.settings(get_config())
+    import vara_launcher
+    disc = vara_launcher.modem_info(get_config())
+    lrc, lout, _ = _run(["systemctl", "is-active", "kp4pra-vara-launcher.service"], timeout=5)
+    st.update({
+        "discovery": {"name": disc["name"], "active": lout == "active",
+                      "announced": lout == "active" and disc["network"] and st.get("installed", False),
+                      "auto_switch": disc["auto_switch"]},
+        "settings": x,
+        "mode_label": xara_conf.MODE_LABELS.get(x["mode"], x["mode"]),
+        "call": xara_conf.xara_call(get_config()),
+        "modes": xara_conf.MODE_LABELS,
+    })
+    return JSONResponse(st)
+
+
+@app.get("/api/xara/latest")
+async def api_xara_latest(_auth=Depends(check_auth)):
+    rc, out, err = _run([XARA_TOOL, "latest"], timeout=40)
+    if rc == 0 and out:
+        return JSONResponse({"success": True, "latest": out.splitlines()[-1]})
+    return JSONResponse({"success": False,
+                         "message": err or "Could not reach GitHub to check for a new version."})
+
+
+@app.post("/api/xara/preview")
+async def api_xara_preview(request: Request, _auth=Depends(check_auth)):
+    """The Xara config the current form values would produce (not saved)."""
+    from common import xara_conf
+    from common.config_writer import _deep_merge
+    body = await request.json()
+    cfg = _deep_merge(get_config(), {"xara": body.get("xara") or {}})
+    try:
+        text, plan = xara_conf.generate(cfg)
+        return JSONResponse({"success": True, "conf": text, "ptt": plan["describe"]})
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
+@app.post("/api/xara/modem")
+async def api_xara_modem(request: Request, _auth=Depends(check_auth)):
+    body = await request.json()
+    modem = body.get("modem", "")
+    if modem not in ("xara", "packet"):
+        return JSONResponse({"success": False, "message": "modem must be 'xara' or 'packet'"},
+                            status_code=400)
+    rc, out, err = _run(["sudo", "-n", XARA_TOOL, "modem", modem], timeout=120)
+    return JSONResponse({"success": rc == 0, "message": (out + ("\n" + err if err else "")).strip()},
+                        status_code=200 if rc == 0 else 500)
+
+
+@app.post("/api/xara/apply")
+async def api_xara_apply(_auth=Depends(check_auth)):
+    """Use saved Xara settings now (restarts Xara if it is running)."""
+    import os as _os
+    if not _os.path.exists(XARA_TOOL):
+        return JSONResponse({"success": True, "message": "Saved. Xara is not set up on this board yet."})
+    rc, out, err = _run(["sudo", "-n", XARA_TOOL, "restart"], timeout=60)
+    return JSONResponse({"success": rc == 0, "message": (out or err or "").strip()},
+                        status_code=200 if rc == 0 else 500)
+
+
+@app.post("/api/xara/update")
+async def api_xara_update(_auth=Depends(check_auth)):
+    """Install or upgrade Xara in the background (kp4pra-xara-update.service)."""
+    rc, out, err = _run(["sudo", "-n", "/bin/systemctl", "start", "--no-block",
+                         "kp4pra-xara-update.service"], timeout=15)
+    if rc == 0:
+        return JSONResponse({"success": True,
+                             "message": "Downloading Xara. This page shows the result when it is done."})
+    return JSONResponse({"success": False, "message": err or out or "could not start the update"},
+                        status_code=500)
+
+
 @app.post("/api/service/restart")
 async def api_service_restart(request: Request, _auth=Depends(check_auth)):
     body = await request.json()
@@ -584,19 +1354,51 @@ async def api_soundcards(_auth=Depends(check_auth)):
 @app.get("/api/dra/status")
 async def api_dra_status(_auth=Depends(check_auth)):
     """Report whether the DRA-Pi-Zero I2S codec is present. Used by the Config
-    page after a reboot to tell the user if the overlay brought the card up."""
+    page after a reboot to tell the user if the overlay brought the card up.
+    The ALSA card ID differs per board (audioinjectorpi on a Raspberry Pi,
+    DRAPiZero on an Orange Pi Zero 2W) - see common.dra_platform."""
     import subprocess
+    from common.dra_platform import DRA_CARD_IDS, detect_platform, platform_info, is_dra_adevice
     present = False
+    card = ""
     try:
         r = subprocess.run(["aplay", "-l"], capture_output=True, timeout=10)
-        present = b"audioinjectorpi" in r.stdout
+        out = r.stdout.decode(errors="replace")
+        for cid in DRA_CARD_IDS:
+            if f": {cid} [" in out:
+                present, card = True, cid
+                break
     except Exception:
         present = False
     cfg = load_config()
     adevice = (cfg.get("station", {}).get("sound") or "")
+    plat = detect_platform()
+    state, hint = ("ok", "")
+    if not present:
+        try:
+            from common.dra_platform import setup_state
+            state, hint = setup_state(plat)
+        except Exception as e:
+            state, hint = ("unknown", f"setup state check failed: {e}")
     return JSONResponse({
         "dra_present": present,
-        "adevice_is_dra": "audioinjector" in adevice.lower(),
+        "setup_state": state,
+        "hint": hint,
+        "card": card,
+        "platform": plat or "unknown",
+        "board": platform_info(plat)["name"] if plat else "unknown board",
+        "adevice_is_dra": is_dra_adevice(adevice) or "dra-pi-zero" in adevice.lower(),
+    })
+
+
+@app.get("/api/tft/status")
+async def api_tft_status(_auth=Depends(check_auth)):
+    """Mini PiTFT display state written by kp4pra-tnc-tft (runtime only)."""
+    st = read_status("tft") or {}
+    return JSONResponse({
+        "state": st.get("state", "not_running"),
+        "detail": st.get("detail", "display service not running"),
+        "mode": st.get("mode", (get_config().get("display", {}) or {}).get("tft", "auto")),
     })
 
 
@@ -616,20 +1418,57 @@ async def api_system_reboot(_auth=Depends(check_auth)):
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 
+# Pending power-off started by /api/system/shutdown (sleep N && poweroff in its
+# own process group, so /api/system/shutdown/cancel can stop it before 0).
+_shutdown_proc = None
+SHUTDOWN_DELAY_S = 10
+
+
 @app.post("/api/system/shutdown")
 async def api_system_shutdown(_auth=Depends(check_auth)):
-    """Power off the TNC. Backgrounds a short-delayed poweroff so this HTTP
-    response flushes to the browser before the network drops. Narrow sudoers:
-    kp4pra-tnc may run only /sbin/poweroff."""
+    """Power off the TNC after SHUTDOWN_DELAY_S seconds (the Config page shows
+    the same 10 -> 0 countdown). The request is sent when the countdown
+    starts, so the shutdown still happens at 0 if the browser is closed or the
+    connection drops. Narrow sudoers: kp4pra-tnc may run only /sbin/poweroff."""
+    global _shutdown_proc
     import subprocess
+    if _shutdown_proc is not None and _shutdown_proc.poll() is None:
+        return JSONResponse({"success": True, "delay": SHUTDOWN_DELAY_S,
+            "message": "Shutdown already pending."})
     try:
-        subprocess.Popen(
-            ["/bin/sh", "-c", "sleep 2 && sudo -n /sbin/poweroff"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return JSONResponse({"success": True,
-            "message": "Shutting down now. Wait ~15s, then it is safe to remove power."})
+        _shutdown_proc = subprocess.Popen(
+            ["/bin/sh", "-c", f"sleep {SHUTDOWN_DELAY_S} && exec sudo -n /sbin/poweroff"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
+        # Tell the Mini PiTFT (kp4pra-tnc-tft) to show the same countdown.
+        import time as _time
+        write_status("shutdown", {"deadline": _time.time() + SHUTDOWN_DELAY_S})
+        return JSONResponse({"success": True, "delay": SHUTDOWN_DELAY_S,
+            "message": f"Shutting down in {SHUTDOWN_DELAY_S} s. Wait ~15 s after that, "
+                       "then it is safe to remove power."})
     except Exception as e:
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
+@app.post("/api/system/shutdown/cancel")
+async def api_system_shutdown_cancel(_auth=Depends(check_auth)):
+    """Cancel a pending shutdown during its countdown."""
+    global _shutdown_proc
+    import signal
+    p = _shutdown_proc
+    if p is None or p.poll() is not None:
+        return JSONResponse({"success": False,
+            "message": "No shutdown pending (or it already started)."}, status_code=409)
+    try:
+        os.killpg(p.pid, signal.SIGTERM)
+        p.wait(timeout=3)
+    except ProcessLookupError:
+        pass
+    except Exception as e:
+        return JSONResponse({"success": False, "message": f"Could not cancel: {e}"}, status_code=500)
+    _shutdown_proc = None
+    clear_status("shutdown")
+    return JSONResponse({"success": True, "message": "Shutdown cancelled."})
 
 
 @app.post("/api/dra/setup")
@@ -647,6 +1486,16 @@ async def api_dra_setup(_auth=Depends(check_auth)):
         out = r.stdout.decode(errors="replace").strip()
         err = r.stderr.decode(errors="replace").strip()
         if r.returncode == 0:
+            # On an Orange Pi the web button only reports status: the one-time
+            # driver build needs internet + several minutes and runs from SSH
+            # (the script says so in its output, prefixed "INFO:").
+            if "INFO:" in out and "REBOOT REQUIRED" not in out:
+                return JSONResponse({
+                    "success": True,
+                    "reboot_required": False,
+                    "output": out,
+                    "message": out.split("INFO:", 1)[1].strip(),
+                })
             return JSONResponse({
                 "success": True,
                 "reboot_required": True,
@@ -681,8 +1530,16 @@ async def api_direwolf_apply(request: Request, _auth=Depends(check_auth)):
     if not body.get("confirmed", False):
         return JSONResponse({"success": False, "message": "Confirmation required"}, status_code=400)
     station = body.get("station") or load_config().get("station", {})
+    adevice = None
+    if body.get("use_dra"):
+        # The DRA-Pi-Zero may still be setting itself up (card not loaded yet):
+        # use this board's DRA card by name; it works once the card appears.
+        from common.dra_platform import detect_platform, PLATFORMS
+        card = PLATFORMS.get(detect_platform() or "", {}).get("card")
+        if card:
+            adevice = f"plughw:{card},0"
     try:
-        text = generate_direwolf_conf(station)
+        text = generate_direwolf_conf(station, adevice=adevice)
         ok, msg = write_direwolf_conf(text)
         if not ok:
             return JSONResponse({"success": False, "message": msg})

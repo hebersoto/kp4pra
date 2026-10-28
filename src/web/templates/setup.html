@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Set up your station — KP4PRA TNC{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Set up your station</h1>
+  <p class="page-subtitle">Three things and you are on the air. You can change any of them later on the Config page.</p>
+</div>
+
+<div id="setup-form">
+
+<div class="card">
+  <div class="card-title"><span class="icon">📻</span> 1. Your station</div>
+  <div class="grid-3">
+    <div class="form-group">
+      <label class="form-label" for="su-callsign">Callsign</label>
+      <input class="form-input" id="su-callsign" maxlength="6" autocomplete="off"
+             autocapitalize="characters" value="{{ callsign }}" placeholder="KP4ABC">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="su-ssid">SSID (optional)</label>
+      <input class="form-input" id="su-ssid" maxlength="2" inputmode="numeric"
+             value="{{ ssid }}" placeholder="10">
+      <div class="form-hint">10 is common for a TNC. Leave empty for none.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="su-grid">Grid square (optional)</label>
+      <input class="form-input" id="su-grid" maxlength="6" value="{{ mygrid }}" placeholder="FK68">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="icon">🔌</span> 2. Radio interface</div>
+  <div class="form-group">
+    <label class="form-label" for="su-sound">Sound card</label>
+    <select class="form-input" id="su-sound"><option>Looking for sound cards…</option></select>
+    <div class="form-hint" id="su-sound-hint"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="icon">🔒</span> 3. Dashboard password</div>
+  {% if password_set %}
+  <p class="form-hint">A password is already set. Change it on the Config page if needed.</p>
+  {% else %}
+  <div class="alert alert-warning" id="su-open-wifi" style="display:none">
+    <span class="alert-icon">⚠</span>
+    <div>This board's WiFi hotspot has no password, so anyone nearby can join it.
+    Please set a Dashboard password.</div>
+  </div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="su-pw1">Password (recommended)</label>
+      <input class="form-input" id="su-pw1" type="password" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="su-pw2">Type it again</label>
+      <input class="form-input" id="su-pw2" type="password" autocomplete="new-password">
+    </div>
+  </div>
+  <div class="form-hint">Leave both empty to skip. Without a password anyone on your network can change the settings.</div>
+  {% endif %}
+</div>
+
+<div class="card-actions" style="margin:1rem 0 0.5rem">
+  <button class="btn btn-primary" id="su-save" onclick="saveSetup()">Save and start</button>
+  <a class="btn btn-secondary" href="/admin?skip_setup=1">Skip for now</a>
+</div>
+<div class="form-hint" id="su-result" role="status" style="margin-bottom:2rem"></div>
+
+</div>
+
+<div class="card" id="setup-done" style="display:none;text-align:center;padding:2rem 1.25rem">
+  <div style="font-size:2.4rem;line-height:1">✅</div>
+  <h2 style="margin:0.75rem 0 0.4rem">Your station is ready</h2>
+  <p id="su-done-text" style="color:var(--kp4pra-muted-text)"></p>
+  <a class="btn btn-primary" href="/admin">Open the Dashboard</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DRA_LABEL = 'DRA-Pi-Zero (I2S)';
+
+async function getJSON(url) {
+  try { const r = await fetch(url); return await r.json(); } catch (e) { return {}; }
+}
+async function postJSON(url, body) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify(body)});
+  let d = {};
+  try { d = await r.json(); } catch (e) { d = {success: false, message: 'HTTP ' + r.status}; }
+  if (!r.ok && d.success === undefined) d.success = false;
+  return d;
+}
+
+function addOption(sel, value, text, extra) {
+  const o = document.createElement('option');
+  o.value = value; o.textContent = text;
+  Object.assign(o.dataset, extra || {});
+  sel.appendChild(o);
+  return o;
+}
+
+async function loadSetup() {
+  const [sc, dra, wifi] = await Promise.all([
+    getJSON('/api/soundcards'), getJSON('/api/dra/status'), getJSON('/api/wifi/status')]);
+  const sel = document.getElementById('su-sound');
+  const hint = document.getElementById('su-sound-hint');
+  sel.innerHTML = '';
+  const cards = sc.cards || [];
+  let pick = null;
+  cards.forEach(cd => {
+    const o = addOption(sel, cd.label, `${cd.label} (${cd.plughw})`,
+                        {ptt: cd.ptt_suggest || '', pttParam: cd.ptt_param_suggest || '',
+                         dra: cd.label === DRA_LABEL ? '1' : ''});
+    if (cd.label === DRA_LABEL) pick = o;
+  });
+  if (!pick && dra.setup_state === 'in_progress') {
+    pick = addOption(sel, DRA_LABEL, DRA_LABEL + ' - setting itself up', {ptt: 'GPIOD', pttParam: '', dra: '1'});
+    hint.textContent = 'Your DRA-Pi-Zero was found and is finishing its setup. Choose it now; ' +
+                       'it starts working after the board restarts by itself.';
+  }
+  if (!pick) pick = [...sel.options].find(o => o.dataset.ptt) || sel.options[0] || null;
+  if (pick) {
+    pick.selected = true;
+    if (!hint.textContent) hint.textContent = pick.dataset.dra
+      ? 'DRA-Pi-Zero found. Push-to-talk is set for it automatically.'
+      : 'Choose the sound card of your radio interface. Push-to-talk is set for it automatically.';
+  } else {
+    addOption(sel, '', 'No sound card found');
+    hint.textContent = 'Plug in your radio interface (USB sound card) and reload this page. ' +
+                       'You can also save now and choose it later on the Config page.';
+  }
+  const warn = document.getElementById('su-open-wifi');
+  if (warn && wifi.ap_security === 'open') warn.style.display = '';
+}
+
+async function saveSetup() {
+  const out = document.getElementById('su-result');
+  const btn = document.getElementById('su-save');
+  const call = document.getElementById('su-callsign').value.trim().toUpperCase();
+  const ssid = document.getElementById('su-ssid').value.trim();
+  const grid = document.getElementById('su-grid').value.trim();
+  const opt = document.getElementById('su-sound').selectedOptions[0];
+  const pw1El = document.getElementById('su-pw1');
+  const pw1 = pw1El ? pw1El.value : '';
+  const pw2 = pw1El ? document.getElementById('su-pw2').value : '';
+
+  if (!call || call === 'N0CALL') { out.textContent = 'Please enter your callsign.'; return; }
+  if (pw1 !== pw2) { out.textContent = 'The two passwords are not the same.'; return; }
+
+  btn.disabled = true;
+  try {
+    const station = {callsign: call, ssid: ssid};
+    if (grid) station.mygrid = grid;            // optional; empty is not a valid grid
+    if (opt && opt.value) {
+      station.sound = opt.value;
+      station.ptt = opt.dataset.ptt || 'CM108';
+      station.ptt_param = opt.dataset.pttParam || '';
+    }
+    out.textContent = 'Saving your station…';
+    let d = await postJSON('/api/config/save', {config: {station: station}, confirmed: true});
+    if (!d.success) throw new Error(d.message || 'Could not save the station settings.');
+
+    out.textContent = 'Starting the radio modem (Dire Wolf)…';
+    d = await postJSON('/api/direwolf/apply', {confirmed: true, restart: true,
+                                               use_dra: !!(opt && opt.dataset.dra)});
+    if (!d.success) throw new Error(d.message || 'Could not configure Dire Wolf.');
+
+    if (pw1) {
+      out.textContent = 'Setting the Dashboard password…';
+      d = await postJSON('/api/dashboard/password', {new_password: pw1});
+      if (!d.success) throw new Error((d.message || 'Could not set the password.') +
+                                      ' Your station was saved - fix the password and press Save again.');
+    }
+    document.getElementById('setup-form').style.display = 'none';
+    document.getElementById('su-done-text').textContent =
+      `${call}${ssid ? '-' + ssid : ''} is set up.` +
+      (pw1 ? ' Log in with your new password on the next page.' : '');
+    document.getElementById('setup-done').style.display = '';
+  } catch (e) {
+    out.textContent = '⚠ ' + (e.message || e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+loadSetup();
+// When the install banner sees setup finish (e.g. the DRA is ready), refresh
+// the sound card list so the DRA shows up without reloading the page.
+window.onInstallComplete = loadSetup;
+</script>
+{% endblock %}

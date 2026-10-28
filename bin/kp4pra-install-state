@@ -1,0 +1,60 @@
+#!/bin/bash
+# KP4PRA TNC - install/setup progress, shown on the web page, the Mini PiTFT
+# and the login message so nobody has to read a log to know if setup is done.
+#
+#   kp4pra-install-state set <state> "<message>"
+#   kp4pra-install-state get        # JSON
+#   kp4pra-install-state show       # one line for people
+#
+# States:
+#   installing  the installer is running
+#   checking    finishing after the restart: looking for a DRA-Pi-Zero
+#   dra_setup   setting up the DRA-Pi-Zero (the board may restart by itself)
+#   complete    everything is done
+#   failed      something stopped; the message says what to do
+#
+# File: /rw/kp4pra-tnc/install-state.json (kept across restarts).
+STATE_FILE="${KP4PRA_INSTALL_STATE:-/rw/kp4pra-tnc/install-state.json}"
+
+case "${1:-show}" in
+    set)
+        [ -n "${2:-}" ] || { echo "usage: $0 set <state> \"<message>\"" >&2; exit 2; }
+        mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || exit 0
+        python3 - "$STATE_FILE" "$2" "${3:-}" <<'PY' 2>/dev/null || true
+import json, os, sys, time
+path, state, msg = sys.argv[1], sys.argv[2], sys.argv[3]
+old = {}
+try:
+    old = json.load(open(path))
+except Exception:
+    pass
+data = {"state": state, "message": msg, "updated": int(time.time()),
+        # when this round of setup started (kept until it is complete)
+        "started": old.get("started") if old.get("state") not in (None, "complete", "failed")
+                   else int(time.time())}
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(data, f)
+os.chmod(tmp, 0o644)
+os.replace(tmp, path)
+PY
+        ;;
+    get)
+        cat "$STATE_FILE" 2>/dev/null || echo '{"state": "complete", "message": ""}'
+        ;;
+    show)
+        python3 - "$STATE_FILE" <<'PY' 2>/dev/null || echo "Setup: complete"
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print("Setup: complete"); sys.exit()
+st, msg = d.get("state", "complete"), d.get("message", "")
+label = {"installing": "installing", "checking": "finishing",
+         "dra_setup": "in progress", "complete": "complete",
+         "failed": "STOPPED"}.get(st, st)
+print("Setup: %s%s" % (label, (" - " + msg) if msg and st != "complete" else ""))
+PY
+        ;;
+    *) echo "usage: $0 set|get|show" >&2; exit 2 ;;
+esac

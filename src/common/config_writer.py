@@ -124,6 +124,13 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
         if "ap_security" in wf and wf["ap_security"] not in ("auto", "wpa2", "open"):
             errors.append("wifi.ap_security must be auto, wpa2 or open")
 
+    if "display" in updates:
+        dp = updates["display"] or {}
+        if "tft" in dp and dp["tft"] not in ("auto", "on", "off"):
+            errors.append("display.tft must be auto, on or off")
+        if "tft_rotation" in dp and str(dp["tft_rotation"]) not in ("0", "180"):
+            errors.append("display.tft_rotation must be 0 or 180")
+
     if "station" in updates:
         st = updates["station"]
         import re as _re
@@ -185,6 +192,139 @@ def validate_config_updates(updates: dict) -> tuple[bool, str]:
             except (TypeError, ValueError): errors.append("rms.frequency_hz must be an integer")
         if "mode" in rms and rms["mode"] not in ("PACKET-1200", "PACKET-9600"):
             errors.append("rms.mode must be PACKET-1200 or PACKET-9600")
+
+    if "webmail" in updates:
+        wm = updates["webmail"] or {}
+        deliv = wm.get("delivery", {}) or {}
+        rf = deliv.get("rf", {}) or {}
+        import re as _re
+        _CALL = _re.compile(r"^[A-Z0-9]{3,7}(-\d{1,2})?$")
+        if "remote_rms" in rf and rf["remote_rms"]:
+            if not _CALL.match(str(rf["remote_rms"]).upper()):
+                errors.append("webmail.delivery.rf.remote_rms must be CALLSIGN or CALLSIGN-SSID")
+        if "mycall" in rf and rf["mycall"]:
+            if not _CALL.match(str(rf["mycall"]).upper()):
+                errors.append("webmail.delivery.rf.mycall must be CALLSIGN or CALLSIGN-SSID")
+        if "digipeaters" in rf:
+            digis = rf["digipeaters"]
+            if not isinstance(digis, list):
+                errors.append("webmail.delivery.rf.digipeaters must be a list")
+            else:
+                nonempty = [d for d in digis if str(d).strip()]
+                if len(nonempty) > 2:
+                    errors.append("webmail.delivery.rf.digipeaters: at most 2 allowed")
+                for d in nonempty:
+                    if not _CALL.match(str(d).upper()):
+                        errors.append("webmail.delivery.rf.digipeaters: %r is not a valid callsign" % d)
+        if "block_size" in rf:
+            try:
+                b = int(rf["block_size"])
+                if not 1 <= b <= 255:
+                    errors.append("webmail.delivery.rf.block_size must be 1-255")
+            except (TypeError, ValueError):
+                errors.append("webmail.delivery.rf.block_size must be an integer")
+        for k in ("connect_retries", "ack_timeout"):
+            if k in rf:
+                try:
+                    v = int(rf[k])
+                    if v < 1 or v > 120:
+                        errors.append("webmail.delivery.rf.%s must be 1-120" % k)
+                except (TypeError, ValueError):
+                    errors.append("webmail.delivery.rf.%s must be an integer" % k)
+
+    if "xara" in updates:
+        x = updates["xara"] or {}
+        import re as _re
+        from common.xara_conf import MODES, valid_vara_call
+        if "mode" in x and x["mode"] not in MODES:
+            errors.append("xara.mode must be one of: " + ", ".join(MODES))
+        if x.get("call") and not valid_vara_call(str(x["call"])):
+            errors.append("xara.call must be a callsign with an optional VARA SSID (1-19)")
+        v = str(x.get("version", "latest"))
+        if v != "latest" and not _re.match(r"^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$", v.lstrip("v")):
+            errors.append("xara.version must be 'latest' or a version like 0.1.1")
+        def _num(k, lo, hi, cast=int):
+            if k in x:
+                try:
+                    val = cast(x[k])
+                except (TypeError, ValueError):
+                    errors.append("xara.%s must be a number" % k)
+                    return
+                if not lo <= val <= hi:
+                    errors.append("xara.%s must be %s to %s" % (k, lo, hi))
+        _num("drive_db", -40, 0, float)
+        _num("ptt_lead_ms", 0, 1000)
+        _num("ptt_tail_ms", 0, 1000)
+        _num("port", 1024, 65534)
+        _num("ui_port", 1024, 65535)
+        if "kiss_port" in x and str(x["kiss_port"]).lower() != "off":
+            _num("kiss_port", 1024, 65535)
+        for _b in ("network", "registered", "auto_switch"):
+            if _b in x and not isinstance(x[_b], bool):
+                errors.append("xara.%s must be true or false" % _b)
+        used = {8088: "the KP4PRA web page", 8001: "Dire Wolf KISS", 8000: "Dire Wolf AGW",
+                8772: "the RMS gateway telnet port"}
+        for k in ("port", "ui_port", "kiss_port"):
+            try:
+                p_ = int(x.get(k))
+            except (TypeError, ValueError):
+                continue
+            if p_ in used or (k == "port" and p_ + 1 in used):
+                errors.append("xara.%s %d is already used by %s" % (k, p_, used.get(p_) or used.get(p_ + 1)))
+
+    if "aprs" in updates:
+        ap = updates["aprs"] or {}
+        import re as _re
+        _C = _re.compile(r"^[A-Z0-9]{1,6}(-[A-Z0-9]{1,3})?$")
+        _T = _re.compile(r"^[A-Z0-9]{1,6}(-[0-9]{1,2})?$")
+        # aprs.tocall is fixed (APKPPR) and no longer a setting; an old value
+        # in config.yaml is ignored.
+        if ap.get("mycall") and not _C.match(str(ap["mycall"]).upper()):
+            errors.append("aprs.mycall must be CALLSIGN or CALLSIGN-SSID")
+        if "digipath" in ap:
+            dp = ap["digipath"]
+            if not isinstance(dp, list):
+                errors.append("aprs.digipath must be a list")
+            else:
+                ne = [d for d in dp if str(d).strip()]
+                if len(ne) > 8:
+                    errors.append("aprs.digipath: at most 8 hops")
+                for d in ne:
+                    if not _T.match(str(d).upper()):
+                        errors.append("aprs.digipath: %r is not a valid path element" % d)
+        for k in ("retry_interval", "max_retries"):
+            if k in ap:
+                try:
+                    v = int(ap[k])
+                    if v < 1 or v > 3600:
+                        errors.append("aprs.%s out of range" % k)
+                except (TypeError, ValueError):
+                    errors.append("aprs.%s must be an integer" % k)
+        isc = ap.get("aprsis", {}) or {}
+        if "port" in isc:
+            try:
+                p = int(isc["port"])
+                if not 1 <= p <= 65535:
+                    errors.append("aprs.aprsis.port invalid")
+            except (TypeError, ValueError):
+                errors.append("aprs.aprsis.port must be an integer")
+        bc = ap.get("beacon", {}) or {}
+        if "interval_min" in bc:
+            try:
+                iv = int(bc["interval_min"])
+                if iv < 0 or iv > 1440:
+                    errors.append("aprs.beacon.interval_min out of range")
+            except (TypeError, ValueError):
+                errors.append("aprs.beacon.interval_min must be an integer")
+        for _k in ("symbol_table", "symbol_code"):
+            if bc.get(_k) and len(str(bc[_k])) != 1:
+                errors.append("aprs.beacon.%s must be a single character" % _k)
+        for _k in ("lat", "lon"):
+            if bc.get(_k) not in (None, "", 0, 0.0):
+                try:
+                    float(bc[_k])
+                except (TypeError, ValueError):
+                    errors.append("aprs.beacon.%s must be a number" % _k)
 
     if errors:
         return False, "; ".join(errors)

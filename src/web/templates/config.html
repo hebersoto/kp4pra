@@ -20,6 +20,56 @@
 </div>
 {% endif %}
 
+<!-- Dashboard Security -->
+<div class="card">
+  <div class="card-title"><span class="icon">🔒</span> Dashboard Security</div>
+  {% set _secured = config.web.dashboard_password_hash | default('') | trim %}
+  {% set _cs = (config.station.callsign | default('')) | trim | upper %}
+  {% set _cs_ok = _cs and _cs != 'N0CALL' %}
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    {% if _secured %}
+      The Admin Dashboard is password-protected. Enter your current password to change it.
+    {% elif _cs_ok %}
+      Set a Dashboard password to require login for all administrative pages
+      and APIs. The public Web Email Interface stays open.
+    {% else %}
+      Configure a valid station callsign (below) and save before setting a
+      Dashboard password.
+    {% endif %}
+  </p>
+
+  <div id="pw-fields" {% if not _cs_ok %}style="opacity:0.5;pointer-events:none"{% endif %}>
+    {% if _secured %}
+    <div class="form-group">
+      <label class="form-label" for="pw-current">Current password</label>
+      <input class="form-input" type="password" id="pw-current"
+             autocomplete="current-password" style="max-width:340px">
+    </div>
+    {% endif %}
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label" for="pw-new">
+          {% if _secured %}New password{% else %}Dashboard password{% endif %}
+        </label>
+        <input class="form-input" type="password" id="pw-new"
+               autocomplete="new-password" style="max-width:340px">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="pw-confirm">Confirm password</label>
+        <input class="form-input" type="password" id="pw-confirm"
+               autocomplete="new-password" style="max-width:340px">
+      </div>
+    </div>
+    <div class="form-hint" style="margin-bottom:0.75rem">
+      At least 8 characters. Stored only as a salted scrypt hash — never in plain text.
+    </div>
+    <button class="btn btn-primary" onclick="saveDashboardPassword()">
+      {% if _secured %}Change Password{% else %}Set Password{% endif %}
+    </button>
+    <div id="pw-result" style="display:none;margin-top:1rem"></div>
+  </div>
+</div>
+
 <!-- Station -->
 <div class="card">
   <div class="card-title"><span class="icon">📻</span> Station Information</div>
@@ -87,7 +137,7 @@
       <input class="form-input" id="st-ptt-param"
              value="{{ config.station.ptt_param if config.station is defined and config.station.ptt_param is defined else '' }}"
              placeholder="(GPIO pin or serial device)">
-      <div class="form-hint">GPIO: pin number (default 25). GPIOD: chip and line, e.g. "gpiochip0 12" (DRA-Pi-Zero). Serial RTS/DTR: device path (default /dev/ttyUSB0). Otherwise leave blank.</div>
+      <div class="form-hint">GPIO: pin number (default 25). GPIOD: chip and line, e.g. "gpiochip0 12" (DRA-Pi-Zero on a Raspberry Pi) or "gpiochip1 267" (DRA-Pi-Zero on an Orange Pi Zero 2W). Serial RTS/DTR: device path (default /dev/ttyUSB0). Otherwise leave blank.</div>
     </div>
     <div class="form-group">
       <label class="form-label" for="st-clock">Clock Source Station</label>
@@ -127,10 +177,14 @@
   <div class="card-title"><span class="icon">🎛️</span> DRA-Pi-Zero (I²S) Setup</div>
   <div class="form-hint" id="dra-status">Checking for DRA-Pi-Zero…</div>
   <p style="margin:0.5rem 0; font-size:0.9rem">
-    For the Masters Communications DRA-Pi-Zero I²S board only. This writes the
-    I²S overlay to config.txt (backed up first), disables onboard and HDMI
-    audio, and <strong>requires a reboot</strong>. The audio mixer is applied
-    automatically on the next boot. USB sound-card users do not need this.
+    For the Masters Communications DRA-Pi-Zero I²S board only. On a Raspberry
+    Pi this writes the I²S overlay to config.txt (backed up first), disables
+    onboard and HDMI audio, and <strong>requires a reboot</strong>. The audio
+    mixer is applied automatically on the next boot. On an Orange Pi Zero 2W
+    the one-time setup builds the codec driver and runs from SSH
+    (<code>sudo bash scripts/setup-dra-pi-zero.sh</code>, see
+    docs/DRA_PI_ZERO.md); this button then reports its status. USB sound-card
+    users do not need this.
   </p>
   <button class="btn btn-secondary" onclick="setupDRA()" id="btn-dra-setup">Set up DRA-Pi-Zero</button>
   <div class="form-hint" id="dra-setup-result" style="margin-top:0.4rem"></div>
@@ -140,6 +194,22 @@
   <button class="btn btn-secondary" onclick="shutdownTNC()" id="btn-shutdown"
           style="margin-top:0.5rem">⏻ Shut Down</button>
   <div class="form-hint" id="shutdown-result" style="margin-top:0.4rem"></div>
+</div>
+
+<!-- Shutdown countdown: covers the whole page, 10 -> 0, then powers off -->
+<div id="shutdown-overlay" role="alertdialog" aria-modal="true" aria-labelledby="shutdown-title"
+     style="display:none;position:fixed;inset:0;z-index:9999;background:var(--kp4pra-bg);color:var(--kp4pra-text);
+            flex-direction:column;align-items:center;justify-content:center;
+            text-align:center;padding:1.5rem;gap:1rem">
+  <div id="shutdown-title" style="font-size:1.6rem;font-weight:700">Shutting down KP4PRA TNC</div>
+  <div id="shutdown-count" aria-live="assertive"
+       style="font-size:6rem;font-weight:800;line-height:1;color:var(--kp4pra-error);
+              font-variant-numeric:tabular-nums">10</div>
+  <div id="shutdown-msg" style="max-width:28rem;color:var(--kp4pra-muted-text)">
+    RF operation and this web interface will go offline. You will need to power the
+    TNC back on by hand.
+  </div>
+  <button class="btn btn-secondary" id="shutdown-cancel" onclick="cancelShutdown()">Cancel</button>
 </div>
 
 <!-- Direwolf -->
@@ -204,6 +274,249 @@
         <option value="PACKET-1200" {% if config.rms.mode == 'PACKET-1200' %}selected{% endif %}>Packet 1200</option>
         <option value="PACKET-9600" {% if config.rms.mode == 'PACKET-9600' %}selected{% endif %}>Packet 9600</option>
       </select>
+    </div>
+  </div>
+</div>
+
+<!-- RF Webmail Delivery -->
+<div class="card">
+  <div class="card-title"><span class="icon">📡</span> RF Webmail Delivery</div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    Outbound delivery of approved webmail to a remote Winlink RMS over RF (used
+    when the internet is unavailable, or when RF is chosen for a message). The
+    inbound RMS listener is paused automatically during an RF send.
+  </p>
+  {% set _rf = config.webmail.delivery.rf %}
+  {% set _rf_digis = _rf.digipeaters if _rf.digipeaters else [] %}
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="rf-remote">Remote RMS Callsign</label>
+      <input class="form-input" id="rf-remote" maxlength="9" value="{{ _rf.remote_rms }}" placeholder="e.g. W1AW-10">
+      <div class="form-hint">The destination RMS gateway. CALLSIGN or CALLSIGN-SSID.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-mycall">TX Callsign (optional)</label>
+      <input class="form-input" id="rf-mycall" maxlength="9" value="{{ _rf.mycall }}" placeholder="(defaults to station callsign)">
+      <div class="form-hint">Leave blank to transmit as the Station callsign.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-digi1">Digipeater 1 (optional)</label>
+      <input class="form-input" id="rf-digi1" maxlength="9" value="{{ _rf_digis[0] if _rf_digis|length > 0 else '' }}" placeholder="(none)">
+      <div class="form-hint">First hop, if the RMS is not directly reachable.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-digi2">Digipeater 2 (optional)</label>
+      <input class="form-input" id="rf-digi2" maxlength="9" value="{{ _rf_digis[1] if _rf_digis|length > 1 else '' }}" placeholder="(none)">
+      <div class="form-hint">Second hop. At most two digipeaters are supported.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-block">Block Size (bytes)</label>
+      <input class="form-input" id="rf-block" type="number" min="1" max="255" value="{{ _rf.block_size }}" placeholder="250">
+      <div class="form-hint">B2F chunk size per I-frame. 250 for paclen-256; 125 for paclen-128.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-restart">Restart listener after send</label>
+      <select class="form-select" id="rf-restart">
+        <option value="true" {% if _rf.restart_listener %}selected{% endif %}>Yes (return to RMS listening)</option>
+        <option value="false" {% if not _rf.restart_listener %}selected{% endif %}>No (stay stopped — field op)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="rf-auto">Auto route selection</label>
+      <select class="form-select" id="rf-auto">
+        <option value="true" {% if config.webmail.delivery.auto_route %}selected{% endif %}>Prefer TCP/IP when online, else RF</option>
+        <option value="false" {% if not config.webmail.delivery.auto_route %}selected{% endif %}>Manual (trustee picks each time)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- APRS Chat -->
+<div class="card">
+  <div class="card-title"><span class="icon">📻</span> APRS Chat</div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    Callsign, digipeater path, and position beacon for the APRS chat page.
+    Leave the callsign blank to use the station callsign.
+  </p>
+  {% set _ap = config.aprs %}
+  {% set _bc = _ap.beacon %}
+  {% set _apc = (_ap.mycall or "").split("-") %}
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="aprs-callsign">APRS Callsign</label>
+      <input class="form-input" id="aprs-callsign" maxlength="6" value="{{ _apc[0] }}" placeholder="(blank = station callsign)">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-ssid">APRS SSID</label>
+      <input class="form-input" id="aprs-ssid" type="number" min="0" max="15" value="{{ _apc[1] if _apc|length > 1 else '' }}" placeholder="(optional)">
+    </div>
+    <div class="form-group" style="grid-column:1/-1">
+      <label class="form-label" for="aprs-path">Digipeater Path</label>
+      <input class="form-input" id="aprs-path" value="{{ _ap.digipath|join(',') }}" placeholder="WIDE1-1,WIDE2-1">
+      <div class="form-hint">Comma-separated, in order. Common: WIDE1-1,WIDE2-1. Blank = direct (no digipeat).</div>
+    </div>
+  </div>
+  <div class="card-title" style="font-size:0.95rem;margin-top:1rem"><span class="icon">📍</span> Position Beacon</div>
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="aprs-beacon-enabled">Periodic Beacon</label>
+      <select class="form-select" id="aprs-beacon-enabled">
+        <option value="false" {% if not _bc.enabled %}selected{% endif %}>Off (manual only)</option>
+        <option value="true" {% if _bc.enabled %}selected{% endif %}>On</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-beacon-interval">Interval (minutes)</label>
+      <input class="form-input" id="aprs-beacon-interval" type="number" min="0" max="120" value="{{ _bc.interval_min }}">
+      <div class="form-hint">0 = manual "Beacon now" only.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-sym-table">Symbol Table</label>
+      <input class="form-input" id="aprs-sym-table" maxlength="1" value="{{ _bc.symbol_table }}" placeholder="/">
+      <div class="form-hint">/ primary &middot; \\ alternate &middot; or an overlay char.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-sym-code">Symbol Code</label>
+      <input class="form-input" id="aprs-sym-code" maxlength="1" value="{{ _bc.symbol_code }}" placeholder="-">
+      <div class="form-hint">- house &middot; &gt; car &middot; &amp; gateway &middot; # digipeater.</div>
+    </div>
+    <div class="form-group" style="grid-column:1/-1">
+      <label class="form-label" for="aprs-comment">Beacon Comment</label>
+      <input class="form-input" id="aprs-comment" maxlength="43" value="{{ _bc.comment }}" placeholder="KP4PRA APRS">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-lat">Latitude (optional)</label>
+      <input class="form-input" id="aprs-lat" type="number" step="any" value="{{ _bc.lat or '' }}" placeholder="0 = use station / grid">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="aprs-lon">Longitude (optional)</label>
+      <input class="form-input" id="aprs-lon" type="number" step="any" value="{{ _bc.lon or '' }}" placeholder="0 = use station / grid">
+    </div>
+  </div>
+  <p style="font-size:0.8rem;color:var(--kp4pra-muted-text);margin-top:0.6rem">
+    Position source: these lat/lon if set, else the Station lat/lon, else the
+    Station Maidenhead grid converted to coordinates.
+  </p>
+</div>
+
+<!-- Xara (VARA modem) -->
+<div class="card" id="xara-settings">
+  <div class="card-title"><span class="icon">📶</span> Xara VARA Modem</div>
+  <p style="font-size:0.82rem;color:var(--kp4pra-muted-text);margin-bottom:1rem">
+    Settings for Xara, the VARA FM/HF compatible modem. Xara uses the sound card and
+    push-to-talk from Station Information above (same as Dire Wolf). Switch between
+    Dire Wolf and Xara on the Services page.
+  </p>
+  {% set _x = config.xara or {} %}
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="xara-mode">VARA mode</label>
+      <select class="form-select" id="xara-mode">
+        {% for k, lbl in [("fm-narrow","VARA FM narrow (most FM stations)"),("fm-wide","VARA FM wide"),
+                          ("hf-500","VARA HF 500 Hz"),("hf-2300","VARA HF 2300 Hz"),("hf-2750","VARA HF 2750 Hz")] %}
+        <option value="{{ k }}" {% if (_x.mode or 'fm-narrow') == k %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-hint">Use the mode the station you connect to uses.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-call">Callsign</label>
+      <input class="form-input" id="xara-call" maxlength="10" value="{{ _x.call or '' }}" placeholder="(blank = station callsign)">
+      <div class="form-hint">VARA SSIDs are -1 to -19 (or none).</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-drive">TX audio level (dB)</label>
+      <input class="form-input" id="xara-drive" type="number" min="-40" max="0" step="1" value="{{ _x.drive_db if _x.drive_db is not none else -5 }}">
+      <div class="form-hint">0 is loudest. Lower it if the radio over-deviates.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-network">VARA apps on other devices</label>
+      <select class="form-select" id="xara-network">
+        <option value="true" {% if _x.network is not sameas false %}selected{% endif %}>Allowed (phone, PC on this network)</option>
+        <option value="false" {% if _x.network is sameas false %}selected{% endif %}>Only on this board</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-auto">RadioMail and other VARA apps</label>
+      <select class="form-select" id="xara-auto">
+        <option value="true" {% if _x.auto_switch is not sameas false %}selected{% endif %}>Can switch the TNC to Xara by themselves</option>
+        <option value="false" {% if _x.auto_switch is sameas false %}selected{% endif %}>Only when Xara is chosen on the Services page</option>
+      </select>
+      <div class="form-hint">The app finds the TNC on WiFi. When its session ends, the TNC goes back to Dire Wolf.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-registered">VARA speeds</label>
+      <select class="form-select" id="xara-registered">
+        <option value="true" {% if _x.registered is not sameas false %}selected{% endif %}>Registered (needs a VARA registration)</option>
+        <option value="false" {% if _x.registered is sameas false %}selected{% endif %}>Standard</option>
+      </select>
+      <div class="form-hint" id="xara-registered-hint"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-lead">PTT lead (ms)</label>
+      <input class="form-input" id="xara-lead" type="number" min="0" max="1000" value="{{ _x.ptt_lead_ms if _x.ptt_lead_ms is not none else 0 }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="xara-tail">PTT tail (ms)</label>
+      <input class="form-input" id="xara-tail" type="number" min="0" max="1000" value="{{ _x.ptt_tail_ms if _x.ptt_tail_ms is not none else 100 }}">
+    </div>
+  </div>
+  <details style="margin-top:0.4rem">
+    <summary style="cursor:pointer;font-size:0.85rem">Ports and version</summary>
+    <div class="grid-2" style="margin-top:0.6rem">
+      <div class="form-group">
+        <label class="form-label" for="xara-port">VARA command port</label>
+        <input class="form-input" id="xara-port" type="number" min="1024" max="65534" value="{{ _x.port or 8300 }}">
+        <div class="form-hint">The data port is this + 1 (VARA standard: 8300/8301).</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="xara-kiss">VARA KISS port</label>
+        <input class="form-input" id="xara-kiss" value="{{ _x.kiss_port if _x.kiss_port is not none else 8100 }}">
+        <div class="form-hint">A number, or off.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="xara-uiport">Xara web page port</label>
+        <input class="form-input" id="xara-uiport" type="number" min="1024" max="65535" value="{{ _x.ui_port or 8080 }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="xara-version">Xara version</label>
+        <input class="form-input" id="xara-version" value="{{ _x.version or 'latest' }}" placeholder="latest">
+        <div class="form-hint">latest = always upgrade to the newest release. A version (e.g. 0.1.1) keeps this board on it.</div>
+      </div>
+    </div>
+  </details>
+  <div class="card-actions" style="margin-top:0.75rem">
+    <button class="btn btn-primary btn-sm" onclick="saveXara()">Save Xara settings</button>
+    <button class="btn btn-secondary btn-sm" onclick="previewXara()">Preview</button>
+  </div>
+  <div id="xara-save-result" style="margin-top:0.6rem;font-size:0.85rem"></div>
+  <pre id="xara-preview" style="display:none;white-space:pre-wrap;background:var(--kp4pra-surface);border:1px solid var(--kp4pra-border);border-radius:var(--kp4pra-radius-sm);padding:0.6rem;font-size:0.78rem;margin-top:0.6rem"></pre>
+</div>
+
+<!-- TFT display -->
+<div class="card">
+  <div class="card-title"><span class="icon">🖥️</span> TFT Display (Mini PiTFT 1.3")</div>
+  {% set _disp = config.display or {} %}
+  <div class="grid-2">
+    <div class="form-group">
+      <label class="form-label" for="tft-mode">Display</label>
+      <select class="form-select" id="tft-mode">
+        <option value="auto" {% if (_disp.tft or 'auto') == 'auto' %}selected{% endif %}>Auto (use when detected)</option>
+        <option value="on" {% if _disp.tft == 'on' %}selected{% endif %}>On</option>
+        <option value="off" {% if _disp.tft == 'off' %}selected{% endif %}>Off</option>
+      </select>
+      <div class="form-hint">Button 23: screen 1/2 &middot; button 24: screen off/on &middot; hold 24 for 3 s: send APRS beacon.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="tft-rotation">Orientation</label>
+      <select class="form-select" id="tft-rotation">
+        <option value="0" {% if (_disp.tft_rotation or 0)|string != '180' %}selected{% endif %}>Normal</option>
+        <option value="180" {% if (_disp.tft_rotation or 0)|string == '180' %}selected{% endif %}>Flipped 180°</option>
+      </select>
+    </div>
+    <div class="form-group" style="grid-column:1/-1">
+      <label class="form-label">Status</label>
+      <div class="form-hint" id="tft-status">Checking…</div>
     </div>
   </div>
 </div>
@@ -559,6 +872,38 @@ function collectConfig() {
       frequency_hz: parseInt(document.getElementById('rms-frequency').value),
       mode: document.getElementById('rms-mode').value,
     },
+    webmail: {
+      delivery: {
+        auto_route: document.getElementById('rf-auto').value === 'true',
+        rf: {
+          remote_rms: document.getElementById('rf-remote').value.trim().toUpperCase(),
+          mycall: document.getElementById('rf-mycall').value.trim().toUpperCase(),
+          digipeaters: [
+            document.getElementById('rf-digi1').value.trim().toUpperCase(),
+            document.getElementById('rf-digi2').value.trim().toUpperCase(),
+          ].filter(function(x){ return x; }),
+          block_size: parseInt(document.getElementById('rf-block').value) || 250,
+          restart_listener: document.getElementById('rf-restart').value === 'true',
+        },
+      },
+    },
+    display: {
+      tft: document.getElementById('tft-mode').value,
+      tft_rotation: parseInt(document.getElementById('tft-rotation').value) || 0,
+    },
+    aprs: {
+      mycall: callWithSsid('aprs-callsign', 'aprs-ssid'),
+      digipath: document.getElementById('aprs-path').value.split(',').map(function(x){return x.trim().toUpperCase();}).filter(function(x){return x;}),
+      beacon: {
+        enabled: document.getElementById('aprs-beacon-enabled').value === 'true',
+        interval_min: parseInt(document.getElementById('aprs-beacon-interval').value) || 0,
+        symbol_table: document.getElementById('aprs-sym-table').value || '/',
+        symbol_code: document.getElementById('aprs-sym-code').value || '-',
+        comment: document.getElementById('aprs-comment').value.trim(),
+        lat: parseFloat(document.getElementById('aprs-lat').value) || 0,
+        lon: parseFloat(document.getElementById('aprs-lon').value) || 0,
+      },
+    },
     ble: {
       device_name: document.getElementById('ble-name').value.trim(),
       start_at_boot: document.getElementById('ble-boot').value === 'true',
@@ -596,6 +941,62 @@ function collectConfig() {
   const wpass = document.getElementById('wifi-client-pass').value;
   if (wpass) cfg.wifi.client_password = wpass;
   return cfg;
+}
+
+function collectXara() {
+  const v = id => document.getElementById(id).value.trim();
+  const kiss = v('xara-kiss').toLowerCase();
+  return {
+    mode: v('xara-mode'),
+    call: v('xara-call').toUpperCase(),
+    drive_db: Number(v('xara-drive')),
+    network: v('xara-network') === 'true',
+    registered: v('xara-registered') === 'true',
+    auto_switch: v('xara-auto') === 'true',
+    ptt_lead_ms: Number(v('xara-lead')),
+    ptt_tail_ms: Number(v('xara-tail')),
+    port: Number(v('xara-port')),
+    kiss_port: kiss === 'off' ? 'off' : Number(kiss),
+    ui_port: Number(v('xara-uiport')),
+    version: v('xara-version') || 'latest',
+  };
+}
+
+(async function xaraRegisteredHint() {
+  const el = document.getElementById('xara-registered-hint');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/xara/status')).json();
+    if (!d.installed) return;
+    el.textContent = d.registered_build
+      ? 'The Xara on this board has registered speeds.'
+      : 'The Xara on this board is the standard build; the registered build comes with the next update.';
+  } catch (e) {}
+})();
+
+async function previewXara() {
+  const el = document.getElementById('xara-preview');
+  try {
+    const r = await fetch('/api/xara/preview', {method:'POST', headers:{'Content-Type':'application/json'},
+                                               body: JSON.stringify({xara: collectXara()})});
+    const d = await r.json();
+    el.textContent = d.success ? d.conf : ('Error: ' + d.message);
+  } catch (e) { el.textContent = 'Error: ' + e; }
+  el.style.display = '';
+}
+
+async function saveXara() {
+  const out = document.getElementById('xara-save-result');
+  out.textContent = 'Saving…';
+  try {
+    let r = await fetch('/api/config/save', {method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({config: {xara: collectXara()}, confirmed: true})});
+    let d = await r.json();
+    if (!d.success) { out.textContent = '✗ ' + d.message; return; }
+    r = await fetch('/api/xara/apply', {method:'POST'});
+    d = await r.json();
+    out.textContent = (d.success ? '✓ ' : '✗ ') + (d.message || 'Saved.');
+  } catch (e) { out.textContent = '✗ ' + e; }
 }
 
 function saveConfig() {
@@ -637,15 +1038,55 @@ function showSaveResult(success, msg) {
   el.scrollIntoView({behavior:'smooth'});
 }
 
+function showPwResult(success, msg) {
+  const el = document.getElementById('pw-result');
+  el.style.display = 'block';
+  const cls = success === null ? 'alert-info' : (success ? 'alert-success' : 'alert-error');
+  const icon = success === null ? 'ℹ' : (success ? '✓' : '✗');
+  el.innerHTML = `<div class="alert ${cls}"><span class="alert-icon">${icon}</span><div>${msg}</div></div>`;
+}
+
+async function saveDashboardPassword() {
+  const cur = document.getElementById('pw-current');
+  const nw = document.getElementById('pw-new').value;
+  const cf = document.getElementById('pw-confirm').value;
+  if (nw.length < 8) { showPwResult(false, 'Password must be at least 8 characters.'); return; }
+  if (nw !== cf)     { showPwResult(false, 'Passwords do not match.'); return; }
+  showPwResult(null, 'Saving…');
+  try {
+    const r = await fetch('/api/dashboard/password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        current_password: cur ? cur.value : '',
+        new_password: nw
+      })
+    });
+    const data = await r.json();
+    showPwResult(data.success, data.message);
+    if (data.success) {
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-confirm').value = '';
+      if (cur) cur.value = '';
+    }
+  } catch(e) {
+    showPwResult(false, 'Error: ' + e);
+  }
+}
 async function refreshDRAStatus() {
   try {
     const r = await fetch('/api/dra/status');
     const d = await r.json();
     const el = document.getElementById('dra-status');
     if (d.dra_present) {
-      el.textContent = '✅ DRA-Pi-Zero detected (audioinjectorpi present).';
+      el.textContent = `✅ DRA-Pi-Zero detected (${d.card} on ${d.board}).`;
+    } else if (d.setup_state === 'in_progress') {
+      el.textContent = '⏳ ' + d.hint;
+    } else if (d.setup_state && d.setup_state !== 'not_set_up' && d.hint) {
+      // A DRA setup was started on this board: say exactly what is missing.
+      el.textContent = '⚠️ DRA-Pi-Zero not detected. ' + d.hint;
     } else {
-      el.textContent = 'ℹ️ No DRA-Pi-Zero detected — USB or no I²S board. Run setup only if a DRA-Pi-Zero is installed.';
+      el.textContent = 'ℹ️ ' + (d.hint || 'No DRA-Pi-Zero detected — USB or no I²S board. Run setup only if a DRA-Pi-Zero is installed.');
     }
   } catch(e) {
     document.getElementById('dra-status').textContent = 'Status check failed: ' + e;
@@ -669,25 +1110,73 @@ async function rebootTNC() {
   }
   // leave the button disabled; the box is rebooting
 }
+// Shut Down: the power-off request is sent as soon as the button is pressed;
+// the TNC itself waits 10 s, matching the full-screen 10 -> 0 countdown, so
+// the shutdown happens at 0 even if this page is closed. Cancel (or Esc)
+// during the countdown asks the TNC to drop the pending shutdown.
+const SHUTDOWN_SECONDS = 10;
+let shutdownTimer = null;
+function shutdownShow(title, msg, showCancel) {
+  document.getElementById('shutdown-title').textContent = title;
+  document.getElementById('shutdown-msg').textContent = msg;
+  document.getElementById('shutdown-cancel').style.display = showCancel ? '' : 'none';
+}
+function shutdownHide() {
+  document.getElementById('shutdown-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
 async function shutdownTNC() {
-  if (!confirm('Shut down the TNC now?\n\nRF operation and this web interface ' +
-      'will go offline. You will need to power the TNC back on by hand.')) return;
-  const btn = document.getElementById('btn-shutdown');
-  const out = document.getElementById('shutdown-result');
-  btn.disabled = true; btn.textContent = 'Shutting down\u2026';
+  const ov = document.getElementById('shutdown-overlay');
+  const cnt = document.getElementById('shutdown-count');
+  const cancel = document.getElementById('shutdown-cancel');
+  cancel.textContent = 'Cancel'; cancel.onclick = cancelShutdown;
+  let left = SHUTDOWN_SECONDS;
+  cnt.textContent = left;
+  shutdownShow('Shutting down KP4PRA TNC',
+    'RF operation and this web interface will go offline. You will need to power the TNC back on by hand.', true);
+  ov.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  cancel.focus();
+  shutdownTimer = setInterval(() => {
+    left -= 1;
+    cnt.textContent = Math.max(left, 0);
+    if (left <= 0) {
+      clearInterval(shutdownTimer); shutdownTimer = null;
+      shutdownShow('Shutting Down',
+        'Disconnect power in 15 seconds.', false);
+    }
+  }, 1000);
   try {
     const r = await fetch('/api/system/shutdown', {method:'POST'});
     const d = await r.json();
-    out.textContent = d.message || (d.success ? 'Shutting down\u2026' : 'Failed.');
-    if (d.success) out.textContent += ' Safe to remove power once the LEDs stop.';
+    if (!d.success) throw new Error(d.message || 'The TNC did not accept the shutdown request.');
   } catch(e) {
-    // A dropped connection here is EXPECTED - the box is going down.
-    out.textContent = 'Shutdown triggered (connection closed). Safe to remove power in ~15s.';
+    if (shutdownTimer === null) return;      // countdown already over: box going down
+    clearInterval(shutdownTimer); shutdownTimer = null;
+    cnt.textContent = '';
+    shutdownShow('Shutdown failed', String(e.message || e), true);
+    cancel.textContent = 'Close'; cancel.onclick = shutdownHide;
   }
-  // leave the button disabled; the box is powering off
 }
+async function cancelShutdown() {
+  if (shutdownTimer === null) return;          // countdown over: too late to cancel
+  clearInterval(shutdownTimer); shutdownTimer = null;
+  const out = document.getElementById('shutdown-result');
+  try {
+    const r = await fetch('/api/system/shutdown/cancel', {method:'POST'});
+    const d = await r.json();
+    if (!d.success) throw new Error(d.message);
+    shutdownHide();
+    out.textContent = 'Shutdown cancelled.';
+  } catch(e) {
+    shutdownShow('Could not cancel',
+      'The TNC may still shut down: ' + String(e.message || e), false);
+  }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cancelShutdown(); });
 async function setupDRA() {
-  if (!confirm('This edits /boot config.txt and requires a REBOOT.\n\n' +
+  if (!confirm('Raspberry Pi: this edits /boot config.txt and requires a REBOOT.\n' +
+      'Orange Pi Zero 2W: this only checks the setup done from SSH.\n\n' +
       'The DRA mixer applies automatically on next boot. If no DRA is present ' +
       'after reboot, your existing sound config is unchanged.\n\nProceed?')) return;
   const btn = document.getElementById('btn-dra-setup');
@@ -697,10 +1186,21 @@ async function setupDRA() {
     const r = await fetch('/api/dra/setup', {method:'POST'});
     const d = await r.json();
     out.textContent = (d.message || (d.success ? 'Done.' : 'Failed.')) +
-      (d.success ? ' ⚠️ Reboot required now.' : '');
+      (d.success && d.reboot_required ? ' ⚠️ Reboot required now.' : '');
   } catch(e) { out.textContent = 'Setup failed: ' + e; }
   finally { btn.disabled = false; btn.textContent = 'Set up DRA-Pi-Zero'; }
 }
 refreshDRAStatus();
+async function refreshTFTStatus() {
+  const el = document.getElementById('tft-status');
+  try {
+    const d = await (await fetch('/api/tft/status')).json();
+    const icon = {running:'✅', not_detected:'ℹ️', off:'⏸️', no_spi:'⚠️',
+                  unsupported:'ℹ️', error:'❌'}[d.state] || 'ℹ️';
+    el.textContent = `${icon} ${d.detail}`;
+  } catch(e) { el.textContent = 'Status check failed: ' + e; }
+}
+refreshTFTStatus();
+
 </script>
 {% endblock %}

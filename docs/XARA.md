@@ -1,0 +1,228 @@
+# Xara VARA modem
+
+[Xara](https://github.com/x0rro/xara) is a free VARA FM / VARA HF compatible
+modem for Linux, written by x0rro (MIT license). With Xara, your KP4PRA TNC
+is the VARA modem for RadioMail (iPhone), WoAD (Android) and other Winlink
+programs that use VARA.
+
+VARA programs talk to the modem over the network (WiFi), not over Bluetooth.
+So for VARA the phone joins the same WiFi as the TNC (your home WiFi, or the
+TNC's own KP4PRA hotspot). Bluetooth/BLE stays for packet (Dire Wolf).
+
+KP4PRA does not change Xara's code. It installs Xara with **registered VARA
+speeds** turned on (see "Registered speeds" below) and keeps it up to date.
+
+## One modem at a time
+
+Xara and Dire Wolf use the same radio and the same sound card, so only one of
+them runs at a time:
+
+- **Dire Wolf (packet)** is the normal mode: APRS, Bluetooth and BLE apps
+  (APRSDroid, aprs.fi), the RMS gateway.
+- **Xara (VARA)** is for VARA. While it runs, Dire Wolf is stopped, so there
+  is no APRS, no Bluetooth/BLE KISS traffic and no RMS gateway.
+
+You switch on the **Services** page. The choice stays after a restart.
+
+## Installing
+
+Nothing to do in most cases. The install command (INSTALL.md, step 3) also
+downloads Xara when there is a ready-made Xara for your board:
+
+- Orange Pi Zero 2W, Raspberry Pi Zero 2 W, Pi 3, Pi 4, Pi 5: yes
+  (64-bit and 32-bit systems).
+- Original Raspberry Pi Zero W: no. It is too slow for VARA.
+
+The download is checked against the checksum file that comes with it. If it
+does not match, nothing is installed.
+
+If Xara was not installed (no internet at the time, for example), click
+**Install Xara** on the Services page, or type:
+
+```bash
+sudo kp4pra-xara install
+```
+
+## Using Xara
+
+**Settings, once:** on the Config page, "Xara VARA Modem" card, pick the VARA
+mode (FM narrow is what most FM Winlink gateways use) and click **Save Xara
+settings**. Xara uses the sound card and push-to-talk from Station
+Information, the same as Dire Wolf. A DRA-Pi-Zero works too.
+
+**RadioMail (iPhone)** finds the TNC by itself:
+
+1. Put the iPhone on the same WiFi as the TNC (or on the KP4PRA hotspot), and
+   allow RadioMail "Local Network" access (iPhone Settings, RadioMail).
+2. In RadioMail, add a VARA FM device. The TNC shows up as
+   "**<your callsign> VARA FM**" (the Services page shows the exact name).
+3. Open a session and connect. The TNC switches to Xara by itself (Dire Wolf
+   stops), and goes back to Dire Wolf when the session ends.
+
+The TNC announces itself the same way as varanny, the helper RadioMail's
+authors made for VARA computers (DNS-SD `_vara-modem._tcp`, launcher port
+8273). To keep the TNC on Dire Wolf unless you choose Xara yourself, set
+"RadioMail and other VARA apps" to "Only when Xara is chosen on the Services
+page".
+
+**WoAD (Android) and other VARA programs** connect to an address you type:
+
+1. On the Services page, "VARA Modem (Xara)" card, click **Use Xara (VARA)**.
+2. In the program, choose VARA FM (or HF) and enter the TNC's IP address,
+   port **8300** (data port 8301 if it asks). On the KP4PRA hotspot the TNC is
+   `172.16.0.1`. The Services page shows the address while Xara runs.
+   Winlink Express (VARA TNC setup) and Pat (`varafm` `addr`) work the same
+   way; in Winlink Express leave "start VARA on this computer" off.
+3. To go back to APRS and Bluetooth, click **Back to Dire Wolf (packet)**.
+
+Xara has its own status page with a waterfall: **Open Xara page** on the
+Services page (port 8080). It only shows information; you change settings on
+the KP4PRA Config page.
+
+Ports: 8300 (VARA commands), 8301 (VARA data), 8100 (VARA KISS), 8080 (Xara
+page) while Xara runs, and 8273 (launcher for RadioMail) always. To keep VARA
+programs on other devices out, set "VARA apps on other devices" to "Only on
+this board" (the TNC then is not announced either).
+
+## Registered speeds
+
+VARA's faster speeds are for stations with a VARA registration. Xara has them
+only when it is built with its "registered" option, and Xara's own downloads
+are built without it. So that no board ever has to build Xara (that takes up
+to an hour and a half on a Zero 2W), the KP4PRA repository builds it:
+
+- A GitHub workflow in the KP4PRA repo (Actions, "Registered Xara builds")
+  checks every Monday for a new Xara version. When there is one, it builds
+  Xara from Xara's unchanged source with the registered option, for every
+  board KP4PRA supports, and publishes it on the KP4PRA repo as a release
+  named `xara-v<version>`. It can also be started by hand (Run workflow).
+- Boards download that build like any update. Each version is built once.
+- If a new Xara version is out but its registered build is not published
+  yet, the board stays on its current registered version until it is.
+- On a brand-new install, before any registered build exists, the board gets
+  Xara's standard build and switches to the registered one with the next
+  update.
+
+Registered speeds are on by default. To use standard speeds, set **VARA
+speeds** to "Standard" on the Config page. The Config page and the Services
+page show whether the installed Xara has registered speeds.
+
+## Updating Xara
+
+Any of these gets the newest Xara release:
+
+- Run the install command from INSTALL.md again (it updates everything).
+- Services page: **Check for update**.
+- `sudo kp4pra-xara update`
+
+If Xara is running, it restarts on the new version by itself. The previous
+version stays on the board. To go back to it:
+
+```bash
+sudo kp4pra-xara rollback
+```
+
+To stay on one version, set **Xara version** on the Config page (under
+"Ports and version") to that version, for example `0.1.1`. Set it back to
+`latest` to follow new releases again.
+
+## Push-to-talk
+
+Xara keys the radio the same way as Dire Wolf, using the PTT setting in
+Station Information:
+
+| Station PTT         | Xara uses                                     |
+|---------------------|-----------------------------------------------|
+| CM108 (DigiRig, AIOC, most USB sound cards) | the CM108 GPIO, found each time Xara starts |
+| GPIOD (DRA-Pi-Zero) | KP4PRA's small PTT helper (kp4pra-xara-ptt)   |
+| RTS / DTR           | the serial port in PTT parameter              |
+| VOX (Signalink)     | VOX                                           |
+| RIG                 | your own rigctld (PTT parameter host:port)    |
+| None                | receive only                                  |
+
+Xara does not drive GPIO pins itself, so for the DRA-Pi-Zero KP4PRA runs a
+helper that Xara talks to like a rigctld. The helper lets go of PTT if Xara
+stops or if PTT stays on for more than 2 minutes.
+
+## DRA-Pi-Zero: shared playback
+
+On the Orange Pi Zero 2W, the DRA-Pi-Zero's recording delivers no audio while
+its playback side is open but idle, and that is exactly how Xara leaves
+playback while it listens (Xara's log then says "capture (no audio): timed
+out"). So with a DRA, Xara plays through a shared ALSA device
+(`kp4pra_out`, in `/etc/alsa/conf.d/60-kp4pra-xara.conf`), and
+`kp4pra-xara-keepalive` plays silence into it the whole time Xara runs.
+Silence does not change Xara's signal, and push-to-talk is separate, so
+nothing extra is transmitted. USB sound cards are used directly.
+
+## If something goes wrong
+
+- **Xara keeps failing:** after systemd gives up restarting it, the TNC goes
+  back to Dire Wolf by itself, and the Services page says so. The reason is in
+  the Xara log.
+
+- **"Xara did not start - going back to Dire Wolf":** the Services page shows
+  Xara's messages under "Xara log". The board is back on Dire Wolf, so
+  nothing else is affected.
+- **No transmit:** check the PTT line on the Services page ("Mode / PTT"). For
+  a USB sound card it must say CM108 with a /dev/hidraw device.
+- **Too much or too little audio:** lower or raise "TX audio level" on the
+  Config page and save.
+- From the command line:
+
+  ```bash
+  kp4pra-xara status
+  journalctl -u xara@kp4pra -n 50
+  sudo kp4pra-xara modem packet      # back to Dire Wolf
+  ```
+
+## Commands
+
+| Command                              | What it does                               |
+|--------------------------------------|--------------------------------------------|
+| `sudo kp4pra-xara install [VERSION]` | install Xara (newest release by default)   |
+| `sudo kp4pra-xara update [VERSION]`  | upgrade (or change) the Xara version       |
+| `sudo kp4pra-xara rollback`          | go back to the previous version            |
+| `sudo kp4pra-xara modem xara`        | switch to Xara                             |
+| `sudo kp4pra-xara modem packet`      | switch to Dire Wolf                        |
+| `kp4pra-xara status`                 | what is installed and running              |
+| `kp4pra-xara latest`                 | newest Xara version on GitHub              |
+| `sudo kp4pra-xara uninstall`         | remove Xara (settings are kept)            |
+
+`--build` (install/update) builds Xara on the board itself, only for special
+cases: a board with no ready-made build, or no internet access to GitHub. It
+takes a long time (30 to 90 minutes on a Zero 2W) and needs Rust 1.85 or
+newer, which it installs if needed. With registered speeds on, it builds the
+registered version. Normal installs and updates never build.
+
+## How it fits together (for developers)
+
+- Downloads come from `github.com/hebersoto/kp4pra` releases `xara-v<version>`
+  (registered builds, made by `.github/workflows/xara-registered.yml`; each
+  has a `BUILD-FEATURES` file saying `registered`), or from Xara's own
+  releases (`github.com/x0rro/xara`, tag `v<version>`) when registered
+  speeds are off or no registered build exists yet. Both are checked
+  against their `SHA256SUMS`.
+- `/opt/xara/<version>/` holds each release as published (binaries, `dist/`).
+  `/opt/xara/current` points at the one in use; `/usr/local/bin/xara` points
+  into it. Two versions are kept.
+- Xara's own `xara@.service`, udev rule and system user come from the
+  release's `dist/` folder and are installed again on every upgrade, so
+  changes in new Xara versions arrive with them. KP4PRA's additions are only
+  in `/etc/systemd/system/xara@kp4pra.service.d/kp4pra.conf`.
+- `kp4pra-xara-prep.service` writes `/rw/xara/kp4pra.conf` from config.yaml
+  (`src/common/xara_conf.py`) right before Xara starts.
+  `/etc/xara/kp4pra.conf` links to it (the root filesystem may be read-only).
+- `/var/lib/xara` (Xara's state) is a bind mount of `/rw/xara/state`.
+- The chosen modem is in `/rw/kp4pra-tnc/modem`; `kp4pra-xara-boot.service`
+  starts Xara at boot when it says `xara`.
+- `registered = on` is written to Xara's config only when the installed
+  build has registered speeds (Xara refuses the option otherwise).
+- `kp4pra-vara-launcher.service` (`src/vara_launcher.py`) announces
+  `_vara-modem._tcp` (and the older `_varafm-modem._tcp` /
+  `_varahf-modem._tcp`) through `avahi-publish`, port = Xara's command port,
+  TXT `launchport=8273;` `type=fm;`, and answers varanny's commands on port
+  8273 (`start <name>`, `stop`, `list`, `version`, `config`). `start` runs
+  `kp4pra-xara modem xara` when Xara is not on; when that session ends it
+  runs `kp4pra-xara modem packet`.
+- Settings: the `xara:` section of `/rw/kp4pra-tnc/config.yaml`.

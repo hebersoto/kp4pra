@@ -1,0 +1,3 @@
+obj-m := snd-soc-wm8731.o snd-soc-wm8731-i2c.o
+snd-soc-wm8731-y := wm8731.o
+snd-soc-wm8731-i2c-y := wm8731-i2c.o

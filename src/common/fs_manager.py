@@ -186,6 +186,9 @@ def get_service_status(service_name: str) -> dict:
         "kp4pra-tnc-rms.service",
         "bluetooth.service",
         "direwolf.service",
+        "xara@kp4pra.service",
+        "kp4pra-xara-ptt.service",
+        "kp4pra-xara-update.service",
     }
     if service_name not in ALLOWED:
         return {"error": "not in allowlist", "active": False}
@@ -224,6 +227,10 @@ def get_volatile_service_log(service_name: str, lines: int = 30) -> Optional[str
         "kp4pra-tnc-ble.service",
         "kp4pra-tnc-web.service",
         "direwolf.service",
+        "xara@kp4pra.service",
+        "kp4pra-xara-ptt.service",
+        "kp4pra-xara-prep.service",
+        "kp4pra-xara-update.service",
     }
     lines = max(1, min(int(lines), 200))  # sane bounds
     if service_name not in ALLOWED:

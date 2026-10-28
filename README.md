@@ -35,18 +35,18 @@ Browser ──> http://<host>/ (port 80→8088) ──> Web management UI
   KISS-over-BLE UUIDs.
 - **Both bridges** pass raw KISS binary, auto-reconnect if Dire Wolf
   restarts, and survive idle periods (no traffic ≠ disconnect).
-- **APRS TOCALL:** the hourly beacon KP4PRA TNC sends for its AX.25
-  digipeater alias goes to **APKPPR**, its assigned APRS software
-  identifier. It is built in, not a setting. Frames from phone and PC apps
-  (Bluetooth, BLE, WiFi KISS) are sent as the app made them, with the
-  app's own TOCALL.
+- **APRS TOCALL:** KP4PRA TNC's own APRS frames (chat messages and acks,
+  beacons, the hourly AX.25 digipeater beacon, APRS-IS) are sent to
+  **APKPPR**, its assigned APRS software identifier. It is built in, not a
+  setting. Frames from phone and PC apps (Bluetooth, BLE, WiFi KISS) are
+  sent as the app made them, with the app's own TOCALL.
 - **WiFi access point (field mode)**: the TNC can broadcast its own
   network (default SSID KP4PRA) so a phone joins it directly and reaches
   the web UI at http://172.16.0.1/ - no home WiFi needed. Switchable
   between client and AP modes; NetworkManager-based. WPA2-protected on the
   Raspberry Pi; **open (no WiFi password) on the Orange Pi Zero 2W**, whose
   onboard WiFi cannot complete WPA2 hotspot joins - set a Dashboard
-  password there (INSTALL.md section 6b, `wifi.ap_security`).
+  password there (INSTALL.md, "WiFi: home network or hotspot", `wifi.ap_security`).
 - **Web UI** (FastAPI + Jinja2, mobile-friendly): dashboard with live
   status, Bluetooth pairing wizards for Android and iPhone, service
   control (bridges + Dire Wolf), live Dire Wolf traffic view, and a
@@ -84,6 +84,25 @@ or other third-party Winlink software required.
   Network Post Office sessions, both completing full B2F message
   exchanges against production CMS. See [CHANGES.md](CHANGES.md) for
   the AX.25 protocol fixes found and resolved during testing.
+
+## VARA modem (Xara)
+
+KP4PRA TNC can also run [Xara](https://github.com/x0rro/xara), a free VARA
+FM/HF compatible modem, so Winlink Express, Pat and other VARA programs can
+use the TNC as their VARA modem over the network. Xara and Dire Wolf share
+the radio, so one runs at a time; you switch on the Services page.
+
+- Registered VARA speeds: a workflow in this repo builds each new Xara
+  version once with Xara's "registered" option and publishes it here
+  (releases `xara-v<version>`), so boards only download, never build.
+- Installed and upgraded by the install command or `sudo kp4pra-xara
+  update` (checksum checked); the previous version is kept for `sudo
+  kp4pra-xara rollback`.
+- Uses the station sound card and PTT, including the DRA-Pi-Zero (GPIO PTT
+  through a small rigctld-style helper).
+- Settings on the Config page; Xara's own status page on port 8080.
+
+See docs/XARA.md.
 
 ## APRS Clock Fallback
 
@@ -150,6 +169,7 @@ told an IP address.
 | `sudoers.d/` | Allowlisted sudo rules |
 | `config/` | Example config.yaml, tmpfiles rule |
 | `scripts/` | install.sh (stage 1), install-direwolf-integration.sh (stage 2), sync-from-system.sh |
+| `platform/` | Board-specific files: `orangepi-zero2w/` DRA-Pi-Zero overlay + WM8731 DKMS package |
 
 ## Installation
 
@@ -211,10 +231,18 @@ Radios / audio:
 - AIOC (All-In-One-Cable) - validated ADEVICE plughw:AllInOneCable,0
 - DigiRig Lite
 - Masters Communications DRA-Pi-Zero (I2S WM8731 codec on the 40-pin
-  header; GPIOD relay PTT on GPIO 12; red PTT / green DCD / blue BT-
-  connected LEDs). Opt-in: scripts/setup-dra-pi-zero.sh. Requires a
-  direwolf built with libgpiod. Validated on RF (RX+TX, digipeated).
+  header; GPIOD relay PTT on header pin 32; red PTT / green DCD / blue
+  Bluetooth LEDs). Opt-in: scripts/setup-dra-pi-zero.sh. Requires a
+  direwolf built with libgpiod. Validated on RF (RX+TX, digipeated) on
+  Raspberry Pi, and (1.4.9) on the Orange Pi Zero 2W with Armbian 26.8.3,
+  kernel 6.18.44-current-sunxi64 - see docs/DRA_PI_ZERO.md.
 - Yaesu FT-991A (USB audio codec + CP210x serial pair, PTT via RTS)
+
+Display (optional):
+- Adafruit Mini PiTFT 1.3" 240x240 (ST7789) - call sign, live traffic in
+  UZ7HO Soundmodem style, Winlink/WiFi/Bluetooth counters, IP; buttons for
+  screen switch, screen off and a 3-second-hold APRS beacon. Raspberry Pi and
+  Orange Pi Zero 2W. Auto-detected at install; see docs/TFT_DISPLAY.md.
 
 Clients:
 - Android APRSDroid (Bluetooth RFCOMM/SPP)
