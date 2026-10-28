@@ -62,7 +62,7 @@ window, then press Enter.
 Paste this one command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hebersoto/kp4pra/dev/scripts/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/hebersoto/kp4pra/main/scripts/bootstrap.sh | sudo bash
 ```
 
 It updates the system, installs everything KP4PRA needs (including the Dire
@@ -134,6 +134,15 @@ To connect a phone:
 Run the install command from step 3 again. It downloads the latest version
 of KP4PRA (and of Xara) and installs it, then restarts the board.
 
+**Testers:** the development version (the newest changes, less tested) is
+installed and updated with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hebersoto/kp4pra/dev/scripts/bootstrap.sh | sudo env KP4PRA_BRANCH=dev bash
+```
+
+To go back to the normal version, run the command from step 3 again.
+
 ## VARA (Xara)
 
 The install also sets up Xara, a VARA FM/HF modem for Winlink Express and Pat
@@ -175,13 +184,13 @@ sudo apt install -y git curl python3 python3-venv python3-pip bluez bluez-tools 
     libudev-dev libhamlib-dev gpsd libgps-dev libgpiod-dev
 git clone --depth 1 https://github.com/wb2osz/direwolf.git
 cd direwolf && mkdir build && cd build && cmake .. && make -j2 && sudo make install
-cd ~ && git clone -b dev https://github.com/hebersoto/kp4pra.git kp4pra-tnc
+cd ~ && git clone https://github.com/hebersoto/kp4pra.git kp4pra-tnc
 cd kp4pra-tnc && sudo bash scripts/install.sh
 sudo reboot
 ```
 
 `direwolf --help` must list `libgpiod` (needed for the DRA-Pi-Zero's
-push-to-talk). Leave out `-b dev` to install the stable 1.3.x version.
+push-to-talk). Add `-b dev` to the clone to install the development version.
 
 The installer keeps settings in `/rw`. For a field unit you can put `/rw` on
 its own partition and make the system read-only; see DEPLOYMENT.md.

@@ -1,3 +1,19 @@
+## Release preparation: main becomes the stable 1.4.x - new in 1.4.33
+- The one-command install now installs the main branch: INSTALL.md and
+  scripts/bootstrap.sh use .../kp4pra/main/scripts/bootstrap.sh and
+  KP4PRA_BRANCH defaults to main. Testers install the development version
+  with the dev URL and `sudo env KP4PRA_BRANCH=dev bash` (INSTALL.md,
+  "Updating"); the manual install clones main (add -b dev for dev).
+- kp4pra-xara: after installing a different Xara build (e.g. the
+  registered one), Xara's config is rewritten right away even when Xara is
+  not running, so "registered = on" no longer waits for Xara's next start.
+- Removed sudoers.d/kp4pra-tnc-btperms: never installed by any script, and
+  its one rule is already in sudoers.d/kp4pra-tnc.
+- Branch check before the merge: every branch on GitHub (main and the four
+  feature/* branches) is fully contained in dev; main's two own commits
+  (1.3.24 APKPPR beacon, the registered-Xara workflow) are in dev as 1.4.23
+  and 1.4.25.
+
 ## Fix: Mini PiTFT stuck on "Xara starting..." - new in 1.4.32
 - Xara sends its hello and a replay of past events right after the
   WebSocket handshake, usually in the same packet as the HTTP reply. The

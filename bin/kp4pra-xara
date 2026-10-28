@@ -378,6 +378,9 @@ do_install() {  # install|update, args...
     fi
     switch_to "$want"
     prune
+    # Xara's config depends on the build (registered speeds); rewrite it now,
+    # not only at Xara's next start (a running Xara is restarted below anyway).
+    systemctl is-active --quiet "$UNIT" || do_apply_conf >/dev/null 2>&1 || true
     say "Xara $("$BIN/xara" --version | awk '{print $2}')$(is_registered && echo ' (registered)') installed (was: ${cur:-none})"
     if systemctl is-active --quiet "$UNIT"; then
         say "restarting Xara on the new version"

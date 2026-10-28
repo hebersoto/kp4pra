@@ -2,7 +2,7 @@
 # KP4PRA TNC - one-command install on a fresh Raspberry Pi or Orange Pi Zero 2W.
 #
 # On the board, after logging in:
-#   curl -fsSL https://raw.githubusercontent.com/hebersoto/kp4pra/dev/scripts/bootstrap.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/hebersoto/kp4pra/main/scripts/bootstrap.sh | sudo bash
 #
 # It does, in order:
 #   1. update the system (apt update + full-upgrade)
@@ -19,14 +19,15 @@
 # Output is also saved to /root/kp4pra-install.log.
 #
 # Options (environment variables):
-#   KP4PRA_BRANCH=main   install the stable branch instead of dev
+#   KP4PRA_BRANCH=dev    install the development branch instead of main (testers):
+#                        curl -fsSL .../kp4pra/dev/scripts/bootstrap.sh | sudo env KP4PRA_BRANCH=dev bash
 #   KP4PRA_NO_REBOOT=1   do not reboot at the end
 set -euo pipefail
 
 # Everything runs inside main(), called on the last line: with "curl | bash"
 # bash then reads the whole script before running any of it, so no command
 # can swallow the rest of the script from the pipe.
-BRANCH="${KP4PRA_BRANCH:-dev}"
+BRANCH="${KP4PRA_BRANCH:-main}"
 REPO_URL="https://github.com/hebersoto/kp4pra.git"
 DIREWOLF_URL="https://github.com/wb2osz/direwolf.git"
 LOG=/root/kp4pra-install.log
